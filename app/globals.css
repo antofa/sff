@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* Prevent automatic scroll on filter changes */
+html {
+  scroll-behavior: auto !important;
+}
+
+body {
+  scroll-behavior: auto !important;
+}
+
+:root {
+  --background-start-rgb: 26, 31, 46;
+  --background-end-rgb: 30, 35, 50;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      135deg,
+      rgba(26, 31, 46, 1) 0%,
+      rgba(30, 35, 50, 1) 50%,
+      rgba(35, 40, 55, 1) 100%
+    );
+  min-height: 100vh;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
