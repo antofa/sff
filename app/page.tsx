@@ -12,7 +12,7 @@ import { BackgroundElements } from '@/components/BackgroundElements'
 export default function Home() {
   const [playerName, setPlayerName] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
-  const { decks, loading, fetchDecks } = useDeckStore()
+  const { decks, fusedDecks, loading, fetchDecks } = useDeckStore()
 
   const handleSearch = async () => {
     if (!playerName.trim()) {
@@ -28,12 +28,13 @@ export default function Home() {
 
     try {
       await fetchDecks(playerName.trim())
-      const { decks: loadedDecks } = useDeckStore.getState()
+      const { decks: loadedDecks, fusedDecks: loadedFusedDecks } = useDeckStore.getState()
       
-      if (loadedDecks.length > 0) {
+      if (loadedDecks.length > 0 || loadedFusedDecks.length > 0) {
+        const totalDecks = loadedDecks.length + loadedFusedDecks.length
         notifications.show({
           title: 'Success',
-          message: `Found ${loadedDecks.length} deck${loadedDecks.length !== 1 ? 's' : ''}`,
+          message: `Found ${totalDecks} deck${totalDecks !== 1 ? 's' : ''}`,
           color: 'green',
         })
       } else {
@@ -142,9 +143,11 @@ export default function Home() {
             </div>
           )}
 
-          {!loading && decks.length > 0 && <DeckList decks={decks} />}
+          {!loading && (decks.length > 0 || fusedDecks.length > 0) && (
+            <DeckList decks={decks} fusedDecks={fusedDecks} />
+          )}
           
-          {!loading && decks.length === 0 && hasSearched && (
+          {!loading && decks.length === 0 && fusedDecks.length === 0 && hasSearched && (
             <Paper
               p="xl"
               className="w-full max-w-2xl backdrop-blur-md border border-sf-primary/30 rounded-xl"

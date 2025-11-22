@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, ScrollArea, Divider, Image, Loader } from '@mantine/core'
 import { IconHandFinger, IconCalendar } from '@tabler/icons-react'
 import type { Deck } from '@/store/deckStore'
@@ -66,13 +66,125 @@ interface DeckDetailsProps {
   deck: Deck | null
   opened: boolean
   onClose: () => void
+  onDeckClick?: (deck: Deck, parentDeck?: Deck | null) => void
+  allDecks?: Deck[]
+  parentFusedDeck?: Deck | null
 }
 
-export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
+export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [], parentFusedDeck }: DeckDetailsProps) {
   const [selectedCard, setSelectedCard] = useState<CardInfo | null>(null)
   const [selectedLevel, setSelectedLevel] = useState<number>(1) // Current card level (1, 2, or 3)
   const [cardImages, setCardImages] = useState<Record<string, Record<number, string>>>({}) // cardId -> level -> imageUrl
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set())
+
+  // Helper function to get two source decks from fused deck
+  const getFusedDeckSourceDecks = useMemo(() => {
+    if (!deck) return [null, null]
+    
+    const fusedDeckAny = deck as any
+    
+    let deck1: Deck | null = null
+    let deck2: Deck | null = null
+    
+    // First, try to get decks from myDecks array (contains full deck objects)
+    if (fusedDeckAny.myDecks && Array.isArray(fusedDeckAny.myDecks) && fusedDeckAny.myDecks.length >= 2) {
+      const myDeck1 = fusedDeckAny.myDecks[0]
+      const myDeck2 = fusedDeckAny.myDecks[1]
+      
+      // Use myDecks directly if they have name or id (they are full deck objects)
+      if (myDeck1 && typeof myDeck1 === 'object' && (myDeck1.name || myDeck1.id)) {
+        // First, try to find a more complete version in allDecks
+        const deck1Id = myDeck1.id || myDeck1.deckId
+        if (deck1Id && allDecks.length > 0) {
+          const foundDeck1 = allDecks.find(d => d.id === deck1Id)
+          if (foundDeck1) {
+            deck1 = foundDeck1
+          } else {
+            // Use myDeck1 directly as fallback
+            deck1 = myDeck1 as Deck
+          }
+        } else {
+          // Use myDeck1 directly
+          deck1 = myDeck1 as Deck
+        }
+      }
+      
+      if (myDeck2 && typeof myDeck2 === 'object' && (myDeck2.name || myDeck2.id)) {
+        // First, try to find a more complete version in allDecks
+        const deck2Id = myDeck2.id || myDeck2.deckId
+        if (deck2Id && allDecks.length > 0) {
+          const foundDeck2 = allDecks.find(d => d.id === deck2Id)
+          if (foundDeck2) {
+            deck2 = foundDeck2
+          } else {
+            // Use myDeck2 directly as fallback
+            deck2 = myDeck2 as Deck
+          }
+        } else {
+          // Use myDeck2 directly
+          deck2 = myDeck2 as Deck
+        }
+      }
+    } 
+    // If myDecks doesn't work, try fusedDeckIds
+    if ((!deck1 || !deck2) && fusedDeckAny.fusedDeckIds && Array.isArray(fusedDeckAny.fusedDeckIds) && fusedDeckAny.fusedDeckIds.length >= 2 && allDecks.length > 0) {
+      // Get decks by IDs from allDecks
+      if (!deck1) {
+        deck1 = allDecks.find(d => d.id === fusedDeckAny.fusedDeckIds[0]) || null
+      }
+      if (!deck2) {
+        deck2 = allDecks.find(d => d.id === fusedDeckAny.fusedDeckIds[1]) || null
+      }
+    }
+    
+    // Return result - logging will be done in useEffect
+    
+    return [deck1, deck2]
+  }, [deck, allDecks])
+
+  // Log fused deck source decks data to server
+  useEffect(() => {
+    if (!deck || !opened) return
+    
+    const [deck1, deck2] = getFusedDeckSourceDecks
+    const fusedDeckAny = deck as any
+    
+    const logData = {
+      deckName: deck.name,
+      deckId: deck.id,
+      deckFormat: fusedDeckAny.format,
+      hasMyDecks: !!(fusedDeckAny.myDecks),
+      myDecksLength: Array.isArray(fusedDeckAny.myDecks) ? fusedDeckAny.myDecks.length : 0,
+      myDecksData: Array.isArray(fusedDeckAny.myDecks) ? fusedDeckAny.myDecks.map((d: any) => ({
+        id: d?.id,
+        deckId: d?.deckId,
+        name: d?.name,
+        hasName: !!d?.name,
+        hasId: !!d?.id,
+        type: typeof d
+      })) : null,
+      hasFusedDeckIds: !!(fusedDeckAny.fusedDeckIds),
+      fusedDeckIds: Array.isArray(fusedDeckAny.fusedDeckIds) ? fusedDeckAny.fusedDeckIds : null,
+      allDecksCount: allDecks.length,
+      allDecksIds: allDecks.map(d => d.id),
+      foundDeck1: deck1 ? { id: deck1.id, name: deck1.name } : null,
+      foundDeck2: deck2 ? { id: deck2.id, name: deck2.name } : null,
+      hasOnDeckClick: !!onDeckClick
+    }
+    
+    // Send log to server
+    fetch('/api/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: '[DeckDetails] getFusedDeckSourceDecks',
+        data: logData,
+        timestamp: new Date().toISOString()
+      })
+    }).catch(err => {
+      console.error('[DeckDetails] Failed to send log:', err)
+    })
+  }, [deck, opened, getFusedDeckSourceDecks, allDecks, onDeckClick])
 
   // Normalize cards with real names (memoized for stability)
   const normalizedCards: CardInfo[] = useMemo(() => {
@@ -168,6 +280,60 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
     })
   }
 
+  // Helper function to load images in parallel with a concurrency limit
+  const loadImagesInParallel = async (
+    tasks: Array<{ cardId: string; level: number; isForgeborn: boolean }>,
+    concurrency: number,
+    updateCallback: (cardId: string, level: number, imageUrl: string | null) => void,
+    checkCanceled: () => boolean
+  ): Promise<void> => {
+    let currentIndex = 0
+    const running = new Set<Promise<void>>()
+    
+    const runNext = async (): Promise<void> => {
+      while (currentIndex < tasks.length && !checkCanceled()) {
+        const taskIndex = currentIndex++
+        const task = tasks[taskIndex]
+        
+        const promise = loadSingleImage(task.cardId, task.level, task.isForgeborn)
+          .then((imageUrl) => {
+            if (!checkCanceled()) {
+              updateCallback(task.cardId, task.level, imageUrl)
+            }
+          })
+          .catch(() => {
+            if (!checkCanceled()) {
+              updateCallback(task.cardId, task.level, null)
+            }
+          })
+          .finally(() => {
+            // Remove this promise from running set
+            running.delete(promise)
+          })
+        
+        running.add(promise)
+        
+        // Wait for next task slot if we've reached concurrency limit
+        if (running.size >= concurrency) {
+          await Promise.race(Array.from(running))
+        }
+      }
+    }
+    
+    // Start all workers
+    const workers = Array(Math.min(concurrency, tasks.length))
+      .fill(null)
+      .map(() => runNext())
+    
+    // Wait for all workers to complete
+    await Promise.all(workers)
+    
+    // Wait for any remaining promises to complete
+    if (running.size > 0) {
+      await Promise.all(Array.from(running))
+    }
+  }
+
   // Load card images in specific order: Forgeborn -> Creatures/Spells Level 1 -> Level 2 -> Level 3 -> Solbind
   useEffect(() => {
     if (!opened || normalizedCards.length === 0) return
@@ -243,12 +409,27 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
           return
         }
 
-        // Check if spell
-        const name = card.name?.toLowerCase() || ''
-        const isSpell = cardData.cardType === 'Spell' || card.type?.toLowerCase().includes('spell') ||
-                        card.id?.toLowerCase().includes('spell') || name.includes('spell') ||
-                        name.includes('chanting of the abyss') || name.includes('dark pryings') ||
-                        name.includes('sacrifice chamber')
+        // Check if spell - prioritize cardType from original card data
+        // Get original card data to check cardType properly
+        const originalCardForType = deck.cards && Array.isArray(deck.cards)
+          ? deck.cards.find((c: any, idx: number) => {
+              if (typeof c === 'string') {
+                return c === card.id
+              }
+              const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
+              return cId === card.id
+            })
+          : null
+        
+        const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+          ? (originalCardForType.cardType || originalCardForType.card_type || '')
+          : ''
+        const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+        
+        // Determine if spell based ONLY on cardType
+        // If cardType is "Spell", it's a spell, otherwise it's a creature (default)
+        const lowerCardType = cardType.toLowerCase()
+        const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
         
         if (isSpell) {
           spellCardsList.push(card)
@@ -314,32 +495,31 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
           break
         }
         
-        console.log(`[DeckDetails] 📦 [${level + 1}/5] Loading all Creatures/Spells Level ${level}...`)
+        console.log(`[DeckDetails] 📦 [${level + 1}/5] Loading all Creatures/Spells Level ${level} in parallel (10 threads)...`)
         
-        // Load all cards of this level in parallel (but await each to maintain order)
-        for (const card of regularCards) {
-          if (!isModalOpen) {
-            console.log(`[DeckDetails] ⏹️ Stopping card loading - modal closed`)
-            break
-          }
-          
-          // Skip if already loaded
-          if (cardImages[card.id] && cardImages[card.id][level]) {
-            continue
-          }
-
-          const imageUrl = await loadSingleImage(card.id, level, false)
-          
-          if (!isModalOpen) {
-            console.log(`[DeckDetails] ⏹️ Stopping after card load - modal closed`)
-            break
-          }
-          
-          if (imageUrl) {
-            // Update state immediately
-            updateImageState(card.id, level, imageUrl)
-            console.log(`[DeckDetails] ✅ Level ${level} loaded: ${card.id} (${card.name})`)
-          }
+        // Prepare tasks for this level (skip already loaded)
+        const tasks = regularCards
+          .filter(card => !(cardImages[card.id] && cardImages[card.id][level]))
+          .map(card => ({
+            cardId: card.id,
+            level: level,
+            isForgeborn: false,
+            cardName: card.name
+          }))
+        
+        if (tasks.length > 0) {
+          await loadImagesInParallel(
+            tasks,
+            10, // 10 parallel threads
+            (cardId, level, imageUrl) => {
+              if (imageUrl) {
+                updateImageState(cardId, level, imageUrl)
+                const task = tasks.find(t => t.cardId === cardId)
+                console.log(`[DeckDetails] ✅ Level ${level} loaded: ${cardId} (${task?.cardName || 'unknown'})`)
+              }
+            },
+            () => !isModalOpen
+          )
         }
       }
 
@@ -349,36 +529,54 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
         return
       }
       
-      console.log(`[DeckDetails] 🔷 [5/5] Loading Solbind cards...`)
+      console.log(`[DeckDetails] 🔷 [5/5] Loading Solbind cards in parallel (10 threads)...`)
+      
+      // Prepare tasks for Solbind cards (all levels for each card)
+      const solbindTasks: Array<{ cardId: string; level: number; isForgeborn: boolean; cardName: string }> = []
+      
       for (const card of solbindCardsList) {
-        if (!isModalOpen) {
-          console.log(`[DeckDetails] ⏹️ Stopping Solbind loading - modal closed`)
-          break
-        }
-        
         if (cardImages[card.id] && Object.keys(cardImages[card.id]).length > 0) {
           console.log(`[DeckDetails] Skipping Solbind ${card.id} - already loaded`)
           continue
         }
-
-        console.log(`[DeckDetails] 🔷 Loading Solbind: ${card.id} (${card.name})`)
         
+        // Add tasks for all three levels
         for (let level = 1; level <= 3; level++) {
-          if (!isModalOpen) {
-            console.log(`[DeckDetails] ⏹️ Stopping Solbind level loading - modal closed`)
-            break
-          }
-          
-          const imageUrl = await loadSingleImage(card.id, level, false)
-          
-          if (!isModalOpen) {
-            console.log(`[DeckDetails] ⏹️ Stopping after Solbind load - modal closed`)
-            break
-          }
-          
-          if (imageUrl) {
-            // Update state immediately for each level
-            updateImageState(card.id, level, imageUrl)
+          solbindTasks.push({
+            cardId: card.id,
+            level: level,
+            isForgeborn: false,
+            cardName: card.name
+          })
+        }
+      }
+      
+      if (solbindTasks.length > 0) {
+        const loadedLevels = new Map<string, Set<number>>()
+        
+        await loadImagesInParallel(
+          solbindTasks,
+          10, // 10 parallel threads
+          (cardId, level, imageUrl) => {
+            if (imageUrl) {
+              updateImageState(cardId, level, imageUrl)
+              if (!loadedLevels.has(cardId)) {
+                loadedLevels.set(cardId, new Set())
+              }
+              loadedLevels.get(cardId)!.add(level)
+            }
+          },
+          () => !isModalOpen
+        )
+        
+        // Log results for each Solbind card
+        for (const card of solbindCardsList) {
+          const loaded = loadedLevels.get(card.id)
+          if (loaded && loaded.size > 0) {
+            console.log(`[DeckDetails] ✅ Solbind loaded: ${card.id} (${card.name}) - ${loaded.size} levels`)
+          } else if (!cardImages[card.id] || Object.keys(cardImages[card.id]).length === 0) {
+            errors.add(card.id)
+            console.warn(`[DeckDetails] ⚠️ Solbind failed: ${card.id}`)
           }
         }
       }
@@ -450,24 +648,98 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
     }
   }, [opened, normalizedCards.length, deck?.id, forgebornCards, selectedCard]) // Only depend on stable values
 
-  // Reset level when card changes
+  // Reset level when card changes (but preserve if user selected a different level)
+  // Use ref to track if level was manually changed by user
+  const levelManuallyChangedRef = useRef<boolean>(false)
+  const lastSelectedCardIdRef = useRef<string | null>(null)
+  
   useEffect(() => {
     if (selectedCard) {
-      // For Solbind cards, find the first available level
-      const cardImageData = cardImages[selectedCard.id]
-      if (cardImageData) {
-        const availableLevels = Object.keys(cardImageData).map(Number).sort()
-        if (availableLevels.length > 0) {
-          setSelectedLevel(availableLevels[0])
+      // Only reset level if card actually changed (not just on image load)
+      if (lastSelectedCardIdRef.current !== selectedCard.id) {
+        lastSelectedCardIdRef.current = selectedCard.id
+        levelManuallyChangedRef.current = false
+        
+        // For Solbind cards, find the first available level
+        const cardImageData = cardImages[selectedCard.id]
+        if (cardImageData) {
+          const availableLevels = Object.keys(cardImageData).map(Number).sort()
+          if (availableLevels.length > 0) {
+            setSelectedLevel(availableLevels[0])
+          } else {
+            setSelectedLevel(1)
+          }
         } else {
+          // For all cards, start with level 1 (user can change it with level selector)
           setSelectedLevel(1)
         }
-      } else {
-        // For all cards, start with level 1 (user can change it with level selector)
-        setSelectedLevel(1)
       }
+      // If card didn't change but images loaded, don't reset level
+      // (this prevents level from resetting when images finish loading)
     }
-  }, [selectedCard?.id, cardImages])
+  }, [selectedCard?.id]) // Only depend on card ID, not cardImages
+  
+  // Handler for level button click - mark as manually changed
+  const handleLevelChange = (level: number) => {
+    levelManuallyChangedRef.current = true
+    setSelectedLevel(level)
+  }
+  
+  // Mouse slider functionality for switching levels - divide image into 3 vertical zones
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+    // Only enable slider for creatures and spells (not Forgeborn)
+    if (!selectedCard) return
+    
+    const isForgeborn = deck?.forgebornId === selectedCard.id || 
+                       selectedCard.id === deck?.forgebornId ||
+                       (selectedCard.id && deck?.forgebornId && selectedCard.id.includes(deck.forgebornId)) ||
+                       (deck?.forgebornId && selectedCard.id && deck.forgebornId.includes(selectedCard.id)) ||
+                       selectedCard.type?.toLowerCase().includes('forgeborn') ||
+                       (selectedCard as any).cardType?.toLowerCase().includes('forgeborn')
+    
+    const selectedCardData = selectedCard as any
+    const isSolbind = solbindCardIdsSet.has(selectedCard.id) ||
+                     selectedCardData.rarity === 'Solbind' || selectedCardData.rarity === 'solbind' ||
+                     selectedCard.type?.toLowerCase() === 'solbind' ||
+                     selectedCardData.cardType?.toLowerCase() === 'solbind'
+    
+    // Skip slider for Forgeborn (they don't have levels)
+    if (isForgeborn) return
+    
+    // Get the image element and its bounding rectangle
+    const imageElement = e.currentTarget
+    const rect = imageElement.getBoundingClientRect()
+    const imageWidth = rect.width
+    
+    // Get mouse position relative to the left edge of the image
+    const mouseX = e.clientX - rect.left
+    
+    // Divide image into 3 equal vertical zones
+    const zoneWidth = imageWidth / 3
+    
+    // Determine which zone the mouse is in and set corresponding level
+    let newLevel: number
+    if (mouseX < zoneWidth) {
+      // First third (0 to 1/3) -> Level 1
+      newLevel = 1
+    } else if (mouseX < zoneWidth * 2) {
+      // Second third (1/3 to 2/3) -> Level 2
+      newLevel = 2
+    } else {
+      // Third third (2/3 to 1) -> Level 3
+      newLevel = 3
+    }
+    
+    // Update level if it changed
+    if (newLevel !== selectedLevel) {
+      levelManuallyChangedRef.current = true
+      setSelectedLevel(newLevel)
+    }
+  }, [selectedCard, deck, selectedLevel, solbindCardIdsSet])
+  
+  const handleMouseLeave = useCallback(() => {
+    // Optional: could reset to level 1 when mouse leaves, but keeping current level for now
+  }, [])
 
   const spellCards: CardInfo[] = useMemo(() => {
     if (!deck) return []
@@ -480,20 +752,10 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
       const cardData = card as any
       const name = card.name?.toLowerCase() || ''
       
-      // Check cardType first
-      if (cardData.cardType === 'Spell' || card.type?.toLowerCase().includes('spell')) {
-        return true
-      }
-      
-      // Fallback checks
-      return card.id?.toLowerCase().includes('spell') ||
-             name.includes('spell') ||
-             name.includes('chanting of the abyss') ||
-             name.includes('dark pryings') ||
-             name.includes('sacrifice chamber') ||
-             (name.includes('chanting') && name.includes('abyss')) ||
-             (name.includes('dark') && name.includes('pryings')) ||
-             (name.includes('sacrifice') && name.includes('chamber'))
+      // Use ONLY cardType to determine if spell
+      const cardType = cardData.cardType || cardData.card_type || ''
+      const lowerCardType = cardType.toLowerCase()
+      return lowerCardType.includes('spell') && !lowerCardType.includes('creature')
     })
   }, [normalizedCards, forgebornCards, solbindCardIdsSet, deck])
 
@@ -635,25 +897,113 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
       opened={opened}
       onClose={onClose}
       title={
-        <Group justify="space-between" className="w-full">
-          <Title order={3} className="text-white">
-            {deck.name || 'Untitled Deck'}
-          </Title>
-          <Group gap="xs">
-            {deck.deckRank && (
-              <Badge
-                color={deck.deckRank === 'Unranked' ? 'gray' : 'blue'}
-                variant="light"
-                size="sm"
+        <Group justify="space-between" className="w-full" wrap="nowrap">
+          <Group gap="md" wrap="nowrap" className="flex-1 min-w-0">
+            {parentFusedDeck && onDeckClick && (
+              <Button
+                variant="subtle"
+                size="xs"
+                color="blue"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  // Pass null as parentDeck to clear parentFusedDeck when returning to fused deck
+                  onDeckClick(parentFusedDeck, null)
+                }}
+                style={{ flexShrink: 0 }}
               >
-                {deck.deckRank}
-              </Badge>
+                ← Back to Fused
+              </Button>
             )}
-            {deck.format && (
-              <Text size="xs" className="text-gray-400">
-                {deck.format}
-              </Text>
-            )}
+            <Title order={3} className="text-white" style={{ flexShrink: 0 }}>
+              {deck.name || 'Untitled Deck'}
+            </Title>
+            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+              {deck.deckRank && (
+                <Badge
+                  color={deck.deckRank === 'Unranked' ? 'gray' : 'blue'}
+                  variant="light"
+                  size="sm"
+                >
+                  {deck.deckRank}
+                </Badge>
+              )}
+              {deck.format && (
+                <Badge
+                  color="gray"
+                  variant="light"
+                  size="sm"
+                >
+                  {deck.format}
+                </Badge>
+              )}
+            </Group>
+            {(() => {
+              const [sourceDeck1, sourceDeck2] = getFusedDeckSourceDecks
+              
+              if (sourceDeck1 || sourceDeck2) {
+                if (onDeckClick) {
+                  return (
+                    <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                      {sourceDeck1 && (
+                        <Text
+                          size="xs"
+                          className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            // Pass current deck as parent when navigating to source deck
+                            onDeckClick(sourceDeck1, deck)
+                          }}
+                          style={{ textDecorationThickness: '1px' }}
+                        >
+                          {sourceDeck1.name || 'Deck 1'}
+                        </Text>
+                      )}
+                      {sourceDeck1 && sourceDeck2 && (
+                        <Text size="xs" className="text-gray-500">
+                          +
+                        </Text>
+                      )}
+                      {sourceDeck2 && (
+                        <Text
+                          size="xs"
+                          className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            // Pass current deck as parent when navigating to source deck
+                            onDeckClick(sourceDeck2, deck)
+                          }}
+                          style={{ textDecorationThickness: '1px' }}
+                        >
+                          {sourceDeck2.name || 'Deck 2'}
+                        </Text>
+                      )}
+                    </Group>
+                  )
+                } else {
+                  // Show links without click handler (just text)
+                  return (
+                    <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                      {sourceDeck1 && (
+                        <Text size="xs" className="text-blue-400">
+                          {sourceDeck1.name || 'Deck 1'}
+                        </Text>
+                      )}
+                      {sourceDeck1 && sourceDeck2 && (
+                        <Text size="xs" className="text-gray-500">
+                          +
+                        </Text>
+                      )}
+                      {sourceDeck2 && (
+                        <Text size="xs" className="text-blue-400">
+                          {sourceDeck2.name || 'Deck 2'}
+                        </Text>
+                      )}
+                    </Group>
+                  )
+                }
+              }
+              return null
+            })()}
           </Group>
         </Group>
       }
@@ -793,7 +1143,9 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
                     {(() => {
                       const cardImageData = cardImages[selectedCard.id]
                       const currentImageUrl = cardImageData?.[selectedLevel]
-                      const hasError = imageErrors.has(selectedCard.id)
+                      // Check error for specific card-level combination
+                      const levelErrorKey = `${selectedCard.id}-${selectedLevel}`
+                      const hasError = imageErrors.has(levelErrorKey)
                       
                       // Always log for debugging, especially for Solbind
                       console.log(`[DeckDetails] Rendering card image:`, {
@@ -823,7 +1175,9 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
                                        selectedCardData.cardType?.toLowerCase() === 'solbind'
                       
                       // For Forgeborn, check if all three levels have the same URL (which means it's the 321 format)
+                      // Card levels are 1, 2, 3 (not 0-indexed), so we check levels 1, 2, 3
                       const isForgebornImage = isForgeborn && cardImageData && 
+                                               cardImageData[1] && cardImageData[2] && cardImageData[3] &&
                                                cardImageData[1] === cardImageData[2] && 
                                                cardImageData[2] === cardImageData[3]
                       
@@ -831,32 +1185,74 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
                       const effectiveLevel = selectedLevel
                       const effectiveImageUrl = currentImageUrl
                       
-                      return cardImageData && effectiveImageUrl && !hasError ? (
+                      // For creatures and spells, show image even if it hasn't loaded yet
+                      // (we'll show a placeholder while loading)
+                      const isCreatureOrSpell = !isForgeborn && !isSolbind
+                      
+                      return (cardImageData && effectiveImageUrl && !hasError) || (isCreatureOrSpell && !hasError) ? (
                       <div className="relative w-full h-full flex flex-col items-center justify-center gap-4">
-                        <img
-                          src={effectiveImageUrl}
-                          alt={isForgeborn ? selectedCard.name : isSolbind ? selectedCard.name : `${selectedCard.name} Level ${effectiveLevel}`}
-                          className="max-w-full max-h-full object-contain"
-                          style={{
-                            maxWidth: isForgeborn ? '400px' : '300px',
-                            maxHeight: isForgeborn ? '600px' : '450px',
-                            transform: isForgeborn ? 'rotate(-90deg)' : 'none',
-                          }}
-                          onError={(e) => {
-                            console.error(`[DeckDetails] Image error for ${selectedCard.id} level ${effectiveLevel}:`, e)
-                            setImageErrors(prev => new Set(prev).add(selectedCard.id))
-                          }}
-                        />
-                        {/* Level selector buttons - show for cards with multiple levels (including Solbind, but not Forgeborn) */}
-                        {!isForgebornImage && cardImages[selectedCard.id] && Object.keys(cardImages[selectedCard.id]).length > 1 && (
+                        {effectiveImageUrl ? (
+                          <img
+                            src={effectiveImageUrl}
+                            alt={isForgeborn ? selectedCard.name : isSolbind ? selectedCard.name : `${selectedCard.name} Level ${effectiveLevel}`}
+                            className="max-w-full max-h-full object-contain"
+                            style={{
+                              maxWidth: isForgeborn ? '400px' : '300px',
+                              maxHeight: isForgeborn ? '600px' : '450px',
+                              transform: isForgeborn ? 'rotate(-90deg)' : 'none',
+                            }}
+                            onMouseMove={!isForgeborn ? handleMouseMove : undefined}
+                            onMouseLeave={!isForgeborn ? handleMouseLeave : undefined}
+                            onError={(e) => {
+                              console.error(`[DeckDetails] Image error for ${selectedCard.id} level ${effectiveLevel}:`, e)
+                              setImageErrors(prev => new Set(prev).add(`${selectedCard.id}-${effectiveLevel}`))
+                            }}
+                          />
+                        ) : isCreatureOrSpell ? (
+                          // Show placeholder for creatures/spells while image is loading
+                          <div
+                            className="w-64 h-96 mx-auto rounded-lg border-2 flex flex-col items-center justify-center gap-2"
+                            style={{
+                              backgroundColor: 'rgba(74, 144, 226, 0.1)',
+                              borderColor: getFactionBadgeColor(selectedCard.faction || deck.faction),
+                            }}
+                          >
+                            <Loader size="md" color="rgba(74, 144, 226, 0.8)" />
+                            <Text size="sm" className="text-white text-center px-4">
+                              Loading {selectedCard.name} Level {effectiveLevel}...
+                            </Text>
+                          </div>
+                        ) : (
+                          // Fallback placeholder
+                          <div
+                            className="w-64 h-96 mx-auto rounded-lg border-2 flex items-center justify-center"
+                            style={{
+                              backgroundColor: 'rgba(74, 144, 226, 0.1)',
+                              borderColor: getFactionBadgeColor(selectedCard.faction || deck.faction),
+                            }}
+                          >
+                            <Text size="lg" className="text-white text-center px-4">
+                              {selectedCard.name}
+                            </Text>
+                          </div>
+                        )}
+                        {/* Level selector buttons - show for creatures and spells (always show all 3 levels) */}
+                        {!isForgeborn && (
                           <Group gap="xs" justify="center">
-                            {[1, 2, 3].map(level => (
-                              cardImages[selectedCard.id][level] ? (
+                            {[1, 2, 3].map(level => {
+                              // For creatures and spells, always show all 3 levels
+                              // Even if image hasn't loaded yet
+                              const hasImage = cardImages[selectedCard.id]?.[level]
+                              const levelErrorKey = `${selectedCard.id}-${level}`
+                              const isLoading = !hasImage && !imageErrors.has(levelErrorKey)
+                              
+                              return (
                                 <Button
                                   key={level}
                                   size="sm"
                                   variant={selectedLevel === level ? 'filled' : 'outline'}
-                                  onClick={() => setSelectedLevel(level)}
+                                  onClick={() => handleLevelChange(level)}
+                                  // Always enabled - allow user to select any level even if image hasn't loaded yet
                                   className={
                                     selectedLevel === level
                                       ? 'bg-sf-primary hover:bg-sf-primary/90'
@@ -864,9 +1260,10 @@ export function DeckDetails({ deck, opened, onClose }: DeckDetailsProps) {
                                   }
                                 >
                                   Level {level}
+                                  {!hasImage && !imageErrors.has(`${selectedCard.id}-${level}`) && ' (loading...)'}
                                 </Button>
-                              ) : null
-                            ))}
+                              )
+                            })}
                           </Group>
                         )}
                       </div>

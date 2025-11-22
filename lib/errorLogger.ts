@@ -30,12 +30,12 @@ export function logErrorToFile(error: Error | string, context?: Record<string, a
         context,
       }),
     })
-    .then((response) => {
+    .then(async (response) => {
       if (!response.ok) {
         console.error('[Error Logger] API returned error status:', response.status, response.statusText)
-        return response.text().then(text => {
-          console.error('[Error Logger] API error response:', text)
-        })
+        const text = await response.text()
+        console.error('[Error Logger] API error response:', text)
+        return
       }
       console.log('[Error Logger] Error successfully logged to API')
       return response.json()

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react'
-import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button } from '@mantine/core'
+import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
 import { useDebouncedValue } from '@mantine/hooks'
 import type { Deck } from '@/store/deckStore'
@@ -126,15 +126,27 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
     // Parent cards with solbindCards array should be counted as regular cards (Spell or Creature)
     // They are NOT Solbind cards themselves
     
-    // Check if spell (same logic as DeckDetails)
-    const name = card.name?.toLowerCase() || ''
-    const isSpell = cardData.cardType === 'Spell' || card.type?.toLowerCase().includes('spell') ||
-                    card.id?.toLowerCase().includes('spell') || name.includes('spell') ||
-                    name.includes('chanting of the abyss') || name.includes('dark pryings') ||
-                    name.includes('sacrifice chamber') ||
-                    (name.includes('chanting') && name.includes('abyss')) ||
-                    (name.includes('dark') && name.includes('pryings')) ||
-                    (name.includes('sacrifice') && name.includes('chamber'))
+    // Get original card data to check cardType properly
+    const originalCard = deck.cards && Array.isArray(deck.cards)
+      ? deck.cards.find((c: any, idx: number) => {
+          if (typeof c === 'string') {
+            return c === card.id
+          }
+          const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
+          return cId === card.id
+        })
+      : null
+    
+    // Check cardType from original data first, then normalized
+    const originalCardType = originalCard && typeof originalCard === 'object'
+      ? (originalCard.cardType || originalCard.card_type || '')
+      : ''
+    const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+    
+    // Determine if spell based ONLY on cardType
+    // If cardType is "Spell", it's a spell, otherwise it's a creature (default)
+    const lowerCardType = cardType.toLowerCase()
+    const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
     
     if (isSpell) {
       spells++
@@ -150,6 +162,7 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
 
 interface DeckListProps {
   decks: Deck[]
+  fusedDecks?: Deck[]
 }
 
 interface FilterState {
@@ -157,32 +170,58 @@ interface FilterState {
   forgebornName: string[]
   cardName: string[]
   cardText: string
-  tags: string
-  attackOperator: '>=' | '<=' | '='
-  attackValue: number | null
-  healthOperator: '>=' | '<=' | '='
-  healthValue: number | null
+  tags: string[]
   rarityType: string
   rarityCount: number | null
+  expiryFilter: 'all' | 'active' | 'expiring' | 'expired'
+  sortBy: string
+  creaturesOperator: '>=' | '<=' | '='
+  creaturesValue: number | null
+  freeCreaturesOperator: '>=' | '<=' | '='
+  freeCreaturesValue: number | null
+  creatureType: string
+  creatureTypeCount: number | null
+  spellsOperator: '>=' | '<=' | '='
+  spellsValue: number | null
+  freeSpellsOperator: '>=' | '<=' | '='
+  freeSpellsValue: number | null
+  spellType: string
+  spellTypeCount: number | null
+  deckName: string
 }
 
-export function DeckList({ decks }: DeckListProps) {
+type ViewMode = 'decks' | 'fused' | 'both'
+
+export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null)
   const [detailsOpened, setDetailsOpened] = useState(false)
+  const [parentFusedDeck, setParentFusedDeck] = useState<Deck | null>(null)
   const [filtersOpened, setFiltersOpened] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('both')
   
   const [filters, setFilters] = useState<FilterState>({
     faction: [],
     forgebornName: [],
     cardName: [],
     cardText: '',
-    tags: '',
-    attackOperator: '>=',
-    attackValue: null,
-    healthOperator: '>=',
-    healthValue: null,
+    tags: [],
     rarityType: '',
     rarityCount: null,
+    expiryFilter: 'active', // Default: show active decks (no dates + expiring)
+    sortBy: 'date-asc', // Default: newest first
+    creaturesOperator: '>=',
+    creaturesValue: null,
+    freeCreaturesOperator: '>=',
+    freeCreaturesValue: null,
+    creatureType: '',
+    creatureTypeCount: null,
+    spellsOperator: '>=',
+    spellsValue: null,
+    freeSpellsOperator: '>=',
+    freeSpellsValue: null,
+    spellType: '',
+    spellTypeCount: null,
+    deckName: '',
   })
   
   // Debounced filters for text inputs (0.5 second delay)
@@ -216,53 +255,312 @@ export function DeckList({ decks }: DeckListProps) {
     return Array.from(cardNamesSet).sort()
   }, [decks])
   
-  // Collect all unique Forgeborn names from all decks for the dropdown
+  // Collect all unique deck names from all decks for the dropdown
+  const allDeckNames = useMemo(() => {
+    const deckNamesSet = new Set<string>()
+    
+    // Process both regular decks and fused decks
+    const allDecks = [...decks, ...fusedDecks]
+    
+    allDecks.forEach(deck => {
+      if (deck.name && deck.name.trim()) {
+        deckNamesSet.add(deck.name.trim())
+      }
+    })
+    
+    return Array.from(deckNamesSet).sort()
+  }, [decks, fusedDecks])
+  
+  // Helper function to extract Forgeborn name from a deck
+  const getForgebornNameFromDeck = (deck: Deck): string | null => {
+    // Try to get Forgeborn from deck.forgeborn first (has title property)
+    if (deck.forgeborn) {
+      // getCardInfo will handle title vs name preference for Forgeborn
+      if (typeof deck.forgeborn === 'object' && deck.forgeborn.id) {
+        const forgebornInfo = getCardInfo(deck.forgeborn.id, deck.forgeborn)
+        if (forgebornInfo.name) {
+          return forgebornInfo.name
+        }
+      }
+      // Fallback for direct title/name
+      const name = (deck.forgeborn as any).title || (deck.forgeborn as any).name
+      if (name) {
+        return name
+      }
+    }
+    
+    // Also check in cards
+    if (deck.cards && Array.isArray(deck.cards)) {
+      const normalizedCards = deck.cards.map((card: any, index: number) => {
+        if (typeof card === 'string') {
+          return getCardInfo(card)
+        } else if (typeof card === 'object' && card !== null) {
+          const cardId = card.id || card.cardId || card.name || `card-${index}`
+          return getCardInfo(cardId, card)
+        }
+        return getCardInfo(`card-${index}`)
+      })
+      
+      // Find Forgeborn by forgebornId
+      if (deck.forgebornId) {
+        const forgeborn = normalizedCards.find(card => 
+          card.id === deck.forgebornId || 
+          (card.id && deck.forgebornId && card.id.includes(deck.forgebornId)) ||
+          (deck.forgebornId && card.id && deck.forgebornId.includes(card.id))
+        )
+        if (forgeborn && forgeborn.name) {
+          return forgeborn.name // getCardInfo already prefers title for Forgeborn
+        }
+      }
+      
+      // Find Forgeborn by cardType
+      const forgebornByType = normalizedCards.find(card =>
+        card.type?.toLowerCase().includes('forgeborn') ||
+        (card as any).cardType?.toLowerCase().includes('forgeborn')
+      )
+      if (forgebornByType && forgebornByType.name) {
+        return forgebornByType.name // getCardInfo already prefers title for Forgeborn
+      }
+    }
+    
+    return null
+  }
+  
+  // Collect all unique Forgeborn names from all decks (regular + fused) for the dropdown
   const allForgebornNames = useMemo(() => {
     const forgebornNamesSet = new Set<string>()
     
+    // Collect from regular decks
     decks.forEach(deck => {
-      // Try to get Forgeborn from deck.forgeborn
-      if (deck.forgeborn && deck.forgeborn.name) {
-        forgebornNamesSet.add(deck.forgeborn.name)
+      const forgebornName = getForgebornNameFromDeck(deck)
+      if (forgebornName) {
+        forgebornNamesSet.add(forgebornName)
       }
-      
-      // Also check in cards
-      if (deck.cards && Array.isArray(deck.cards)) {
-        const normalizedCards = deck.cards.map((card: any, index: number) => {
-          if (typeof card === 'string') {
-            return getCardInfo(card)
-          } else if (typeof card === 'object' && card !== null) {
-            const cardId = card.id || card.cardId || card.name || `card-${index}`
-            return getCardInfo(cardId, card)
-          }
-          return getCardInfo(`card-${index}`)
-        })
-        
-        // Find Forgeborn by forgebornId
-        if (deck.forgebornId) {
-          const forgeborn = normalizedCards.find(card => 
-            card.id === deck.forgebornId || 
-            (card.id && deck.forgebornId && card.id.includes(deck.forgebornId)) ||
-            (deck.forgebornId && card.id && deck.forgebornId.includes(card.id))
-          )
-          if (forgeborn && forgeborn.name) {
-            forgebornNamesSet.add(forgeborn.name)
-          }
-        }
-        
-        // Find Forgeborn by cardType
-        const forgebornByType = normalizedCards.find(card =>
-          card.type?.toLowerCase().includes('forgeborn') ||
-          (card as any).cardType?.toLowerCase().includes('forgeborn')
-        )
-        if (forgebornByType && forgebornByType.name) {
-          forgebornNamesSet.add(forgebornByType.name)
-        }
+    })
+    
+    // Collect from fused decks
+    fusedDecks.forEach(deck => {
+      const forgebornName = getForgebornNameFromDeck(deck)
+      if (forgebornName) {
+        forgebornNamesSet.add(forgebornName)
       }
     })
     
     return Array.from(forgebornNamesSet).sort()
-  }, [decks])
+  }, [decks, fusedDecks])
+  
+  // Collect all unique tags from all decks for the dropdown
+  const allTags = useMemo(() => {
+    const tagsSet = new Set<string>()
+    
+    // Process both regular decks and fused decks
+    const allDecks = [...decks, ...fusedDecks]
+    
+    allDecks.forEach(deck => {
+      // Collect tags from deck.tags
+      if (deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags)) {
+        Object.entries(deck.tags).forEach(([key, value]) => {
+          // Skip empty tags and tags with empty values
+          if (value === null || value === undefined || value === '') {
+            return
+          }
+          
+          // Skip tags where key is 'none' and value is empty
+          if (key === 'none' && (!value || value === '')) {
+            return
+          }
+          
+          // Skip if value is a string and empty after trim
+          if (typeof value === 'string' && value.trim() === '') {
+            return
+          }
+          
+          // Use value if it's a non-empty string, otherwise use key (if key is meaningful)
+          let tagText: string | null = null
+          
+          if (typeof value === 'string' && value.trim() !== '') {
+            tagText = value.trim()
+          } else if (typeof value === 'number' || typeof value === 'boolean') {
+            tagText = String(value)
+          } else if (key && key !== 'none' && !key.startsWith('tag_')) {
+            // Use key if it's meaningful (not a generated key)
+            tagText = key
+          }
+          
+          if (tagText && tagText.trim() !== '') {
+            tagsSet.add(tagText.trim())
+          }
+        })
+      }
+      
+      // Collect tags from card provides
+      if (deck.cards && Array.isArray(deck.cards)) {
+        deck.cards.forEach((card: any) => {
+          if (card && typeof card === 'object') {
+            const provides = card.provides || card.Provides
+            if (provides) {
+              if (typeof provides === 'string') {
+                // Split by comma and add each value
+                provides.split(',').forEach((p: string) => {
+                  const trimmed = p.trim()
+                  if (trimmed) {
+                    tagsSet.add(trimmed)
+                  }
+                })
+              } else if (Array.isArray(provides)) {
+                provides.forEach((p: string) => {
+                  if (p && typeof p === 'string') {
+                    const trimmed = p.trim()
+                    if (trimmed) {
+                      tagsSet.add(trimmed)
+                    }
+                  }
+                })
+              }
+            }
+          }
+        })
+      }
+    })
+    
+    return Array.from(tagsSet).sort()
+  }, [decks, fusedDecks])
+  
+  // Collect all unique creature types from all decks for the dropdown with counts
+  const allCreatureTypes = useMemo(() => {
+    const creatureTypesMap = new Map<string, number>() // type -> count of cards with this type
+    
+    // Process both regular decks and fused decks
+    const allDecks = [...decks, ...fusedDecks]
+    
+    allDecks.forEach(deck => {
+      if (!deck.cards || !Array.isArray(deck.cards)) return
+      
+      // Normalize cards
+      const normalizedCards = deck.cards.map((card: any, index: number) => {
+        if (typeof card === 'string') {
+          return getCardInfo(card)
+        } else if (typeof card === 'object' && card !== null) {
+          const cardId = card.id || card.cardId || card.name || `card-${index}`
+          return getCardInfo(cardId, card)
+        }
+        return getCardInfo(`card-${index}`)
+      })
+      
+      normalizedCards.forEach(card => {
+        const cardData = card as any
+        const name = card.name?.toLowerCase() || ''
+        
+        // Check if it's a creature (not a spell) - use ONLY cardType
+        const originalCardForType = deck.cards && Array.isArray(deck.cards)
+          ? deck.cards.find((c: any, idx: number) => {
+              if (typeof c === 'string') {
+                return c === card.id
+              }
+              const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
+              return cId === card.id
+            })
+          : null
+        const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+          ? (originalCardForType.cardType || originalCardForType.card_type || '')
+          : ''
+        const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+        const lowerCardType = cardType.toLowerCase()
+        const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+        
+        if (!isSpell) {
+          // It's a creature - collect types from cardSubType
+          // cardSubType can contain multiple types separated by spaces, e.g., "Beast Warrior"
+          const subType = cardData.cardSubType || cardData.CardSubType || cardData.CARDSUBTYPE || 
+                          cardData.SubType || cardData.subType || cardData.SUBTYPE
+          if (subType && typeof subType === 'string' && subType.trim()) {
+            // Split by spaces and add each word as a separate type
+            const types = subType.trim().split(/\s+/).filter(t => t.length > 0)
+            types.forEach(type => {
+              // Capitalize first letter for consistency
+              const capitalized = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase()
+              
+              // Count each card with this type (increment for each card)
+              creatureTypesMap.set(capitalized, (creatureTypesMap.get(capitalized) || 0) + 1)
+            })
+          }
+        }
+      })
+    })
+    
+    // Return sorted array of unique types
+    return Array.from(creatureTypesMap.keys()).sort()
+  }, [decks, fusedDecks])
+  
+  // Collect all unique spell types from all decks for the dropdown (Sub Type only)
+  const allSpellTypes = useMemo(() => {
+    const spellTypesSet = new Set<string>()
+    
+    // Process both regular decks and fused decks
+    const allDecks = [...decks, ...fusedDecks]
+    
+    allDecks.forEach(deck => {
+      if (!deck.cards || !Array.isArray(deck.cards)) return
+      
+      // Normalize cards
+      const normalizedCards = deck.cards.map((card: any, index: number) => {
+        if (typeof card === 'string') {
+          return getCardInfo(card)
+        } else if (typeof card === 'object' && card !== null) {
+          const cardId = card.id || card.cardId || card.name || `card-${index}`
+          return getCardInfo(cardId, card)
+        }
+        return getCardInfo(`card-${index}`)
+      })
+      
+      normalizedCards.forEach(card => {
+        const cardData = card as any
+        const name = card.name?.toLowerCase() || ''
+        
+        // Get original card data from deck.cards by ID to ensure we have all fields
+        const originalCard = deck.cards && Array.isArray(deck.cards)
+          ? deck.cards.find((c: any) => {
+              const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+              return cId === card.id
+            })
+          : null
+        
+        // Check if it's a spell - use ONLY cardType
+        const originalCardType = originalCard && typeof originalCard === 'object' 
+          ? (originalCard.cardType || originalCard.card_type || '')
+          : ''
+        const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+        const lowerCardType = cardType.toLowerCase()
+        const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+        
+        if (isSpell) {
+          // It's a spell - collect types from cardSubType
+          // cardSubType can contain multiple types separated by spaces, e.g., "Exalt Ritual"
+          // Prefer original data as it may have more complete information
+          const originalSubType = originalCard && typeof originalCard === 'object'
+            ? (originalCard.cardSubType || originalCard.CardSubType || originalCard.CARDSUBTYPE ||
+               originalCard.SubType || originalCard.subType || originalCard.SUBTYPE)
+            : null
+          const normalizedSubType = cardData.cardSubType || cardData.CardSubType || cardData.CARDSUBTYPE ||
+                                    cardData.SubType || cardData.subType || cardData.SUBTYPE
+          // Prefer original data if available, otherwise use normalized
+          const subType = originalSubType || normalizedSubType
+          
+          if (subType && typeof subType === 'string' && subType.trim()) {
+            // Split by spaces and add each word as a separate type
+            const types = subType.trim().split(/\s+/).filter(t => t.length > 0)
+            types.forEach(type => {
+              // Capitalize first letter for consistency
+              const capitalized = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase()
+              spellTypesSet.add(capitalized)
+            })
+          }
+        }
+      })
+    })
+    
+    return Array.from(spellTypesSet).sort()
+  }, [decks, fusedDecks])
   
   // Save scroll position when debouncedFilters change (after debounce delay)
   useEffect(() => {
@@ -299,8 +597,15 @@ export function DeckList({ decks }: DeckListProps) {
     }
   }, [])
 
-  const handleDeckClick = (deck: Deck) => {
+  const handleDeckClick = (deck: Deck, parentFused?: Deck | null) => {
     setSelectedDeck(deck)
+    // Only set parentFusedDeck if the deck being opened is NOT the parent itself
+    // This prevents showing "Back to Fused" when returning to the fused deck
+    if (parentFused && deck.id !== parentFused.id) {
+      setParentFusedDeck(parentFused)
+    } else {
+      setParentFusedDeck(null)
+    }
     setDetailsOpened(true)
   }
   
@@ -310,13 +615,24 @@ export function DeckList({ decks }: DeckListProps) {
       forgebornName: [],
       cardName: [],
       cardText: '',
-      tags: '',
-      attackOperator: '>=' as const,
-      attackValue: null,
-      healthOperator: '>=' as const,
-      healthValue: null,
+      tags: [],
       rarityType: '',
       rarityCount: null,
+      expiryFilter: 'active' as const,
+      sortBy: 'date-asc',
+      creaturesOperator: '>=' as const,
+      creaturesValue: null,
+      freeCreaturesOperator: '>=' as const,
+      freeCreaturesValue: null,
+      creatureType: '',
+      creatureTypeCount: null,
+      spellsOperator: '>=' as const,
+      spellsValue: null,
+      freeSpellsOperator: '>=' as const,
+      freeSpellsValue: null,
+      spellType: '',
+      spellTypeCount: null,
+      deckName: '',
     }
     setFilters(emptyFilters)
     // Note: debouncedFilters will update automatically after 500ms delay
@@ -329,18 +645,242 @@ export function DeckList({ decks }: DeckListProps) {
       debouncedFilters.forgebornName.length > 0 ||
       debouncedFilters.cardName.length > 0 ||
       debouncedFilters.cardText ||
-      debouncedFilters.tags ||
-      debouncedFilters.attackValue !== null ||
-      debouncedFilters.healthValue !== null ||
-      (debouncedFilters.rarityType && debouncedFilters.rarityCount !== null)
+      debouncedFilters.tags.length > 0 ||
+      (debouncedFilters.rarityType && debouncedFilters.rarityCount !== null) ||
+      debouncedFilters.creaturesValue !== null ||
+      debouncedFilters.freeCreaturesValue !== null ||
+      debouncedFilters.creatureType ||
+      (debouncedFilters.spellType && debouncedFilters.spellTypeCount !== null) ||
+      debouncedFilters.deckName
     )
   }, [debouncedFilters])
   
-  // Filter decks based on filter criteria (using debounced filters)
-  const filteredDecks = useMemo(() => {
-    if (!hasActiveFilters) return decks
+  // Helper function to get two source decks from fused deck
+  const getFusedDeckSourceDecks = (fusedDeck: Deck, allDecks: Deck[]): [Deck | null, Deck | null] => {
+    const fusedDeckAny = fusedDeck as any
     
+    let deck1: Deck | null = null
+    let deck2: Deck | null = null
+    
+    if (fusedDeckAny.myDecks && Array.isArray(fusedDeckAny.myDecks) && fusedDeckAny.myDecks.length >= 2) {
+      // Get decks from myDecks array (contains full deck objects)
+      const myDeck1 = fusedDeckAny.myDecks[0]
+      const myDeck2 = fusedDeckAny.myDecks[1]
+      
+      // Try to find full deck objects in allDecks by ID
+      const deck1Id = myDeck1?.id || myDeck1?.deckId
+      const deck2Id = myDeck2?.id || myDeck2?.deckId
+      
+      if (deck1Id) {
+        deck1 = allDecks.find(d => d.id === deck1Id) || null
+        if (!deck1 && myDeck1?.name) {
+          // Use myDeck1 directly if it has name
+          deck1 = myDeck1 as Deck
+        }
+      }
+      
+      if (deck2Id) {
+        deck2 = allDecks.find(d => d.id === deck2Id) || null
+        if (!deck2 && myDeck2?.name) {
+          // Use myDeck2 directly if it has name
+          deck2 = myDeck2 as Deck
+        }
+      }
+    } else if (fusedDeckAny.fusedDeckIds && Array.isArray(fusedDeckAny.fusedDeckIds) && fusedDeckAny.fusedDeckIds.length >= 2) {
+      // Get decks by IDs from allDecks
+      deck1 = allDecks.find(d => d.id === fusedDeckAny.fusedDeckIds[0]) || null
+      deck2 = allDecks.find(d => d.id === fusedDeckAny.fusedDeckIds[1]) || null
+    }
+    
+    return [deck1, deck2]
+  }
+  
+  // Helper function to get expiry status for fused deck
+  // Fused deck is expired if at least one of the two decks is expired
+  const getFusedDeckExpiryStatus = (fusedDeck: Deck, allDecks: Deck[]): {
+    isExpired: boolean
+    isExpiring: boolean
+    expireDate: string | null
+    minExpiredDate: string | null
+  } => {
+    const currentTimeUTC = new Date().getTime()
+    const [deck1, deck2] = getFusedDeckSourceDecks(fusedDeck, allDecks)
+    
+    // Check expiry status for both decks
+    const deckDates: Array<{ date: string; isExpired: boolean; isExpiring: boolean }> = []
+    
+    if (deck1?.created) {
+      const date1 = new Date(deck1.created).getTime()
+      const isExpired1 = date1 < currentTimeUTC
+      const isExpiring1 = date1 >= currentTimeUTC
+      deckDates.push({ date: deck1.created, isExpired: isExpired1, isExpiring: isExpiring1 })
+    }
+    
+    if (deck2?.created) {
+      const date2 = new Date(deck2.created).getTime()
+      const isExpired2 = date2 < currentTimeUTC
+      const isExpiring2 = date2 >= currentTimeUTC
+      deckDates.push({ date: deck2.created, isExpired: isExpired2, isExpiring: isExpiring2 })
+    }
+    
+    // Fused deck is expired if at least one deck is expired
+    const isExpired = deckDates.some(d => d.isExpired)
+    const isExpiring = deckDates.some(d => d.isExpiring) && !isExpired
+    
+    // Find minimum expired date (earliest date among expired decks)
+    const expiredDates = deckDates.filter(d => d.isExpired).map(d => d.date)
+    const minExpiredDate = expiredDates.length > 0 
+      ? expiredDates.reduce((min, date) => {
+          const dateTime = new Date(date).getTime()
+          const minTime = new Date(min).getTime()
+          return dateTime < minTime ? date : min
+        })
+      : null
+    
+    return {
+      isExpired,
+      isExpiring,
+      expireDate: minExpiredDate,
+      minExpiredDate,
+    }
+  }
+  
+  // Regular decks are "half decks" (Decks), and we have separate fusedDecks from API
+  // No need to split by card count - use the decks as-is for "Decks" section
+  // Filter out expired/expiring temporary decks based on expiryFilter
+  // Logic:
+  // - 'all': show all decks (including expired and expiring)
+  // - 'active': show decks without dates + expiring decks (default)
+  // - 'expiring': show only expiring decks (with future expiry date)
+  // - 'expired': show only expired decks
+  const currentTimeUTC = new Date().getTime()
+  const halfDecks = useMemo(() => {
     return decks.filter(deck => {
+      if (!deck.created) {
+        // Decks without expiry date
+        // Show in 'all' and 'active' modes
+        return debouncedFilters.expiryFilter === 'all' || debouncedFilters.expiryFilter === 'active'
+      }
+      
+      const expiryDate = new Date(deck.created).getTime()
+      const isExpired = expiryDate < currentTimeUTC
+      const isExpiring = expiryDate >= currentTimeUTC
+      
+      switch (debouncedFilters.expiryFilter) {
+        case 'all':
+          return true // Show all decks
+        case 'active':
+          // Show decks without dates (already handled above) + expiring decks
+          return isExpiring
+        case 'expiring':
+          // Show only expiring decks
+          return isExpiring
+        case 'expired':
+          // Show only expired decks
+          return isExpired
+        default:
+          return true
+      }
+    })
+  }, [decks, debouncedFilters.expiryFilter])
+  
+  // Filter fused decks based on expiry status
+  const filteredFusedDecksByExpiry = useMemo(() => {
+    const currentTimeUTC = new Date().getTime()
+    
+    return fusedDecks.filter(fusedDeck => {
+      const expiryStatus = getFusedDeckExpiryStatus(fusedDeck, decks)
+      
+      switch (debouncedFilters.expiryFilter) {
+        case 'all':
+          return true // Show all fused decks
+        case 'active':
+          // Show fused decks that are not expired (either no expiry or expiring)
+          return !expiryStatus.isExpired
+        case 'expiring':
+          // Show only expiring fused decks
+          return expiryStatus.isExpiring
+        case 'expired':
+          // Show only expired fused decks
+          return expiryStatus.isExpired
+        default:
+          return true
+      }
+    })
+  }, [fusedDecks, decks, debouncedFilters.expiryFilter])
+  
+  // Calculate total decks count for display (respecting expiryFilter and viewMode)
+  const totalDecksCount = useMemo(() => {
+    const currentTimeUTC = new Date().getTime()
+    
+    // Count regular decks (respecting expiryFilter)
+    let regularDecksCount = 0
+    if (viewMode === 'decks' || viewMode === 'both') {
+      regularDecksCount = decks.filter(deck => {
+        if (!deck.created) {
+          // Decks without expiry date
+          return debouncedFilters.expiryFilter === 'all' || debouncedFilters.expiryFilter === 'active'
+        }
+        
+        const expiryDate = new Date(deck.created).getTime()
+        const isExpired = expiryDate < currentTimeUTC
+        const isExpiring = expiryDate >= currentTimeUTC
+        
+        switch (debouncedFilters.expiryFilter) {
+          case 'all':
+            return true
+          case 'active':
+            return isExpiring
+          case 'expiring':
+            return isExpiring
+          case 'expired':
+            return isExpired
+          default:
+            return true
+        }
+      }).length
+    }
+    
+    // Count fused decks (respecting expiryFilter)
+    let fusedDecksCount = 0
+    if (viewMode === 'fused' || viewMode === 'both') {
+      fusedDecksCount = fusedDecks.filter(fusedDeck => {
+        const expiryStatus = getFusedDeckExpiryStatus(fusedDeck, decks)
+        
+        switch (debouncedFilters.expiryFilter) {
+          case 'all':
+            return true
+          case 'active':
+            return !expiryStatus.isExpired
+          case 'expiring':
+            return expiryStatus.isExpiring
+          case 'expired':
+            return expiryStatus.isExpired
+          default:
+            return true
+        }
+      }).length
+    }
+    
+    return regularDecksCount + fusedDecksCount
+  }, [decks, fusedDecks, viewMode, debouncedFilters.expiryFilter])
+  
+  // Determine which decks to show based on view mode
+  const showHalfDecks = viewMode === 'decks' || viewMode === 'both'
+  const showFusedDecks = viewMode === 'fused' || viewMode === 'both'
+  
+  // Helper function to filter a deck array based on filter criteria
+  const filterDeckArray = (deckArray: Deck[]) => {
+    if (!hasActiveFilters) return deckArray
+    
+    return deckArray.filter(deck => {
+      // Filter by deck name (single select)
+      if (debouncedFilters.deckName) {
+        if (!deck.name || deck.name.trim() !== debouncedFilters.deckName.trim()) {
+          return false
+        }
+      }
+      
       // Filter by faction first (multi-select)
       if (debouncedFilters.faction.length > 0) {
         if (!deck.faction || !debouncedFilters.faction.some(f => 
@@ -384,7 +924,8 @@ export function DeckList({ decks }: DeckListProps) {
       
       // Filter by Forgeborn name (multi-select) - must match one of selected Forgeborn
       if (debouncedFilters.forgebornName.length > 0) {
-        const forgebornName = forgeborn?.name || ''
+        // Use helper function to get Forgeborn name (prefers title for Forgeborn)
+        const forgebornName = getForgebornNameFromDeck(deck)
         if (!forgebornName || !debouncedFilters.forgebornName.includes(forgebornName)) {
           return false
         }
@@ -482,16 +1023,30 @@ export function DeckList({ decks }: DeckListProps) {
         }
       }
       
-      // Filter by tags
-      if (debouncedFilters.tags) {
-        const searchTags = debouncedFilters.tags.toLowerCase().split(',').map(t => t.trim()).filter(Boolean)
+      // Filter by tags (must have ALL selected tags)
+      if (debouncedFilters.tags.length > 0) {
+        const searchTags = debouncedFilters.tags.map(t => t.trim().toLowerCase()).filter(Boolean)
         const deckTags: string[] = []
         
         // Collect tags from deck.tags
         if (deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags)) {
-          Object.values(deck.tags).forEach(value => {
-            if (value && typeof value === 'string') {
-              deckTags.push(value.toLowerCase())
+          Object.entries(deck.tags).forEach(([key, value]) => {
+            // Skip empty tags
+            if (value === null || value === undefined || value === '') {
+              return
+            }
+            
+            let tagText: string | null = null
+            if (typeof value === 'string' && value.trim() !== '') {
+              tagText = value.trim().toLowerCase()
+            } else if (typeof value === 'number' || typeof value === 'boolean') {
+              tagText = String(value).toLowerCase()
+            } else if (key && key !== 'none' && !key.startsWith('tag_')) {
+              tagText = key.toLowerCase()
+            }
+            
+            if (tagText) {
+              deckTags.push(tagText)
             }
           })
         }
@@ -516,60 +1071,618 @@ export function DeckList({ decks }: DeckListProps) {
           }
         })
         
-        const hasMatchingTag = searchTags.some(searchTag => 
-          deckTags.some(deckTag => deckTag.includes(searchTag))
+        // Check if deck has ALL selected tags
+        const hasAllTags = searchTags.every(searchTag => 
+          deckTags.some(deckTag => deckTag === searchTag || deckTag.includes(searchTag))
         )
-        if (!hasMatchingTag) {
+        if (!hasAllTags) {
           return false
         }
       }
       
-      // Filter by attack value
-      if (debouncedFilters.attackValue !== null) {
-        const hasMatchingAttack = normalizedCards.some(card => {
-          const cardData = card as any
-          const attack = cardData.attack || cardData.Attack || cardData.ATK
-          if (attack === null || attack === undefined) return false
-          const attackNum = Number(attack)
-          if (isNaN(attackNum)) return false
-          
-          switch (debouncedFilters.attackOperator) {
-            case '>=':
-              return attackNum >= debouncedFilters.attackValue!
-            case '<=':
-              return attackNum <= debouncedFilters.attackValue!
-            case '=':
-              return attackNum === debouncedFilters.attackValue!
-            default:
-              return false
-          }
-        })
-        if (!hasMatchingAttack) {
+      // Filter by creatures count
+      if (debouncedFilters.creaturesValue !== null) {
+        const counts = countPlayableCards(deck)
+        const creaturesCount = counts.creatures
+        
+        let matches = false
+        switch (debouncedFilters.creaturesOperator) {
+          case '>=':
+            matches = creaturesCount >= debouncedFilters.creaturesValue
+            break
+          case '<=':
+            matches = creaturesCount <= debouncedFilters.creaturesValue
+            break
+          case '=':
+            matches = creaturesCount === debouncedFilters.creaturesValue
+            break
+        }
+        if (!matches) {
           return false
         }
       }
       
-      // Filter by health value
-      if (debouncedFilters.healthValue !== null) {
-        const hasMatchingHealth = normalizedCards.some(card => {
+      // Filter by free creatures count (creatures with cost = 0 or no cost)
+      if (debouncedFilters.freeCreaturesValue !== null) {
+        let freeCreaturesCount = 0
+        
+        // Identify Forgeborn and Solbind cards (same logic as countPlayableCards)
+        const forgebornId = deck.forgebornId
+        const forgebornCards: any[] = []
+        if (forgebornId) {
+          const fb = normalizedCards.find(card => 
+            card.id === forgebornId || 
+            (card.id && forgebornId && card.id.includes(forgebornId)) ||
+            (forgebornId && card.id && forgebornId.includes(card.id))
+          )
+          if (fb) forgebornCards.push(fb)
+        }
+        if (forgebornCards.length === 0) {
+          const fb = normalizedCards.find(card =>
+            card.type?.toLowerCase().includes('forgeborn') ||
+            (card as any).cardType?.toLowerCase().includes('forgeborn')
+          )
+          if (fb) forgebornCards.push(fb)
+        }
+        
+        // Extract Solbind card IDs
+        const solbindCardIds = new Set<string>()
+        normalizedCards.forEach(card => {
           const cardData = card as any
-          const health = cardData.health || cardData.Health || cardData.HP || cardData.hp
-          if (health === null || health === undefined) return false
-          const healthNum = Number(health)
-          if (isNaN(healthNum)) return false
-          
-          switch (debouncedFilters.healthOperator) {
-            case '>=':
-              return healthNum >= debouncedFilters.healthValue!
-            case '<=':
-              return healthNum <= debouncedFilters.healthValue!
-            case '=':
-              return healthNum === debouncedFilters.healthValue!
-            default:
-              return false
+          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+            cardData.solbindCards.forEach((solbindCard: any) => {
+              if (solbindCard && solbindCard.id) {
+                solbindCardIds.add(solbindCard.id)
+              }
+            })
           }
         })
-        if (!hasMatchingHealth) {
+        const solbindCardObjects: any[] = []
+        normalizedCards.forEach(card => {
+          if (forgebornCards.includes(card)) return
+          const cardData = card as any
+          const cardId = card.id
+          if (solbindCardIds.has(cardId)) {
+            if (!solbindCardObjects.some((sb: any) => sb.id === cardId)) {
+              solbindCardObjects.push(card)
+            }
+            return
+          }
+          if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+            if (!solbindCardObjects.some((sb: any) => sb.id === cardId)) {
+              solbindCardObjects.push(card)
+            }
+          }
+        })
+        
+        normalizedCards.forEach(card => {
+          // Skip Forgeborn and Solbind
+          if (forgebornCards.includes(card)) return
+          
+          const cardData = card as any
+          const isSolbindCard = solbindCardObjects.some((sb: any) => sb.id === card.id)
+          if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
+            return
+          }
+          
+          // Check if it's a creature (not a spell) - use ONLY cardType
+          const originalCardForType = deck.cards && Array.isArray(deck.cards)
+            ? deck.cards.find((c: any) => {
+                const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+                return cId === card.id
+              })
+            : null
+          const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+            ? (originalCardForType.cardType || originalCardForType.card_type || '')
+            : ''
+          const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+          const lowerCardType = cardType.toLowerCase()
+          const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+          
+          if (!isSpell) {
+            // It's a creature - check if it's free (has "this is free" in text)
+            // Collect all text fields from card (same logic as cardText filter)
+            const textFields: string[] = []
+            const extractStrings = (obj: any, depth: number = 0): void => {
+              if (depth > 5) return // Prevent infinite recursion
+              if (obj === null || obj === undefined) return
+              
+              // Handle arrays
+              if (Array.isArray(obj)) {
+                obj.forEach(item => {
+                  extractStrings(item, depth + 1)
+                })
+                return
+              }
+              
+              // Handle strings
+              if (typeof obj === 'string' && obj.length > 0) {
+                textFields.push(obj)
+                return
+              }
+              
+              // Handle objects
+              if (typeof obj !== 'object') return
+              
+              // Collect all string values from object
+              for (const key in obj) {
+                if (['id', 'name', 'imageUrl', 'image', 'cardId', 'card_id'].includes(key)) {
+                  continue
+                }
+                
+                const value = obj[key]
+                if (value === null || value === undefined) continue
+                
+                if (typeof value === 'string' && value.length > 0) {
+                  textFields.push(value)
+                } else {
+                  extractStrings(value, depth + 1)
+                }
+              }
+            }
+            
+            // Extract all strings from card data - use original card data from deck, not normalized
+            const cardToSearch = deck.cards && Array.isArray(deck.cards) 
+              ? deck.cards.find((c: any) => {
+                  const cId = typeof c === 'string' ? c : (c.id || c.cardId || c.name)
+                  return cId === card.id || cId === cardData.id
+                })
+              : null
+            
+            if (cardToSearch) {
+              extractStrings(cardToSearch)
+            } else {
+              // Fallback to cardData
+              extractStrings(cardData)
+              extractStrings(card)
+            }
+            
+            // Check if any text field contains "this is free" (case insensitive)
+            const hasFreeText = textFields.some(field => {
+              if (!field || typeof field !== 'string') return false
+              const cleanField = field.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+              return cleanField.toLowerCase().includes('this is free')
+            })
+            
+            if (hasFreeText) {
+              freeCreaturesCount++
+            }
+          }
+        })
+        
+        let matches = false
+        switch (debouncedFilters.freeCreaturesOperator) {
+          case '>=':
+            matches = freeCreaturesCount >= debouncedFilters.freeCreaturesValue
+            break
+          case '<=':
+            matches = freeCreaturesCount <= debouncedFilters.freeCreaturesValue
+            break
+          case '=':
+            matches = freeCreaturesCount === debouncedFilters.freeCreaturesValue
+            break
+        }
+        if (!matches) {
+          return false
+        }
+      }
+      
+      // Filter by creature type (Sub Type only)
+      if (debouncedFilters.creatureType) {
+        // Identify Forgeborn and Solbind cards (same logic as above)
+        const forgebornId = deck.forgebornId
+        const forgebornCardsForType: any[] = []
+        if (forgebornId) {
+          const fb = normalizedCards.find(card => 
+            card.id === forgebornId || 
+            (card.id && forgebornId && card.id.includes(forgebornId)) ||
+            (forgebornId && card.id && forgebornId.includes(card.id))
+          )
+          if (fb) forgebornCardsForType.push(fb)
+        }
+        if (forgebornCardsForType.length === 0) {
+          const fb = normalizedCards.find(card =>
+            card.type?.toLowerCase().includes('forgeborn') ||
+            (card as any).cardType?.toLowerCase().includes('forgeborn')
+          )
+          if (fb) forgebornCardsForType.push(fb)
+        }
+        
+        // Extract Solbind card IDs
+        const solbindCardIdsForType = new Set<string>()
+        normalizedCards.forEach(card => {
+          const cardData = card as any
+          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+            cardData.solbindCards.forEach((solbindCard: any) => {
+              if (solbindCard && solbindCard.id) {
+                solbindCardIdsForType.add(solbindCard.id)
+              }
+            })
+          }
+        })
+        const solbindCardObjectsForType: any[] = []
+        normalizedCards.forEach(card => {
+          if (forgebornCardsForType.includes(card)) return
+          const cardData = card as any
+          const cardId = card.id
+          if (solbindCardIdsForType.has(cardId)) {
+            if (!solbindCardObjectsForType.some((sb: any) => sb.id === cardId)) {
+              solbindCardObjectsForType.push(card)
+            }
+            return
+          }
+          if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+            if (!solbindCardObjectsForType.some((sb: any) => sb.id === cardId)) {
+              solbindCardObjectsForType.push(card)
+            }
+          }
+        })
+        
+        const selectedType = debouncedFilters.creatureType
+        const selectedTypeLower = selectedType.toLowerCase()
+        let creatureTypeCount = 0
+        
+        normalizedCards.forEach(card => {
+          // Skip Forgeborn and Solbind
+          if (forgebornCardsForType.includes(card)) return
+          
+          const cardData = card as any
+          const isSolbindCard = solbindCardObjectsForType.some((sb: any) => sb.id === card.id)
+          if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
+            return
+          }
+          
+          // Check if it's a creature (not a spell) - use ONLY cardType
+          const originalCardForType = deck.cards && Array.isArray(deck.cards)
+            ? deck.cards.find((c: any) => {
+                const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+                return cId === card.id
+              })
+            : null
+          const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+            ? (originalCardForType.cardType || originalCardForType.card_type || '')
+            : ''
+          const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+          const lowerCardType = cardType.toLowerCase()
+          const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+          
+          if (!isSpell) {
+            // It's a creature - check if cardSubType contains the selected type
+            const subType = (cardData.cardSubType || cardData.CardSubType || cardData.CARDSUBTYPE ||
+                            cardData.SubType || cardData.subType || cardData.SUBTYPE || '').toString()
+            if (subType) {
+              // Split cardSubType by spaces and check if any word exactly matches the selected type
+              // Example: "Beast Warrior" -> ["beast", "warrior"]
+              // If selected type is "Beast", it should match "beast" exactly
+              const types = subType.toLowerCase().split(/\s+/).filter((t: string) => t.length > 0)
+              if (types.some((type: string) => type === selectedTypeLower)) {
+                creatureTypeCount++
+              }
+            }
+          }
+        })
+        
+        // Check if deck has at least the required number of cards with this type
+        if (creatureTypeCount < debouncedFilters.creatureTypeCount!) {
+          return false
+        }
+      }
+      
+      // Filter by spells count
+      if (debouncedFilters.spellsValue !== null) {
+        const counts = countPlayableCards(deck)
+        const spellsCount = counts.spells
+        
+        let matches = false
+        switch (debouncedFilters.spellsOperator) {
+          case '>=':
+            matches = spellsCount >= debouncedFilters.spellsValue
+            break
+          case '<=':
+            matches = spellsCount <= debouncedFilters.spellsValue
+            break
+          case '=':
+            matches = spellsCount === debouncedFilters.spellsValue
+            break
+        }
+        if (!matches) {
+          return false
+        }
+      }
+      
+      // Filter by free spells count (spells with "this is free" in text)
+      if (debouncedFilters.freeSpellsValue !== null) {
+        let freeSpellsCount = 0
+        
+        // Identify Forgeborn and Solbind cards (same logic as countPlayableCards)
+        const forgebornId = deck.forgebornId
+        const forgebornCardsForFreeSpells: any[] = []
+        if (forgebornId) {
+          const fb = normalizedCards.find(card => 
+            card.id === forgebornId || 
+            (card.id && forgebornId && card.id.includes(forgebornId)) ||
+            (forgebornId && card.id && forgebornId.includes(card.id))
+          )
+          if (fb) forgebornCardsForFreeSpells.push(fb)
+        }
+        if (forgebornCardsForFreeSpells.length === 0) {
+          const fb = normalizedCards.find(card =>
+            card.type?.toLowerCase().includes('forgeborn') ||
+            (card as any).cardType?.toLowerCase().includes('forgeborn')
+          )
+          if (fb) forgebornCardsForFreeSpells.push(fb)
+        }
+        
+        // Extract Solbind card IDs
+        const solbindCardIdsForFreeSpells = new Set<string>()
+        normalizedCards.forEach(card => {
+          const cardData = card as any
+          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+            cardData.solbindCards.forEach((solbindCard: any) => {
+              if (solbindCard && solbindCard.id) {
+                solbindCardIdsForFreeSpells.add(solbindCard.id)
+              }
+            })
+          }
+        })
+        const solbindCardObjectsForFreeSpells: any[] = []
+        normalizedCards.forEach(card => {
+          if (forgebornCardsForFreeSpells.includes(card)) return
+          const cardData = card as any
+          const cardId = card.id
+          if (solbindCardIdsForFreeSpells.has(cardId)) {
+            if (!solbindCardObjectsForFreeSpells.some((sb: any) => sb.id === cardId)) {
+              solbindCardObjectsForFreeSpells.push(card)
+            }
+            return
+          }
+          if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+            if (!solbindCardObjectsForFreeSpells.some((sb: any) => sb.id === cardId)) {
+              solbindCardObjectsForFreeSpells.push(card)
+            }
+          }
+        })
+        
+        normalizedCards.forEach(card => {
+          // Skip Forgeborn and Solbind
+          if (forgebornCardsForFreeSpells.includes(card)) return
+          
+          const cardData = card as any
+          const isSolbindCard = solbindCardObjectsForFreeSpells.some((sb: any) => sb.id === card.id)
+          if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
+            return
+          }
+          
+          // Check if it's a spell - use ONLY cardType
+          const originalCardForType = deck.cards && Array.isArray(deck.cards)
+            ? deck.cards.find((c: any) => {
+                const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+                return cId === card.id
+              })
+            : null
+          const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+            ? (originalCardForType.cardType || originalCardForType.card_type || '')
+            : ''
+          const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+          const lowerCardType = cardType.toLowerCase()
+          const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+          
+          if (isSpell) {
+            // It's a spell - check if it's free (has "this is free" in text)
+            // Collect all text fields from card (same logic as cardText filter)
+            const spellCardData = card as any
+            
+            // Get original card from deck.cards if available (same logic as cardText filter)
+            const originalCard = deck.cards && Array.isArray(deck.cards) 
+              ? deck.cards.find((c: any) => {
+                  const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+                  return cId === card.id
+                })
+              : null
+            
+            const cardToSearch = originalCard && typeof originalCard === 'object' ? originalCard : spellCardData
+            
+            // Collect all text fields
+            const textFields: string[] = []
+            
+            // Helper to recursively extract all string values (same as cardText filter)
+            const extractStrings = (obj: any, depth: number = 0): void => {
+              if (depth > 4) return // Limit recursion depth
+              if (!obj) return
+              
+              if (typeof obj === 'string' && obj.length > 0) {
+                textFields.push(obj)
+                return
+              }
+              
+              if (Array.isArray(obj)) {
+                obj.forEach((item: any) => {
+                  extractStrings(item, depth + 1)
+                })
+                return
+              }
+              
+              if (typeof obj !== 'object') return
+              
+              for (const key in obj) {
+                // Skip certain fields
+                if (['id', 'name', 'imageUrl', 'image', 'cardId', 'card_id'].includes(key)) {
+                  continue
+                }
+                
+                const value = obj[key]
+                if (value === null || value === undefined) continue
+                
+                if (typeof value === 'string' && value.length > 0) {
+                  textFields.push(value)
+                } else {
+                  extractStrings(value, depth + 1)
+                }
+              }
+            }
+            
+            // Extract all strings from card data
+            extractStrings(cardToSearch)
+            
+            // Also check normalized card data
+            if (cardToSearch !== spellCardData) {
+              extractStrings(spellCardData)
+            }
+            
+            // Check if any text field contains "this is free" (case insensitive)
+            const searchText = 'this is free'
+            const hasFreeText = textFields.some(field => {
+              if (!field || typeof field !== 'string') return false
+              // Remove HTML tags for better matching
+              const cleanField = field.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+              return cleanField.toLowerCase().includes(searchText)
+            })
+            
+            if (hasFreeText) {
+              freeSpellsCount++
+            }
+          }
+        })
+        
+        let matches = false
+        switch (debouncedFilters.freeSpellsOperator) {
+          case '>=':
+            matches = freeSpellsCount >= debouncedFilters.freeSpellsValue
+            break
+          case '<=':
+            matches = freeSpellsCount <= debouncedFilters.freeSpellsValue
+            break
+          case '=':
+            matches = freeSpellsCount === debouncedFilters.freeSpellsValue
+            break
+        }
+        if (!matches) {
+          return false
+        }
+      }
+      
+      // Filter by spell type (cardSubType only) with count
+      if (debouncedFilters.spellType && debouncedFilters.spellTypeCount !== null) {
+        // Identify Forgeborn and Solbind cards (same logic as above)
+        const forgebornId = deck.forgebornId
+        const forgebornCardsForSpellType: any[] = []
+        if (forgebornId) {
+          const fb = normalizedCards.find(card => 
+            card.id === forgebornId || 
+            (card.id && forgebornId && card.id.includes(forgebornId)) ||
+            (forgebornId && card.id && forgebornId.includes(card.id))
+          )
+          if (fb) forgebornCardsForSpellType.push(fb)
+        }
+        if (forgebornCardsForSpellType.length === 0) {
+          const fb = normalizedCards.find(card =>
+            card.type?.toLowerCase().includes('forgeborn') ||
+            (card as any).cardType?.toLowerCase().includes('forgeborn')
+          )
+          if (fb) forgebornCardsForSpellType.push(fb)
+        }
+        
+        // Extract Solbind card IDs
+        const solbindCardIdsForSpellType = new Set<string>()
+        normalizedCards.forEach(card => {
+          const cardData = card as any
+          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+            cardData.solbindCards.forEach((solbindCard: any) => {
+              if (solbindCard && solbindCard.id) {
+                solbindCardIdsForSpellType.add(solbindCard.id)
+              }
+            })
+          }
+        })
+        const solbindCardObjectsForSpellType: any[] = []
+        normalizedCards.forEach(card => {
+          if (forgebornCardsForSpellType.includes(card)) return
+          const cardData = card as any
+          const cardId = card.id
+          if (solbindCardIdsForSpellType.has(cardId)) {
+            if (!solbindCardObjectsForSpellType.some((sb: any) => sb.id === cardId)) {
+              solbindCardObjectsForSpellType.push(card)
+            }
+            return
+          }
+          if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+            if (!solbindCardObjectsForSpellType.some((sb: any) => sb.id === cardId)) {
+              solbindCardObjectsForSpellType.push(card)
+            }
+          }
+        })
+        
+        const selectedType = debouncedFilters.spellType
+        // Normalize selected type (same logic as allSpellTypes collection) for consistent comparison
+        const normalizedSelectedType = selectedType && selectedType.trim()
+          ? selectedType.trim().charAt(0).toUpperCase() + selectedType.trim().slice(1).toLowerCase()
+          : ''
+        
+        // If no valid selected type, skip this filter
+        if (!normalizedSelectedType) {
+          // This shouldn't happen if spellType is set, but just in case
+          return true
+        }
+        
+        let spellTypeCount = 0
+        
+        normalizedCards.forEach(card => {
+          // Skip Forgeborn and Solbind
+          if (forgebornCardsForSpellType.includes(card)) return
+          
+          const cardData = card as any
+          const isSolbindCard = solbindCardObjectsForSpellType.some((sb: any) => sb.id === card.id)
+          if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
+            return
+          }
+          
+          // Get original card data from deck.cards by ID to ensure we have all fields
+          const originalCard = deck.cards && Array.isArray(deck.cards)
+            ? deck.cards.find((c: any) => {
+                const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+                return cId === card.id
+              })
+            : null
+          
+          // Check if it's a spell - use ONLY cardType
+          const originalCardType = originalCard && typeof originalCard === 'object' 
+            ? (originalCard.cardType || originalCard.card_type || '')
+            : ''
+          const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+          const lowerCardType = cardType.toLowerCase()
+          const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+          
+          if (isSpell) {
+            // It's a spell - check if cardSubType contains the selected type
+            // Check both normalized card data and original card data
+            // Prefer original data as it may have more complete information
+            const originalSubType = originalCard && typeof originalCard === 'object'
+              ? (originalCard.cardSubType || originalCard.CardSubType || originalCard.CARDSUBTYPE ||
+                 originalCard.SubType || originalCard.subType || originalCard.SUBTYPE || '')
+              : ''
+            const normalizedSubType = cardData.cardSubType || cardData.CardSubType || cardData.CARDSUBTYPE ||
+                                      cardData.SubType || cardData.subType || cardData.SUBTYPE || ''
+            // Prefer original data if available, otherwise use normalized
+            const subType = (originalSubType || normalizedSubType || '').toString()
+            
+            if (subType && subType.trim()) {
+              // Split cardSubType by spaces and normalize each type (same logic as allSpellTypes collection)
+              // Normalize: first char uppercase, rest lowercase (e.g., "Exalt" from "exalt" or "EXALT")
+              const types = subType.trim().split(/\s+/).filter((t: string) => t.length > 0)
+              const normalizedTypes = types.map((type: string) => 
+                type.charAt(0).toUpperCase() + type.slice(1).toLowerCase()
+              )
+              // Compare normalized selected type with normalized card types
+              if (normalizedTypes.includes(normalizedSelectedType)) {
+                spellTypeCount++
+              }
+            }
+          }
+        })
+        
+        // Check if deck has at least the required number of cards with this type
+        // Allow spellTypeCount to be 0 (show all decks if count is 0)
+        if (debouncedFilters.spellTypeCount! > 0 && spellTypeCount < debouncedFilters.spellTypeCount!) {
           return false
         }
       }
@@ -678,7 +1791,53 @@ export function DeckList({ decks }: DeckListProps) {
       
       return true
     })
-  }, [decks, debouncedFilters, hasActiveFilters])
+  }
+  
+  // Helper function to sort decks
+  const sortDecks = (deckArray: Deck[]): Deck[] => {
+    const sorted = [...deckArray]
+    
+    switch (debouncedFilters.sortBy) {
+      case 'date-desc': // Newest first
+        return sorted.sort((a, b) => {
+          const dateA = a.created ? new Date(a.created).getTime() : 0
+          const dateB = b.created ? new Date(b.created).getTime() : 0
+          return dateB - dateA // Descending (newest first)
+        })
+      case 'date-asc': // Oldest first
+        return sorted.sort((a, b) => {
+          const dateA = a.created ? new Date(a.created).getTime() : 0
+          const dateB = b.created ? new Date(b.created).getTime() : 0
+          return dateA - dateB // Ascending (oldest first)
+        })
+      case 'name-asc': // A-Z
+        return sorted.sort((a, b) => {
+          const nameA = (a.name || 'Untitled').toLowerCase()
+          const nameB = (b.name || 'Untitled').toLowerCase()
+          return nameA.localeCompare(nameB)
+        })
+      case 'name-desc': // Z-A
+        return sorted.sort((a, b) => {
+          const nameA = (a.name || 'Untitled').toLowerCase()
+          const nameB = (b.name || 'Untitled').toLowerCase()
+          return nameB.localeCompare(nameA)
+        })
+      default:
+        return sorted
+    }
+  }
+  
+  // Filter half decks based on filter criteria
+  const filteredHalfDecks = useMemo(() => {
+    const filtered = filterDeckArray(halfDecks)
+    return sortDecks(filtered)
+  }, [halfDecks, debouncedFilters, hasActiveFilters, debouncedFilters.sortBy])
+  
+  // Filter fused decks based on filter criteria
+  const filteredFusedDecks = useMemo(() => {
+    const filtered = filterDeckArray(filteredFusedDecksByExpiry)
+    return sortDecks(filtered)
+  }, [filteredFusedDecksByExpiry, debouncedFilters, hasActiveFilters, debouncedFilters.sortBy])
   
   // Restore scroll position after filteredDecks changes
   useEffect(() => {
@@ -688,7 +1847,8 @@ export function DeckList({ decks }: DeckListProps) {
       // Restore scroll position immediately to prevent intermediate scrolling
       const restoreScroll = () => {
         // Try to restore by first visible deck ID first
-        if (firstVisibleDeckIdRef.current && filteredDecks.length > 0) {
+        const totalFilteredDecks = filteredHalfDecks.length + filteredFusedDecks.length
+        if (firstVisibleDeckIdRef.current && totalFilteredDecks > 0) {
           const targetElement = document.querySelector(`[data-deck-id="${firstVisibleDeckIdRef.current}"]`)
           if (targetElement) {
             const elementTop = targetElement.getBoundingClientRect().top
@@ -744,7 +1904,7 @@ export function DeckList({ decks }: DeckListProps) {
         })
       })
     }
-  }, [filteredDecks.length]) // Only depend on length to avoid unnecessary runs
+  }, [filteredHalfDecks.length, filteredFusedDecks.length]) // Only depend on length to avoid unnecessary runs
 
   if (decks.length === 0) {
     return (
@@ -765,9 +1925,40 @@ export function DeckList({ decks }: DeckListProps) {
       <div className="w-full max-w-6xl space-y-4">
         <Group justify="space-between" align="center" className="mb-4">
           <Title order={2} className="text-white">
-            Found Decks ({filteredDecks.length}{hasActiveFilters ? ` / ${decks.length}` : ''})
+            Found Decks (
+              {showHalfDecks ? `Decks: ${filteredHalfDecks.length}` : ''}
+              {showHalfDecks && showFusedDecks ? ', ' : ''}
+              {showFusedDecks ? `Fused: ${filteredFusedDecks.length}` : ''}
+              {hasActiveFilters ? ` / Total: ${totalDecksCount}` : ''}
+            )
           </Title>
           <Group gap="xs">
+            <Group gap="xs">
+              <Button
+                variant={viewMode === 'decks' ? 'filled' : 'outline'}
+                onClick={() => setViewMode('decks')}
+                size="sm"
+                color={viewMode === 'decks' ? 'blue' : 'gray'}
+              >
+                Decks ({filteredHalfDecks.length})
+              </Button>
+              <Button
+                variant={viewMode === 'fused' ? 'filled' : 'outline'}
+                onClick={() => setViewMode('fused')}
+                size="sm"
+                color={viewMode === 'fused' ? 'blue' : 'gray'}
+              >
+                Fused ({filteredFusedDecks.length})
+              </Button>
+              <Button
+                variant={viewMode === 'both' ? 'filled' : 'outline'}
+                onClick={() => setViewMode('both')}
+                size="sm"
+                color={viewMode === 'both' ? 'blue' : 'gray'}
+              >
+                Both
+              </Button>
+            </Group>
             <Button
               variant={filtersOpened ? 'filled' : 'outline'}
               leftSection={<IconFilter size={16} />}
@@ -802,6 +1993,38 @@ export function DeckList({ decks }: DeckListProps) {
               </Title>
               
               <Grid gutter="md">
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Select
+                    label="Deck Name"
+                    placeholder={allDeckNames.length > 0 ? "Select deck name..." : "No decks available"}
+                    data={allDeckNames.map(name => ({ value: name, label: name }))}
+                    value={filters.deckName || null}
+                    onChange={(value) => setFilters({ ...filters, deckName: value || '' })}
+                    clearable
+                    searchable
+                    styles={{
+                      label: { color: 'white' },
+                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                      dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                      option: { color: 'white' }
+                    }}
+                    disabled={allDeckNames.length === 0}
+                    onFocus={() => {
+                      // Save scroll position when opening dropdown
+                      scrollPositionRef.current = window.scrollY || window.pageYOffset || document.documentElement.scrollTop
+                    }}
+                    onBlur={() => {
+                      // Restore scroll position when closing dropdown
+                      requestAnimationFrame(() => {
+                        const savedScroll = scrollPositionRef.current
+                        document.documentElement.scrollTop = savedScroll
+                        document.body.scrollTop = savedScroll
+                        window.scrollTo(0, savedScroll)
+                      })
+                    }}
+                  />
+                </Grid.Col>
+                
                 <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
                   <MultiSelect
                     label="Faction"
@@ -902,79 +2125,21 @@ export function DeckList({ decks }: DeckListProps) {
                 </Grid.Col>
                 
                 <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <TextInput
+                  <MultiSelect
                     label="Tags"
-                    placeholder="Comma-separated tags..."
+                    placeholder="Select tags..."
+                    data={allTags.map(tag => ({ value: tag, label: tag }))}
                     value={filters.tags}
-                    onChange={(e) => setFilters({ ...filters, tags: e.target.value })}
-                    className="text-white"
+                    onChange={(value) => setFilters({ ...filters, tags: value })}
+                    clearable
+                    searchable
                     styles={{
                       label: { color: 'white' },
-                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                      dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                      option: { color: 'white' }
                     }}
                   />
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Group gap="xs" align="flex-end">
-                    <Select
-                      label="Attack"
-                      value={filters.attackOperator}
-                      onChange={(value) => setFilters({ ...filters, attackOperator: value as any })}
-                      data={[
-                        { value: '>=', label: '≥' },
-                        { value: '<=', label: '≤' },
-                        { value: '=', label: '=' },
-                      ]}
-                      style={{ flex: '0 0 80px' }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                    <NumberInput
-                      placeholder="Value"
-                      value={filters.attackValue || undefined}
-                      onChange={(value) => setFilters({ ...filters, attackValue: typeof value === 'number' ? value : null })}
-                      min={0}
-                      style={{ flex: 1 }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                  </Group>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Group gap="xs" align="flex-end">
-                    <Select
-                      label="Health"
-                      value={filters.healthOperator}
-                      onChange={(value) => setFilters({ ...filters, healthOperator: value as any })}
-                      data={[
-                        { value: '>=', label: '≥' },
-                        { value: '<=', label: '≤' },
-                        { value: '=', label: '=' },
-                      ]}
-                      style={{ flex: '0 0 80px' }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                    <NumberInput
-                      placeholder="Value"
-                      value={filters.healthValue || undefined}
-                      onChange={(value) => setFilters({ ...filters, healthValue: typeof value === 'number' ? value : null })}
-                      min={0}
-                      style={{ flex: 1 }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                  </Group>
                 </Grid.Col>
                 
                 <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
@@ -983,7 +2148,11 @@ export function DeckList({ decks }: DeckListProps) {
                       label="Rarity"
                       placeholder="Select rarity..."
                       value={filters.rarityType}
-                      onChange={(value) => setFilters({ ...filters, rarityType: value || '' })}
+                      onChange={(value) => setFilters({ 
+                        ...filters, 
+                        rarityType: value || '',
+                        rarityCount: value ? 1 : null // Set default value to 1 when rarity is selected
+                      })}
                       data={[
                         { value: 'Common', label: 'Common' },
                         { value: 'Common Rare', label: 'Common Rare' },
@@ -1012,12 +2181,268 @@ export function DeckList({ decks }: DeckListProps) {
                     />
                   </Group>
                 </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Group gap="xs" align="flex-end">
+                    <Select
+                      label="Creatures"
+                      value={filters.creaturesOperator}
+                      onChange={(value) => setFilters({ ...filters, creaturesOperator: value as any })}
+                      data={[
+                        { value: '>=', label: '≥' },
+                        { value: '<=', label: '≤' },
+                        { value: '=', label: '=' },
+                      ]}
+                      style={{ flex: '0 0 80px' }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                    <NumberInput
+                      placeholder="Count"
+                      value={filters.creaturesValue || undefined}
+                      onChange={(value) => setFilters({ ...filters, creaturesValue: typeof value === 'number' ? value : null })}
+                      min={0}
+                      style={{ flex: 1 }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                  </Group>
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Stack gap={4}>
+                    <Text size="sm" className="text-white" style={{ fontWeight: 500 }}>
+                      Free Creatures
+                    </Text>
+                    <Group gap="xs" align="flex-end" wrap="nowrap">
+                      <Select
+                        value={filters.freeCreaturesOperator}
+                        onChange={(value) => setFilters({ ...filters, freeCreaturesOperator: value as any })}
+                        data={[
+                          { value: '>=', label: '≥' },
+                          { value: '<=', label: '≤' },
+                          { value: '=', label: '=' },
+                        ]}
+                        style={{ flex: '0 0 60px', minWidth: '60px' }}
+                        styles={{
+                          input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
+                        }}
+                      />
+                      <NumberInput
+                        placeholder="Count"
+                        value={filters.freeCreaturesValue || undefined}
+                        onChange={(value) => setFilters({ ...filters, freeCreaturesValue: typeof value === 'number' ? value : null })}
+                        min={0}
+                        style={{ flex: 1, minWidth: 0 }}
+                        styles={{
+                          input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
+                        }}
+                      />
+                    </Group>
+                  </Stack>
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Group gap="xs" align="flex-end">
+                    <Select
+                      label="Creature Type"
+                      placeholder={allCreatureTypes.length > 0 ? "Select creature type..." : "No types available"}
+                      data={allCreatureTypes.map(type => ({ value: type, label: type }))}
+                      value={filters.creatureType || null}
+                      onChange={(value) => setFilters({ 
+                        ...filters, 
+                        creatureType: value || '',
+                        creatureTypeCount: value ? 1 : null // Set default value to 1 when type is selected
+                      })}
+                      clearable
+                      searchable
+                      disabled={allCreatureTypes.length === 0}
+                      style={{ flex: 1 }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                        dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                        option: { color: 'white' }
+                      }}
+                    />
+                    <NumberInput
+                      placeholder="Min count"
+                      value={filters.creatureTypeCount || undefined}
+                      onChange={(value) => setFilters({ ...filters, creatureTypeCount: typeof value === 'number' ? value : null })}
+                      min={0}
+                      style={{ flex: '0 0 120px' }}
+                      disabled={!filters.creatureType}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                  </Group>
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Group gap="xs" align="flex-end">
+                    <Select
+                      label="Spells"
+                      value={filters.spellsOperator}
+                      onChange={(value) => setFilters({ ...filters, spellsOperator: value as any })}
+                      data={[
+                        { value: '>=', label: '≥' },
+                        { value: '<=', label: '≤' },
+                        { value: '=', label: '=' },
+                      ]}
+                      style={{ flex: '0 0 80px' }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                    <NumberInput
+                      placeholder="Count"
+                      value={filters.spellsValue || undefined}
+                      onChange={(value) => setFilters({ ...filters, spellsValue: typeof value === 'number' ? value : null })}
+                      min={0}
+                      style={{ flex: 1 }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                  </Group>
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Stack gap={4}>
+                    <Text size="sm" className="text-white" style={{ fontWeight: 500 }}>
+                      Free Spells
+                    </Text>
+                    <Group gap="xs" align="flex-end" wrap="nowrap">
+                      <Select
+                        value={filters.freeSpellsOperator}
+                        onChange={(value) => setFilters({ ...filters, freeSpellsOperator: value as any })}
+                        data={[
+                          { value: '>=', label: '≥' },
+                          { value: '<=', label: '≤' },
+                          { value: '=', label: '=' },
+                        ]}
+                        style={{ flex: '0 0 60px', minWidth: '60px' }}
+                        styles={{
+                          input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
+                        }}
+                      />
+                      <NumberInput
+                        placeholder="Count"
+                        value={filters.freeSpellsValue || undefined}
+                        onChange={(value) => setFilters({ ...filters, freeSpellsValue: typeof value === 'number' ? value : null })}
+                        min={0}
+                        style={{ flex: 1, minWidth: 0 }}
+                        styles={{
+                          input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
+                        }}
+                      />
+                    </Group>
+                  </Stack>
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Group gap="xs" align="flex-end">
+                    <Select
+                      label="Spell Type"
+                      placeholder={allSpellTypes.length > 0 ? "Select spell type..." : "No types available"}
+                      data={allSpellTypes.map(type => ({ value: type, label: type }))}
+                      value={filters.spellType || null}
+                      onChange={(value) => setFilters({ 
+                        ...filters, 
+                        spellType: value || '',
+                        spellTypeCount: value ? 1 : null // Set default value to 1 when type is selected
+                      })}
+                      clearable
+                      searchable
+                      disabled={allSpellTypes.length === 0}
+                      style={{ flex: 1 }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                        dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                        option: { color: 'white' }
+                      }}
+                    />
+                    <NumberInput
+                      placeholder="Min count"
+                      value={filters.spellTypeCount || undefined}
+                      onChange={(value) => setFilters({ ...filters, spellTypeCount: typeof value === 'number' ? value : null })}
+                      min={0}
+                      style={{ flex: '0 0 120px' }}
+                      disabled={!filters.spellType}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                  </Group>
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Select
+                    label="Sort by"
+                    value={filters.sortBy}
+                    onChange={(value) => setFilters({ ...filters, sortBy: value || 'date-desc' })}
+                    data={[
+                      { value: 'date-desc', label: 'Date (Newest first)' },
+                      { value: 'date-asc', label: 'Date (Oldest first)' },
+                      { value: 'name-asc', label: 'Name (A-Z)' },
+                      { value: 'name-desc', label: 'Name (Z-A)' },
+                    ]}
+                    styles={{
+                      label: { color: 'white' },
+                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                    }}
+                  />
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Stack gap="xs">
+                    <Text size="sm" fw={500} style={{ color: 'white' }}>
+                      Deck Status
+                    </Text>
+                    <SegmentedControl
+                      value={filters.expiryFilter}
+                      onChange={(value) => {
+                        const expiryValue = value as 'all' | 'active' | 'expiring' | 'expired'
+                        setFilters({ ...filters, expiryFilter: expiryValue })
+                      }}
+                      data={[
+                        { label: 'All', value: 'all' },
+                        { label: 'Active', value: 'active' },
+                        { label: 'Expiring', value: 'expiring' },
+                        { label: 'Expired', value: 'expired' },
+                      ]}
+                      fullWidth
+                      styles={{
+                        root: {
+                          backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                        },
+                        label: {
+                          color: 'white',
+                        },
+                        indicator: {
+                          backgroundColor: 'rgba(74, 144, 226, 0.8)',
+                        },
+                      }}
+                    />
+                  </Stack>
+                </Grid.Col>
               </Grid>
             </Stack>
           </Paper>
-        </Collapse>
+          </Collapse>
         
-        {filteredDecks.length === 0 ? (
+        {((showHalfDecks && filteredHalfDecks.length === 0) || !showHalfDecks) &&
+         ((showFusedDecks && filteredFusedDecks.length === 0) || !showFusedDecks) ? (
           <Paper
             p="xl"
             className="w-full backdrop-blur-md border border-sf-primary/30 rounded-xl"
@@ -1034,27 +2459,60 @@ export function DeckList({ decks }: DeckListProps) {
               minHeight: '100vh', // Maintain minimum height to prevent scroll jump
             }}
           >
-            <Grid 
-              key="decks-grid"
-              gutter="md" 
-              style={{ 
-                transition: 'all 0.3s ease',
-                scrollBehavior: 'auto', // Prevent smooth scroll that might cause jumps
-                willChange: 'contents' // Optimize rendering
-              }}
-            >
-            {filteredDecks.map((deck) => (
+            {/* Half Decks Section */}
+            {showHalfDecks && filteredHalfDecks.length > 0 && (
+              <Stack gap="md" className="mb-8">
+                <Title order={3} className="text-white">
+                  Decks ({filteredHalfDecks.length})
+                </Title>
+                <Grid 
+                  key="half-decks-grid"
+                  gutter="md" 
+                  style={{ 
+                    transition: 'all 0.3s ease',
+                    scrollBehavior: 'auto',
+                    willChange: 'contents'
+                  }}
+                >
+                  {filteredHalfDecks.map((deck) => {
+                    // Determine border color based on expiry date
+                    let borderColor = 'rgba(74, 144, 226, 0.6)' // Default: brighter blue for normal decks
+                    let hoverBorderColor = 'rgba(74, 144, 226, 0.9)' // Default hover - even brighter
+                    
+                    if (deck.created) {
+                      const expiryDate = new Date(deck.created).getTime()
+                      const currentTimeUTC = new Date().getTime()
+                      
+                      if (expiryDate < currentTimeUTC) {
+                        // Expired deck - black border
+                        borderColor = 'rgba(0, 0, 0, 1)' // Black
+                        hoverBorderColor = 'rgba(0, 0, 0, 1)' // Black on hover too
+                      } else {
+                        // Has expiry date but not expired yet - red border
+                        borderColor = 'rgba(220, 38, 38, 0.8)' // Red
+                        hoverBorderColor = 'rgba(220, 38, 38, 1)' // Red on hover
+                      }
+                    }
+                    
+                    return (
             <Grid.Col key={deck.id} span={{ base: 12, sm: 6, md: 4 }}>
               <Paper
                 data-deck-id={deck.id}
                 p="lg"
                 onClick={() => handleDeckClick(deck)}
-                className="h-full backdrop-blur-md border border-sf-primary/20 rounded-xl hover:border-sf-primary/50 transition-all cursor-pointer hover:shadow-xl hover:shadow-sf-primary/20 hover:scale-[1.02]"
+                className="h-full backdrop-blur-md border rounded-xl transition-all cursor-pointer hover:shadow-xl hover:shadow-sf-primary/20 hover:scale-[1.02]"
                 style={{
                   backgroundColor: 'rgba(30, 41, 59, 0.5)',
+                  borderColor: borderColor,
                   boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(74, 144, 226, 0.1)',
                   minHeight: '200px',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                  transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = hoverBorderColor
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = borderColor
                 }}
               >
               <Stack gap="sm">
@@ -1225,36 +2683,42 @@ export function DeckList({ decks }: DeckListProps) {
                     // Parent cards with solbindCards array should be counted for rarity
                     // They are NOT Solbind cards themselves
                     
-                    // Check if spell (same logic as countPlayableCards)
-                    const name = card.name?.toLowerCase() || ''
-                    const isSpell = cardData.cardType === 'Spell' || card.type?.toLowerCase().includes('spell') ||
-                                    card.id?.toLowerCase().includes('spell') || name.includes('spell') ||
-                                    name.includes('chanting of the abyss') || name.includes('dark pryings') ||
-                                    name.includes('sacrifice chamber') ||
-                                    (name.includes('chanting') && name.includes('abyss')) ||
-                                    (name.includes('dark') && name.includes('pryings')) ||
-                                    (name.includes('sacrifice') && name.includes('chamber'))
+                    // Check if spell (same logic as countPlayableCards) - use ONLY cardType
+                    const originalCardForType = deck.cards && Array.isArray(deck.cards)
+                      ? deck.cards.find((c: any, idx: number) => {
+                          if (typeof c === 'string') {
+                            return c === card.id
+                          }
+                          const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
+                          return cId === card.id
+                        })
+                      : null
+                    const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+                      ? (originalCardForType.cardType || originalCardForType.card_type || '')
+                      : ''
+                    const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+                    const lowerCardType = cardType.toLowerCase()
+                    const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
                     
-                    if (isSpell || !isSpell) { // Either spell or creature
-                      const rarity = cardData.rarity
-                      if (rarity && typeof rarity === 'string') {
-                        // Normalize rarity names
-                        let normalizedRarity = rarity.trim()
-                        
-                        // Handle combined rarities like "Common Rare" or "Rare Common"
-                        if (normalizedRarity.includes('Common') && normalizedRarity.includes('Rare')) {
-                          normalizedRarity = 'Common Rare'
-                        } else if (normalizedRarity.toLowerCase().includes('common')) {
-                          normalizedRarity = 'Common'
-                        } else if (normalizedRarity.toLowerCase().includes('rare')) {
-                          normalizedRarity = 'Rare'
-                        } else if (normalizedRarity.toLowerCase().includes('ls') || normalizedRarity.toLowerCase().includes('legendary')) {
-                          normalizedRarity = 'LS'
-                        }
-                        
-                        const currentCount = rarityCounts.get(normalizedRarity) || 0
-                        rarityCounts.set(normalizedRarity, currentCount + 1)
+                    // Count rarity for creatures and spells (isSpell determines if it's a spell, otherwise it's a creature)
+                    const rarity = cardData.rarity
+                    if (rarity && typeof rarity === 'string') {
+                      // Normalize rarity names
+                      let normalizedRarity = rarity.trim()
+                      
+                      // Handle combined rarities like "Common Rare" or "Rare Common"
+                      if (normalizedRarity.includes('Common') && normalizedRarity.includes('Rare')) {
+                        normalizedRarity = 'Common Rare'
+                      } else if (normalizedRarity.toLowerCase().includes('common')) {
+                        normalizedRarity = 'Common'
+                      } else if (normalizedRarity.toLowerCase().includes('rare')) {
+                        normalizedRarity = 'Rare'
+                      } else if (normalizedRarity.toLowerCase().includes('ls') || normalizedRarity.toLowerCase().includes('legendary')) {
+                        normalizedRarity = 'LS'
                       }
+                      
+                      const currentCount = rarityCounts.get(normalizedRarity) || 0
+                      rarityCounts.set(normalizedRarity, currentCount + 1)
                     }
                   })
                   
@@ -1327,7 +2791,11 @@ export function DeckList({ decks }: DeckListProps) {
                   <Group gap="xs" className="text-gray-400 text-sm">
                     <IconCalendar size={14} />
                     <Text size="xs">
-                      {new Date(deck.created).toLocaleDateString('en-US')}
+                      Expire date: {new Date(deck.created).toLocaleDateString('en-GB', { 
+                        day: 'numeric', 
+                        month: 'short', 
+                        year: 'numeric' 
+                      })}
                     </Text>
                   </Group>
                 )}
@@ -1432,8 +2900,442 @@ export function DeckList({ decks }: DeckListProps) {
               </Stack>
             </Paper>
           </Grid.Col>
-        ))}
-      </Grid>
+                    )
+                  })}
+                </Grid>
+              </Stack>
+            )}
+            
+            {/* Fused Decks Section */}
+            {showFusedDecks && filteredFusedDecks.length > 0 && (
+              <Stack gap="md">
+                <Title order={3} className="text-white">
+                  Fused ({filteredFusedDecks.length})
+                </Title>
+                <Grid 
+                  key="fused-decks-grid"
+                  gutter="md" 
+                  style={{ 
+                    transition: 'all 0.3s ease',
+                    scrollBehavior: 'auto',
+                    willChange: 'contents'
+                  }}
+                >
+                  {filteredFusedDecks.map((deck) => (
+                    <Grid.Col key={deck.id} span={{ base: 12, sm: 6, md: 4 }}>
+                      {/* Reuse the same deck card rendering as half decks */}
+                      <Paper
+                        data-deck-id={deck.id}
+                        p="lg"
+                        onClick={() => handleDeckClick(deck)}
+                        className="h-full backdrop-blur-md border border-sf-primary/20 rounded-xl hover:border-sf-primary/50 transition-all cursor-pointer hover:shadow-xl hover:shadow-sf-primary/20 hover:scale-[1.02]"
+                        style={{
+                          backgroundColor: 'rgba(30, 41, 59, 0.5)',
+                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(74, 144, 226, 0.1)',
+                          minHeight: '200px',
+                          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                        }}
+                      >
+                        <Stack gap="sm">
+                          <Group justify="space-between" align="flex-start" wrap="nowrap">
+                            <Title order={4} className="text-white flex-1" lineClamp={2}>
+                              {deck.name || 'Untitled'}
+                            </Title>
+                          </Group>
+
+                          <Group gap="xs">
+                            {deck.faction && (
+                              <Badge
+                                color={
+                                  deck.faction === 'Alloyin' ? 'cyan' :
+                                  deck.faction === 'Uterra' ? 'teal' :
+                                  deck.faction === 'Tempys' ? 'orange' :
+                                  deck.faction === 'Nekrium' ? 'grape' : 'gray'
+                                }
+                                variant="light"
+                                size="sm"
+                                style={{
+                                  fontWeight: 500,
+                                }}
+                              >
+                                {deck.faction}
+                              </Badge>
+                            )}
+                            {deck.cardSetNo && (
+                              <Badge
+                                color="indigo"
+                                variant="light"
+                                size="sm"
+                              >
+                                Set {deck.cardSetNo}
+                              </Badge>
+                            )}
+                            {deck.cards && Array.isArray(deck.cards) && (
+                              <Badge
+                                color="blue"
+                                variant="light"
+                                size="sm"
+                                leftSection={<IconCards size={12} />}
+                              >
+                                {countPlayableCards(deck).total} cards
+                              </Badge>
+                            )}
+                            {deck.deckRank && deck.deckRank !== 'Unranked' && (
+                              <Badge
+                                color={
+                                  deck.deckRank === 'Platinum' ? 'gray' :
+                                  deck.deckRank === 'Gold' ? 'yellow' :
+                                  deck.deckRank === 'Silver' ? 'gray' :
+                                  deck.deckRank === 'Bronze' ? 'orange' : 'gray'
+                                }
+                                variant="light"
+                                size="sm"
+                              >
+                                {deck.deckRank}
+                              </Badge>
+                            )}
+                          </Group>
+
+                          {deck.cards && Array.isArray(deck.cards) && (() => {
+                            const counts = countPlayableCards(deck)
+                            
+                            // Collect rarity information from creatures and spells
+                            // Use the same logic as countPlayableCards to ensure consistency
+                            const rarityCounts = new Map<string, number>()
+                            
+                            // Normalize cards (same as in countPlayableCards)
+                            const normalizedCards = deck.cards.map((card: any, index: number) => {
+                              if (typeof card === 'string') {
+                                return getCardInfo(card)
+                              } else if (typeof card === 'object' && card !== null) {
+                                const cardId = card.id || card.cardId || card.name || `card-${index}`
+                                return getCardInfo(cardId, card)
+                              }
+                              return getCardInfo(`card-${index}`)
+                            })
+                            
+                            // Extract Solbind card IDs (same logic as countPlayableCards)
+                            const solbindCardIds = new Set<string>()
+                            normalizedCards.forEach(card => {
+                              const cardData = card as any
+                              if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                                cardData.solbindCards.forEach((solbindCard: any) => {
+                                  if (solbindCard && solbindCard.id) {
+                                    solbindCardIds.add(solbindCard.id)
+                                  }
+                                })
+                              }
+                            })
+                            
+                            // Identify Forgeborn (same logic as countPlayableCards)
+                            const forgebornId = deck.forgebornId
+                            const forgebornCards: any[] = []
+                            if (forgebornId) {
+                              const forgeborn = normalizedCards.find(card => 
+                                card.id === forgebornId || 
+                                (card.id && forgebornId && card.id.includes(forgebornId)) ||
+                                (forgebornId && card.id && forgebornId.includes(card.id))
+                              )
+                              if (forgeborn) {
+                                forgebornCards.push(forgeborn)
+                              }
+                            }
+                            if (forgebornCards.length === 0) {
+                              const forgebornByType = normalizedCards.find(card =>
+                                card.type?.toLowerCase().includes('forgeborn') ||
+                                (card as any).cardType?.toLowerCase().includes('forgeborn')
+                              )
+                              if (forgebornByType) {
+                                forgebornCards.push(forgebornByType)
+                              }
+                            }
+                            
+                            // Collect Solbind cards (same logic as countPlayableCards)
+                            const solbindCardObjects: any[] = []
+                            normalizedCards.forEach(card => {
+                              const cardData = card as any
+                              if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                                cardData.solbindCards.forEach((solbindCard: any) => {
+                                  if (solbindCard && solbindCard.id) {
+                                    if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+                                      solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+                                    }
+                                  }
+                                })
+                              }
+                            })
+                            normalizedCards.forEach(card => {
+                              if (forgebornCards.includes(card)) return
+                              const cardData = card as any
+                              const cardId = card.id
+                              
+                              // Skip parent cards with solbindCards array - they are not Solbind cards themselves
+                              if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                                return
+                              }
+                              
+                              if (solbindCardIds.has(cardId)) {
+                                if (!solbindCardObjects.some(sb => sb.id === cardId)) {
+                                  solbindCardObjects.push(card)
+                                }
+                                return
+                              }
+                              if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+                                if (!solbindCardObjects.some(sb => sb.id === cardId)) {
+                                  solbindCardObjects.push(card)
+                                }
+                              }
+                            })
+                            
+                            // Count rarity for creatures and spells (same logic as countPlayableCards)
+                            normalizedCards.forEach(card => {
+                              // Skip Forgeborn
+                              if (forgebornCards.includes(card)) return
+                              
+                              const cardData = card as any
+                              
+                              // Skip Solbind cards (already counted) - but NOT parent cards with solbindCards
+                              // Parent cards with solbindCards are regular cards (Spell or Creature)
+                              const isSolbindCard = solbindCardObjects.some(sb => sb.id === card.id)
+                              if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
+                                return
+                              }
+                              
+                              // Parent cards with solbindCards array should be counted for rarity
+                              // They are NOT Solbind cards themselves
+                              
+                              // Check if spell (same logic as countPlayableCards) - use ONLY cardType
+                              const originalCardForType = deck.cards && Array.isArray(deck.cards)
+                                ? deck.cards.find((c: any, idx: number) => {
+                                    if (typeof c === 'string') {
+                                      return c === card.id
+                                    }
+                                    const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
+                                    return cId === card.id
+                                  })
+                                : null
+                              const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+                                ? (originalCardForType.cardType || originalCardForType.card_type || '')
+                                : ''
+                              const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+                              const lowerCardType = cardType.toLowerCase()
+                              const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+                              
+                              // Count rarity for creatures and spells (isSpell determines if it's a spell, otherwise it's a creature)
+                              const rarity = cardData.rarity
+                              if (rarity && typeof rarity === 'string') {
+                                // Normalize rarity names
+                                let normalizedRarity = rarity.trim()
+                                
+                                // Handle combined rarities like "Common Rare" or "Rare Common"
+                                if (normalizedRarity.includes('Common') && normalizedRarity.includes('Rare')) {
+                                  normalizedRarity = 'Common Rare'
+                                } else if (normalizedRarity.toLowerCase().includes('common')) {
+                                  normalizedRarity = 'Common'
+                                } else if (normalizedRarity.toLowerCase().includes('rare')) {
+                                  normalizedRarity = 'Rare'
+                                } else if (normalizedRarity.toLowerCase().includes('ls') || normalizedRarity.toLowerCase().includes('legendary')) {
+                                  normalizedRarity = 'LS'
+                                }
+                                
+                                const currentCount = rarityCounts.get(normalizedRarity) || 0
+                                rarityCounts.set(normalizedRarity, currentCount + 1)
+                              }
+                            })
+                            
+                            return (
+                              <Stack gap="xs">
+                                <Group gap="xs">
+                                  <Badge color="green" variant="light" size="sm">
+                                    {counts.creatures} Creatures
+                                  </Badge>
+                                  <Badge color="pink" variant="light" size="sm">
+                                    {counts.spells} Spells
+                                  </Badge>
+                                  <Badge color="orange" variant="light" size="sm">
+                                    {counts.solbind} Solbind
+                                  </Badge>
+                                </Group>
+                                {Array.from(rarityCounts.entries()).length > 0 && (
+                                  <Group gap="xs">
+                                    {Array.from(rarityCounts.entries())
+                                      .sort(([a], [b]) => {
+                                        // Sort by rarity order: Common, Common Rare, Rare, LS
+                                        const order: Record<string, number> = {
+                                          'Common': 1,
+                                          'Common Rare': 2,
+                                          'Rare': 3,
+                                          'LS': 4
+                                        }
+                                        return (order[a] || 99) - (order[b] || 99)
+                                      })
+                                      .map(([rarity, count]) => {
+                                        // Get color for rarity
+                                        const getRarityColor = (rarityName: string): string => {
+                                          const normalized = rarityName.toLowerCase()
+                                          if (normalized.includes('common') && normalized.includes('rare')) {
+                                            return '#0e87cf' // RareCommon
+                                          } else if (normalized.includes('rare') && !normalized.includes('common')) {
+                                            return '#e6b70c' // Rare
+                                          } else if (normalized.includes('common')) {
+                                            return '#1199e3' // Common
+                                          } else if (normalized.includes('solbind')) {
+                                            return '#75cec4' // Solbind
+                                          } else if (normalized.includes('ls')) {
+                                            return '#a90100' // LS
+                                          }
+                                          return '#1199e3' // Default to Common
+                                        }
+                                        
+                                        return (
+                                          <Badge 
+                                            key={rarity} 
+                                            variant="light" 
+                                            size="sm"
+                                            style={{
+                                              backgroundColor: getRarityColor(rarity),
+                                              color: 'white',
+                                              border: 'none'
+                                            }}
+                                          >
+                                            {count} {rarity}
+                                          </Badge>
+                                        )
+                                      })}
+                                  </Group>
+                                )}
+                              </Stack>
+                            )
+                          })()}
+
+                          {(() => {
+                            // For fused decks, check if they're expired
+                            const expiryStatus = getFusedDeckExpiryStatus(deck, decks)
+                            const showDate = deck.created || expiryStatus.expireDate
+                            const dateToShow = expiryStatus.isExpired && expiryStatus.expireDate 
+                              ? expiryStatus.expireDate 
+                              : deck.created
+                            const isExpiredFused = expiryStatus.isExpired
+                            
+                            return showDate && dateToShow && (
+                              <Group gap="xs" className="text-gray-400 text-sm">
+                                <IconCalendar size={14} />
+                                <Text size="xs">
+                                  {isExpiredFused ? 'Expire date: ' : 'Create date: '}
+                                  {new Date(dateToShow).toLocaleDateString('en-GB', { 
+                                    day: 'numeric', 
+                                    month: 'short', 
+                                    year: 'numeric' 
+                                  })}
+                                </Text>
+                              </Group>
+                            )
+                          })()}
+
+                          {(() => {
+                            // Check if deck has tags
+                            const hasTags = deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags) && Object.keys(deck.tags).length > 0
+                            
+                            // Collect tags from deck tags or provides
+                            let tagsToDisplay: string[] = []
+                            
+                            if (hasTags) {
+                              // Use existing tags
+                              tagsToDisplay = Object.entries(deck.tags)
+                                .map(([key, value]) => {
+                                  // Skip empty tags and tags with empty values
+                                  if (value === null || value === undefined || value === '') {
+                                    return null
+                                  }
+                                  
+                                  // Skip tags where key is 'none' and value is empty
+                                  if (key === 'none' && (!value || value === '')) {
+                                    return null
+                                  }
+                                  
+                                  // Skip if value is a string and empty after trim
+                                  if (typeof value === 'string' && value.trim() === '') {
+                                    return null
+                                  }
+                                  
+                                  // Use value if it's a non-empty string, otherwise use key (if key is meaningful)
+                                  let tagText: string | null = null
+                                  
+                                  if (typeof value === 'string' && value.trim() !== '') {
+                                    tagText = value.trim()
+                                  } else if (typeof value === 'number' || typeof value === 'boolean') {
+                                    tagText = String(value)
+                                  } else if (key && key !== 'none' && !key.startsWith('tag_')) {
+                                    // Use key if it's meaningful (not a generated key)
+                                    tagText = key
+                                  } else if (key && key.startsWith('tag_')) {
+                                    // For generated keys, try to use value or skip
+                                    return null
+                                  }
+                                  
+                                  return tagText && tagText.trim() !== '' ? tagText.trim() : null
+                                })
+                                .filter((tag): tag is string => tag !== null)
+                            } else if (deck.cards && Array.isArray(deck.cards)) {
+                              // Collect unique provides from cards
+                              const providesSet = new Set<string>()
+                              
+                              deck.cards.forEach((card: any) => {
+                                if (card && typeof card === 'object') {
+                                  const provides = card.provides || card.Provides
+                                  if (provides) {
+                                    if (typeof provides === 'string') {
+                                      // Split by comma and add each value
+                                      provides.split(',').forEach((p: string) => {
+                                        const trimmed = p.trim()
+                                        if (trimmed) {
+                                          providesSet.add(trimmed)
+                                        }
+                                      })
+                                    } else if (Array.isArray(provides)) {
+                                      provides.forEach((p: string) => {
+                                        if (p && typeof p === 'string') {
+                                          const trimmed = p.trim()
+                                          if (trimmed) {
+                                            providesSet.add(trimmed)
+                                          }
+                                        }
+                                      })
+                                    }
+                                  }
+                                }
+                              })
+                              
+                              tagsToDisplay = Array.from(providesSet).sort()
+                            }
+                            
+                            
+                            if (tagsToDisplay.length === 0) {
+                              return null
+                            }
+                            
+                            return (
+                              <Group gap="xs" className="mt-2 flex-wrap">
+                                {tagsToDisplay.map((tagText) => (
+                                  <Badge
+                                    key={`${deck.id}-${tagText}`}
+                                    color="violet"
+                                    variant="light"
+                                    size="sm"
+                                  >
+                                    {tagText.toUpperCase()}
+                                  </Badge>
+                                ))}
+                              </Group>
+                            )
+                          })()}
+                        </Stack>
+                      </Paper>
+                    </Grid.Col>
+                  ))}
+                </Grid>
+              </Stack>
+            )}
           </div>
         )}
       </div>
@@ -1444,7 +3346,20 @@ export function DeckList({ decks }: DeckListProps) {
         onClose={() => {
           setDetailsOpened(false)
           setSelectedDeck(null)
+          setParentFusedDeck(null)
         }}
+        onDeckClick={(deck, parentDeck) => {
+          // If clicking from DeckDetails, use the parentDeck passed from there
+          // If parentDeck is explicitly null, clear parentFusedDeck
+          // Otherwise, if parentDeck is provided, use it; if not, use stored parentFusedDeck
+          if (parentDeck === null) {
+            handleDeckClick(deck, null)
+          } else {
+            handleDeckClick(deck, parentDeck || parentFusedDeck)
+          }
+        }}
+        allDecks={[...decks, ...fusedDecks]}
+        parentFusedDeck={parentFusedDeck}
       />
     </>
   )

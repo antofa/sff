@@ -233,7 +233,7 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
       pageCount < maxPages
     ) {
       lastPK = pageData.LastEvaluatedKey.PK
-      const nextUrl = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&exclusiveStartKeyPK=${encodeURIComponent(pageData.LastEvaluatedKey.PK)}&exclusiveStartKeySK=${encodeURIComponent(pageData.LastEvaluatedKey.SK)}`
+      const nextUrl = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true&exclusiveStartKeyPK=${encodeURIComponent(pageData.LastEvaluatedKey.PK)}&exclusiveStartKeySK=${encodeURIComponent(pageData.LastEvaluatedKey.SK)}`
       
       console.log(`[API] Requesting next page: ${pageCount + 2}`)
       
@@ -477,7 +477,17 @@ function determineCardType(cardId: string, cardData?: any): string | undefined {
 }
 
 export function getCardInfo(cardId: string, cardData?: any): CardInfo {
-  const name = cardData?.name || formatCardName(cardId)
+  // For Forgeborn cards, prefer title over name
+  // Check if it's a Forgeborn card first
+  const isForgeborn = cardData?.cardType?.toLowerCase().includes('forgeborn') ||
+                     cardData?.type?.toLowerCase().includes('forgeborn') ||
+                     determineCardType(cardId, cardData) === 'forgeborn'
+  
+  // Use title for Forgeborn, name for other cards
+  const name = isForgeborn 
+    ? (cardData?.title || cardData?.name || formatCardName(cardId))
+    : (cardData?.name || cardData?.title || formatCardName(cardId))
+  
   const imageUrl = cardData?.imageUrl || cardData?.image || getCardImageUrl(cardId)
   const type = determineCardType(cardId, cardData)
   
@@ -489,7 +499,7 @@ export function getCardInfo(cardId: string, cardData?: any): CardInfo {
     faction: cardData?.faction,
     rarity: cardData?.rarity,
     cardType: cardData?.cardType,
-    // Preserve all additional data from cardData
+    // Preserve all additional data from cardData (including title)
     ...cardData,
   }
 }
@@ -503,6 +513,180 @@ export function getCardInfo(cardId: string, cardData?: any): CardInfo {
  * @param playerName - player nickname
  * @returns array of player decks
  */
+/**
+ * Fetch fused decks from API
+ * 
+ * @param playerName - player nickname
+ * @param deckRank - optional deck rank filter (e.g., "Bronze")
+ * @returns array of fused deck data
+ */
+export async function fetchFusedDecksFromAPI(playerName: string, deckRank?: string): Promise<ApiDeck[]> {
+  const encodedName = encodeURIComponent(playerName.toLowerCase())
+  const pageSize = 200
+  let url = `${API_BASE_URL}/fuseddeck/app?pageSize=${pageSize}&username=${encodedName}`
+  
+  if (deckRank) {
+    url += `&deckRank=${encodeURIComponent(deckRank)}`
+  }
+  
+  console.log(`[API] Requesting fused decks for player: ${playerName}`)
+  console.log(`[API] URL: ${url}`)
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(20000),
+    })
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`[API] Fused decks not found for player: ${playerName}`)
+        return []
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const responseText = await response.text()
+    console.log(`[API] Fused decks response received, length: ${responseText.length} characters`)
+    const pageData = JSON.parse(responseText)
+    
+    // Extract fused decks from response
+    const fusedDecks: any[] = []
+    if (pageData.Items && Array.isArray(pageData.Items)) {
+      console.log(`[API] Received ${pageData.Items.length} fused decks`)
+      
+      // Normalize each fused deck
+      for (const fusedDeck of pageData.Items) {
+        // A fused deck contains two regular decks in myDecks array
+        // We need to merge them into a single deck representation
+        if (fusedDeck.myDecks && Array.isArray(fusedDeck.myDecks) && fusedDeck.myDecks.length >= 2) {
+          const deck1 = fusedDeck.myDecks[0]
+          const deck2 = fusedDeck.myDecks[1]
+          
+          // Log to check data structure
+          console.log(`[API] Fused deck ${fusedDeck.id || fusedDeck.name}:`, {
+            hasMyDecks: !!fusedDeck.myDecks,
+            myDecksLength: fusedDeck.myDecks?.length,
+            deck1Id: deck1?.id,
+            deck1Name: deck1?.name,
+            deck2Id: deck2?.id,
+            deck2Name: deck2?.name
+          })
+          
+          // Combine cards from both decks
+          // For now, we'll need to fetch full deck details to get all cards
+          // But we can create a normalized structure first
+          const normalizedFusedDeck: any = {
+            id: fusedDeck.id || `fused-${fusedDeck.name}`,
+            name: fusedDeck.name || 'Unnamed Fused Deck',
+            format: 'Fused',
+            created: fusedDeck.CreatedAt || fusedDeck.UpdatedAt,
+            faction: deck1.faction || deck2.faction, // Primary faction (first deck)
+            forgebornId: fusedDeck.currentForgebornId || deck1.forgeborn?.id || deck2.forgeborn?.id,
+            forgeborn: deck1.forgeborn || deck2.forgeborn,
+            deckRank: fusedDeck.deckRank,
+            digital: true, // Fused decks are digital
+            tags: {},
+            cardSetNo: undefined,
+            // Store both deck IDs for later fetching
+            fusedDeckIds: [deck1.id, deck2.id],
+            myDecks: fusedDeck.myDecks,
+            // Cards will be fetched separately if needed
+            cards: [], // Will be populated when fetching deck details
+          }
+          
+          fusedDecks.push(normalizedFusedDeck)
+        } else {
+          // Log if myDecks is missing or invalid
+          console.warn(`[API] Fused deck ${fusedDeck.id || fusedDeck.name} missing myDecks:`, {
+            hasMyDecks: !!fusedDeck.myDecks,
+            myDecksType: typeof fusedDeck.myDecks,
+            myDecksLength: Array.isArray(fusedDeck.myDecks) ? fusedDeck.myDecks.length : 'not array'
+          })
+        }
+      }
+    }
+    
+    // Fetch full deck details for each fused deck to get all cards
+    // This is similar to how we handle regular decks
+    const fusedDecksWithCards: ApiDeck[] = []
+    for (const fusedDeck of fusedDecks) {
+      if (fusedDeck.fusedDeckIds && Array.isArray(fusedDeck.fusedDeckIds)) {
+        const allCards: any[] = []
+        
+        // Fetch details for each deck in the fused deck
+        for (const deckId of fusedDeck.fusedDeckIds) {
+          const deckDetails = await fetchDeckDetails(deckId)
+          if (deckDetails && deckDetails.cardList && Array.isArray(deckDetails.cardList)) {
+            allCards.push(...deckDetails.cardList)
+          } else if (deckDetails && deckDetails.cards && Array.isArray(deckDetails.cards)) {
+            allCards.push(...deckDetails.cards)
+          }
+        }
+        
+        // Remove duplicates (based on card ID)
+        const uniqueCards = new Map<string, any>()
+        allCards.forEach(card => {
+          const cardId = typeof card === 'string' ? card : (card.id || card.cardId)
+          if (cardId && !uniqueCards.has(cardId)) {
+            uniqueCards.set(cardId, card)
+          }
+        })
+        
+        fusedDeck.cards = Array.from(uniqueCards.values())
+      }
+      
+      // Add forgeborn if not already in cards
+      if (fusedDeck.forgeborn && fusedDeck.forgeborn.id) {
+        const forgebornInCards = fusedDeck.cards.some((card: any) => {
+          const cardId = typeof card === 'string' ? card : card.id
+          return cardId === fusedDeck.forgeborn.id || cardId === fusedDeck.forgebornId
+        })
+        if (!forgebornInCards) {
+          fusedDeck.cards = [fusedDeck.forgeborn, ...fusedDeck.cards]
+        }
+      }
+      
+      // Normalize deck but preserve fused deck specific fields
+      const normalized = normalizeDeck(fusedDeck)
+      // Preserve myDecks and fusedDeckIds for fused decks
+      const normalizedWithFusedData: any = {
+        ...normalized,
+        myDecks: fusedDeck.myDecks,
+        fusedDeckIds: fusedDeck.fusedDeckIds
+      }
+      
+      // Log to verify data preservation
+      console.log(`[API] Normalized fused deck ${normalizedWithFusedData.id}:`, {
+        hasMyDecks: !!normalizedWithFusedData.myDecks,
+        myDecksLength: Array.isArray(normalizedWithFusedData.myDecks) ? normalizedWithFusedData.myDecks.length : 0,
+        hasFusedDeckIds: !!normalizedWithFusedData.fusedDeckIds,
+        fusedDeckIdsLength: Array.isArray(normalizedWithFusedData.fusedDeckIds) ? normalizedWithFusedData.fusedDeckIds.length : 0
+      })
+      
+      fusedDecksWithCards.push(normalizedWithFusedData)
+    }
+    
+    return fusedDecksWithCards
+  } catch (error) {
+    console.error(`[API] Error fetching fused decks:`, error)
+    if (error instanceof Error) {
+      if (error.message.includes('timeout')) {
+        throw new Error('Server response timed out')
+      }
+      if (error.message.includes('fetch')) {
+        throw new Error('Network error connecting to API')
+      }
+    }
+    throw error
+  }
+}
+
 export async function getPlayerDecks(playerName: string): Promise<ApiDeck[]> {
   if (!playerName || !playerName.trim()) {
     throw new Error('Player nickname cannot be empty')
