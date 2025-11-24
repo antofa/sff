@@ -18,8 +18,7 @@ export async function GET(request: NextRequest) {
 
     if (type === 'fused') {
       // Fetch only fused decks
-      const deckRank = searchParams.get('deckRank') || undefined
-      const fusedDecks = await fetchFusedDecksFromAPI(playerName, deckRank)
+      const fusedDecks = await fetchFusedDecksFromAPI(playerName)
       console.log(`[API Route] Received ${fusedDecks.length} fused decks for player: ${playerName}`)
       return NextResponse.json(fusedDecks)
     } else if (type === 'regular') {

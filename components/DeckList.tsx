@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react'
-import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl } from '@mantine/core'
+import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
 import { useDebouncedValue } from '@mantine/hooks'
 import type { Deck } from '@/store/deckStore'
@@ -208,7 +208,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     rarityType: '',
     rarityCount: null,
     expiryFilter: 'active', // Default: show active decks (no dates + expiring)
-    sortBy: 'date-asc', // Default: newest first
+    sortBy: 'date-desc', // Default: newest first
     creaturesOperator: '>=',
     creaturesValue: null,
     freeCreaturesOperator: '>=',
@@ -232,6 +232,8 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
   const scrollPositionRef = useRef<number>(0)
   const firstVisibleDeckIdRef = useRef<string | null>(null)
   const shouldRestoreScrollRef = useRef<boolean>(false)
+  const contentHeightRef = useRef<number>(0)
+  const [minContentHeight, setMinContentHeight] = useState<number>(0)
   const gridContainerRef = useRef<HTMLDivElement>(null)
   
   // Collect all unique card names from all decks for the dropdown
@@ -542,7 +544,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                originalCard.SubType || originalCard.subType || originalCard.SUBTYPE)
             : null
           const normalizedSubType = cardData.cardSubType || cardData.CardSubType || cardData.CARDSUBTYPE ||
-                                    cardData.SubType || cardData.subType || cardData.SUBTYPE
+                          cardData.SubType || cardData.subType || cardData.SUBTYPE
           // Prefer original data if available, otherwise use normalized
           const subType = originalSubType || normalizedSubType
           
@@ -566,6 +568,22 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
   useEffect(() => {
     // Save scroll position and first visible deck ID before filters are applied
     scrollPositionRef.current = window.scrollY || window.pageYOffset || document.documentElement.scrollTop
+    
+    // Save current content height to maintain it after filtering
+    if (gridContainerRef.current) {
+      const currentHeight = gridContainerRef.current.scrollHeight || gridContainerRef.current.offsetHeight || 0
+      if (currentHeight > 0) {
+        contentHeightRef.current = Math.max(contentHeightRef.current, currentHeight)
+        setMinContentHeight(contentHeightRef.current)
+      }
+    } else {
+      // If gridContainerRef is not available, use document height
+      const docHeight = document.documentElement.scrollHeight || document.body.scrollHeight || 0
+      if (docHeight > 0) {
+        contentHeightRef.current = Math.max(contentHeightRef.current, docHeight)
+        setMinContentHeight(contentHeightRef.current)
+      }
+    }
     
     // Find first visible deck card
     const deckCards = document.querySelectorAll('[data-deck-id]')
@@ -619,7 +637,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
       rarityType: '',
       rarityCount: null,
       expiryFilter: 'active' as const,
-      sortBy: 'date-asc',
+      sortBy: 'date-desc',
       creaturesOperator: '>=' as const,
       creaturesValue: null,
       freeCreaturesOperator: '>=' as const,
@@ -702,6 +720,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     isExpiring: boolean
     expireDate: string | null
     minExpiredDate: string | null
+    minExpiringDate: string | null
   } => {
     const currentTimeUTC = new Date().getTime()
     const [deck1, deck2] = getFusedDeckSourceDecks(fusedDeck, allDecks)
@@ -737,11 +756,22 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
         })
       : null
     
+    // Find minimum expiring date (earliest date among expiring decks) - for expiring fused decks
+    const expiringDates = deckDates.filter(d => d.isExpiring).map(d => d.date)
+    const minExpiringDate = expiringDates.length > 0 
+      ? expiringDates.reduce((min, date) => {
+          const dateTime = new Date(date).getTime()
+          const minTime = new Date(min).getTime()
+          return dateTime < minTime ? date : min
+        })
+      : null
+    
     return {
       isExpired,
       isExpiring,
-      expireDate: minExpiredDate,
+      expireDate: minExpiredDate || minExpiringDate,
       minExpiredDate,
+      minExpiringDate,
     }
   }
   
@@ -779,7 +809,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
           // Show only expired decks
           return isExpired
         default:
-          return true
+        return true
       }
     })
   }, [decks, debouncedFilters.expiryFilter])
@@ -836,7 +866,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
           case 'expired':
             return isExpired
           default:
-            return true
+          return true
         }
       }).length
     }
@@ -1800,14 +1830,16 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     switch (debouncedFilters.sortBy) {
       case 'date-desc': // Newest first
         return sorted.sort((a, b) => {
-          const dateA = a.created ? new Date(a.created).getTime() : 0
-          const dateB = b.created ? new Date(b.created).getTime() : 0
+          // Use updatedAt for sorting (updated at), fallback to created if updatedAt is not available
+          const dateA = (a as any).updatedAt ? new Date((a as any).updatedAt).getTime() : (a.created ? new Date(a.created).getTime() : 0)
+          const dateB = (b as any).updatedAt ? new Date((b as any).updatedAt).getTime() : (b.created ? new Date(b.created).getTime() : 0)
           return dateB - dateA // Descending (newest first)
         })
       case 'date-asc': // Oldest first
         return sorted.sort((a, b) => {
-          const dateA = a.created ? new Date(a.created).getTime() : 0
-          const dateB = b.created ? new Date(b.created).getTime() : 0
+          // Use updatedAt for sorting (updated at), fallback to created if updatedAt is not available
+          const dateA = (a as any).updatedAt ? new Date((a as any).updatedAt).getTime() : (a.created ? new Date(a.created).getTime() : 0)
+          const dateB = (b as any).updatedAt ? new Date((b as any).updatedAt).getTime() : (b.created ? new Date(b.created).getTime() : 0)
           return dateA - dateB // Ascending (oldest first)
         })
       case 'name-asc': // A-Z
@@ -1821,6 +1853,30 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
           const nameA = (a.name || 'Untitled').toLowerCase()
           const nameB = (b.name || 'Untitled').toLowerCase()
           return nameB.localeCompare(nameA)
+        })
+      case 'score-desc': // Highest score first
+        return sorted.sort((a, b) => {
+          const scoreA = (a as any).deckScore !== undefined && (a as any).deckScore !== null ? Number((a as any).deckScore) : -Infinity
+          const scoreB = (b as any).deckScore !== undefined && (b as any).deckScore !== null ? Number((b as any).deckScore) : -Infinity
+          return scoreB - scoreA // Descending (highest first)
+        })
+      case 'score-asc': // Lowest score first
+        return sorted.sort((a, b) => {
+          const scoreA = (a as any).deckScore !== undefined && (a as any).deckScore !== null ? Number((a as any).deckScore) : Infinity
+          const scoreB = (b as any).deckScore !== undefined && (b as any).deckScore !== null ? Number((b as any).deckScore) : Infinity
+          return scoreA - scoreB // Ascending (lowest first)
+        })
+      case 'elo-desc': // Highest ELO first
+        return sorted.sort((a, b) => {
+          const eloA = (a as any).elo !== undefined && (a as any).elo !== null ? Number((a as any).elo) : -Infinity
+          const eloB = (b as any).elo !== undefined && (b as any).elo !== null ? Number((b as any).elo) : -Infinity
+          return eloB - eloA // Descending (highest first)
+        })
+      case 'elo-asc': // Lowest ELO first
+        return sorted.sort((a, b) => {
+          const eloA = (a as any).elo !== undefined && (a as any).elo !== null ? Number((a as any).elo) : Infinity
+          const eloB = (b as any).elo !== undefined && (b as any).elo !== null ? Number((b as any).elo) : Infinity
+          return eloA - eloB // Ascending (lowest first)
         })
       default:
         return sorted
@@ -1839,15 +1895,38 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     return sortDecks(filtered)
   }, [filteredFusedDecksByExpiry, debouncedFilters, hasActiveFilters, debouncedFilters.sortBy])
   
-  // Restore scroll position after filteredDecks changes
+  // Update content height and restore scroll position after filteredDecks changes
   useEffect(() => {
+    // Update content height after filtering to maintain minimum height
+    if (gridContainerRef.current) {
+      const currentHeight = gridContainerRef.current.scrollHeight || gridContainerRef.current.offsetHeight || 0
+      if (currentHeight > 0) {
+        // Only update if current height is greater, to maintain minimum
+        if (currentHeight > contentHeightRef.current) {
+          contentHeightRef.current = currentHeight
+          setMinContentHeight(currentHeight)
+        } else if (contentHeightRef.current > 0) {
+          // Maintain saved minimum height
+          setMinContentHeight(contentHeightRef.current)
+        }
+      }
+    }
+    
     if (shouldRestoreScrollRef.current) {
       const savedScroll = scrollPositionRef.current
+      const totalFilteredDecks = filteredHalfDecks.length + filteredFusedDecks.length
+      
+      // If no results after filtering, maintain minimum height to prevent scroll jump
+      if (totalFilteredDecks === 0) {
+        // Don't restore scroll, but keep the minimum height set above
+        shouldRestoreScrollRef.current = false
+        firstVisibleDeckIdRef.current = null
+        return
+      }
       
       // Restore scroll position immediately to prevent intermediate scrolling
       const restoreScroll = () => {
         // Try to restore by first visible deck ID first
-        const totalFilteredDecks = filteredHalfDecks.length + filteredFusedDecks.length
         if (firstVisibleDeckIdRef.current && totalFilteredDecks > 0) {
           const targetElement = document.querySelector(`[data-deck-id="${firstVisibleDeckIdRef.current}"]`)
           if (targetElement) {
@@ -2396,6 +2475,10 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                       { value: 'date-asc', label: 'Date (Oldest first)' },
                       { value: 'name-asc', label: 'Name (A-Z)' },
                       { value: 'name-desc', label: 'Name (Z-A)' },
+                      { value: 'score-desc', label: 'Score (Highest first)' },
+                      { value: 'score-asc', label: 'Score (Lowest first)' },
+                      { value: 'elo-desc', label: 'ELO (Highest first)' },
+                      { value: 'elo-asc', label: 'ELO (Lowest first)' },
                     ]}
                     styles={{
                       label: { color: 'white' },
@@ -2422,7 +2505,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                         { label: 'Expired', value: 'expired' },
                       ]}
                       fullWidth
-                      styles={{
+                    styles={{
                         root: {
                           backgroundColor: 'rgba(30, 41, 59, 0.8)',
                         },
@@ -2446,7 +2529,12 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
           <Paper
             p="xl"
             className="w-full backdrop-blur-md border border-sf-primary/30 rounded-xl"
-            style={{ backgroundColor: 'rgba(30, 41, 59, 0.6)' }}
+            style={{ 
+              backgroundColor: 'rgba(30, 41, 59, 0.6)',
+              minHeight: minContentHeight > 0 
+                ? `${minContentHeight}px` 
+                : '100vh', // Maintain minimum height to prevent scroll jump
+            }}
           >
             <Text size="lg" className="text-center text-gray-400">
               No decks match the filters
@@ -2456,7 +2544,9 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
           <div 
             ref={gridContainerRef}
             style={{ 
-              minHeight: '100vh', // Maintain minimum height to prevent scroll jump
+              minHeight: minContentHeight > 0 
+                ? `${minContentHeight}px` 
+                : '100vh', // Maintain minimum height to prevent scroll jump
             }}
           >
             {/* Half Decks Section */}
@@ -2516,7 +2606,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                 }}
               >
               <Stack gap="sm">
-                <Group justify="space-between" align="flex-start">
+                <Group justify="space-between" align="flex-start" wrap="nowrap">
                   <Title order={4} className="text-white flex-1" lineClamp={2}>
                     {deck.name || 'Untitled'}
                   </Title>
@@ -2524,21 +2614,18 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
 
                 <Group gap="xs">
                   {deck.faction && (
-                    <Badge
-                      color={
-                        deck.faction === 'Alloyin' ? 'cyan' :
-                        deck.faction === 'Uterra' ? 'teal' :
-                        deck.faction === 'Tempys' ? 'orange' :
-                        deck.faction === 'Nekrium' ? 'grape' : 'gray'
-                      }
-                      variant="light"
-                      size="sm"
+                    <Image
+                      src={`/images/icons/${deck.faction.toLowerCase()}.png`}
+                      alt={deck.faction}
+                      h={18}
+                      w="auto"
                       style={{
-                        fontWeight: 500,
+                        display: 'inline-block',
+                        verticalAlign: 'middle',
+                        flexShrink: 0,
+                        marginRight: '0px',
                       }}
-                    >
-                      {deck.faction}
-                    </Badge>
+                    />
                   )}
                   {deck.cardSetNo && (
                     <Badge
@@ -2571,6 +2658,24 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                       size="sm"
                     >
                       {deck.deckRank}
+                    </Badge>
+                  )}
+                  {(deck as any).deckScore !== undefined && (deck as any).deckScore !== null && (
+                    <Badge
+                      color="grape"
+                      variant="light"
+                      size="sm"
+                    >
+                      Score: {typeof (deck as any).deckScore === 'number' ? Math.round((deck as any).deckScore * 100) : (deck as any).deckScore}
+                    </Badge>
+                  )}
+                  {(deck as any).elo !== undefined && (deck as any).elo !== null && (
+                    <Badge
+                      color="violet"
+                      variant="light"
+                      size="sm"
+                    >
+                      ELO: {typeof (deck as any).elo === 'number' ? Math.round((deck as any).elo) : (deck as any).elo}
                     </Badge>
                   )}
                 </Group>
@@ -2787,18 +2892,47 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                   )
                 })()}
 
-                {deck.created && (
-                  <Group gap="xs" className="text-gray-400 text-sm">
-                    <IconCalendar size={14} />
-                    <Text size="xs">
-                      Expire date: {new Date(deck.created).toLocaleDateString('en-GB', { 
-                        day: 'numeric', 
-                        month: 'short', 
-                        year: 'numeric' 
-                      })}
-                    </Text>
-                  </Group>
-                )}
+                {(() => {
+                  // Determine if deck is expired or expiring
+                  const currentTimeUTC = new Date().getTime()
+                  const expiryDate = deck.created ? new Date(deck.created).getTime() : null
+                  const isExpired = expiryDate !== null && expiryDate < currentTimeUTC
+                  const isExpiring = expiryDate !== null && expiryDate >= currentTimeUTC
+                  
+                  // Show Updated at (updatedAt) for active decks, or Expire date (created) for expired/expiring decks
+                  const receiptDate = (deck as any).updatedAt
+                  const showReceiptDate = receiptDate && !isExpired && !isExpiring
+                  const showExpireDate = deck.created && (isExpired || isExpiring)
+                  
+                  if (showReceiptDate && receiptDate) {
+                    return (
+                      <Group gap="xs" className="text-gray-400 text-sm">
+                        <IconCalendar size={14} />
+                        <Text size="xs">
+                          Updated at: {new Date(receiptDate).toLocaleDateString('en-GB', { 
+                            day: 'numeric', 
+                            month: 'short', 
+                            year: 'numeric' 
+                          })}
+                        </Text>
+                      </Group>
+                    )
+                  } else if (showExpireDate && deck.created) {
+                    return (
+                      <Group gap="xs" className="text-gray-400 text-sm">
+                        <IconCalendar size={14} />
+                        <Text size="xs">
+                          Expire date: {new Date(deck.created).toLocaleDateString('en-GB', { 
+                            day: 'numeric', 
+                            month: 'short', 
+                            year: 'numeric' 
+                          })}
+                        </Text>
+                      </Group>
+                    )
+                  }
+                  return null
+                })()}
 
                 {(() => {
                   // Check if deck has tags
@@ -2944,23 +3078,43 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                           </Group>
 
                           <Group gap="xs">
-                            {deck.faction && (
-                              <Badge
-                                color={
-                                  deck.faction === 'Alloyin' ? 'cyan' :
-                                  deck.faction === 'Uterra' ? 'teal' :
-                                  deck.faction === 'Tempys' ? 'orange' :
-                                  deck.faction === 'Nekrium' ? 'grape' : 'gray'
-                                }
-                                variant="light"
-                                size="sm"
-                                style={{
-                                  fontWeight: 500,
-                                }}
-                              >
-                                {deck.faction}
-                              </Badge>
-                            )}
+                            {(() => {
+                              // For fused decks, show icons from both source decks
+                              const [deck1, deck2] = getFusedDeckSourceDecks(deck, [...decks, ...fusedDecks])
+                              const factions: string[] = []
+                              
+                              if (deck1?.faction) {
+                                factions.push(deck1.faction)
+                              }
+                              if (deck2?.faction) {
+                                factions.push(deck2.faction)
+                              }
+                              
+                              // If we couldn't get factions from source decks, fall back to deck.faction
+                              if (factions.length === 0 && deck.faction) {
+                                factions.push(deck.faction)
+                              }
+                              
+                              return (
+                                <>
+                                  {factions.map((faction, index) => (
+                                    <Image
+                                      key={`${deck.id}-faction-${index}`}
+                                      src={`/images/icons/${faction.toLowerCase()}.png`}
+                                      alt={faction}
+                                      h={18}
+                                      w="auto"
+                                      style={{
+                                        display: 'inline-block',
+                                        verticalAlign: 'middle',
+                                        flexShrink: 0,
+                                        marginRight: index === factions.length - 1 ? '0px' : '0',
+                                      }}
+                                    />
+                                  ))}
+                                </>
+                              )
+                            })()}
                             {deck.cardSetNo && (
                               <Badge
                                 color="indigo"
@@ -2992,6 +3146,24 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                                 size="sm"
                               >
                                 {deck.deckRank}
+                              </Badge>
+                            )}
+                            {(deck as any).deckScore !== undefined && (deck as any).deckScore !== null && (
+                              <Badge
+                                color="grape"
+                                variant="light"
+                                size="sm"
+                              >
+                                Score: {typeof (deck as any).deckScore === 'number' ? Math.round((deck as any).deckScore * 100) : (deck as any).deckScore}
+                              </Badge>
+                            )}
+                            {(deck as any).elo !== undefined && (deck as any).elo !== null && (
+                              <Badge
+                                color="violet"
+                                variant="light"
+                                size="sm"
+                              >
+                                ELO: {typeof (deck as any).elo === 'number' ? Math.round((deck as any).elo) : (deck as any).elo}
                               </Badge>
                             )}
                           </Group>
@@ -3209,27 +3381,53 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                           })()}
 
                           {(() => {
-                            // For fused decks, check if they're expired
+                            // For fused decks, check if they're expired or expiring
                             const expiryStatus = getFusedDeckExpiryStatus(deck, decks)
-                            const showDate = deck.created || expiryStatus.expireDate
-                            const dateToShow = expiryStatus.isExpired && expiryStatus.expireDate 
-                              ? expiryStatus.expireDate 
-                              : deck.created
+                            const showDate = deck.created || expiryStatus.expireDate || expiryStatus.minExpiringDate
+                            // For expired fused decks: use minExpiredDate
+                            // For expiring fused decks: use minExpiringDate (earliest expiring date)
+                            // For regular fused decks: use deck.created
+                            const dateToShow = expiryStatus.isExpired && expiryStatus.minExpiredDate 
+                              ? expiryStatus.minExpiredDate 
+                              : (expiryStatus.isExpiring && expiryStatus.minExpiringDate 
+                                ? expiryStatus.minExpiringDate 
+                                : deck.created)
                             const isExpiredFused = expiryStatus.isExpired
+                            const isExpiringFused = expiryStatus.isExpiring
                             
-                            return showDate && dateToShow && (
-                              <Group gap="xs" className="text-gray-400 text-sm">
-                                <IconCalendar size={14} />
-                                <Text size="xs">
-                                  {isExpiredFused ? 'Expire date: ' : 'Create date: '}
-                                  {new Date(dateToShow).toLocaleDateString('en-GB', { 
-                                    day: 'numeric', 
-                                    month: 'short', 
-                                    year: 'numeric' 
-                                  })}
-                                </Text>
-                              </Group>
-                            )
+                            // For fused decks, show Updated at (updatedAt) for active decks, or Expire date for expired/expiring
+                            const receiptDate = (deck as any).updatedAt
+                            const showReceiptDate = receiptDate && !isExpiredFused && !isExpiringFused
+                            const showExpireDate = showDate && dateToShow && (isExpiredFused || isExpiringFused)
+                            
+                            if (showReceiptDate) {
+                              return (
+                                <Group gap="xs" className="text-gray-400 text-sm">
+                                  <IconCalendar size={14} />
+                                  <Text size="xs">
+                                    Updated at: {new Date(receiptDate).toLocaleDateString('en-GB', { 
+                                      day: 'numeric', 
+                                      month: 'short', 
+                                      year: 'numeric' 
+                                    })}
+                                  </Text>
+                                </Group>
+                              )
+                            } else if (showExpireDate) {
+                              return (
+                                <Group gap="xs" className="text-gray-400 text-sm">
+                                  <IconCalendar size={14} />
+                                  <Text size="xs">
+                                    Expire date: {new Date(dateToShow).toLocaleDateString('en-GB', { 
+                                      day: 'numeric', 
+                                      month: 'short', 
+                                      year: 'numeric' 
+                                    })}
+                                  </Text>
+                                </Group>
+                              )
+                            }
+                            return null
                           })()}
 
                           {(() => {

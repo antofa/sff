@@ -109,6 +109,7 @@ function normalizeDeck(deck: any): ApiDeck {
     format: deck.format || deck.gameFormat,
     cards: cards,
     created: deck.created || deck.createdAt || deck.CreatedAt || deck.pExpiry,
+    updatedAt: deck.UpdatedAt || deck.updatedAt || deck.updated_at,
     // Additional fields from API
     faction: deck.faction,
     forgebornId: deck.forgebornId || (deck.forgeborn && deck.forgeborn.id),
@@ -118,6 +119,8 @@ function normalizeDeck(deck: any): ApiDeck {
     tags: normalizedTags,
     cardSetNo: deck.cardSetNo,
     cardSetId: deck.cardSetId,
+    deckScore: deck.deckScore,
+    elo: deck.elo,
   }
 }
 
@@ -388,22 +391,41 @@ export function formatCardName(cardId: string): string {
 export function getCardImageUrl(cardId: string, level: number = 1, isForgeborn: boolean = false): string {
   if (!cardId) return ''
   
-  // Clean ID from special characters and ensure lowercase
-  let cleanId = cardId.replace(/[^a-z0-9-]/gi, '').toLowerCase()
-  
-  // Forgeborn cards use format: {cardId}.jpg from /public/cards/ (not resized)
-  // The cardId already contains the full identifier (e.g., "s3nn1cercee321")
+  // Forgeborn cards use format: {cardId}.jpg from /public/cards/ (NOT resized)
+  // The cardId should preserve spaces and be URL-encoded (e.g., "s1aa1steel rosetta134" -> "s1aa1steel%20rosetta134")
+  // Note: For forgeborn, we try the original ID first (with dash if present), then fall back to space replacement
+  // This is handled in loadSingleImage function in DeckDetails.tsx
   if (isForgeborn) {
     const forgebornBaseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
-    return `${forgebornBaseUrl}/${cleanId}.jpg`
+    // URL encode the cardId as-is (preserve original format, whether it has dash or space)
+    const encodedCardId = encodeURIComponent(cardId)
+    return `${forgebornBaseUrl}/${encodedCardId}.jpg`
   }
   
   // Regular cards use format: {cardId}_1.jpg, {cardId}_2.jpg, {cardId}_3.jpg from /public/cards/resized/
   const baseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards/resized'
+  // Clean ID from special characters and ensure lowercase for regular cards
+  let cleanId = cardId.replace(/[^a-z0-9-]/gi, '').toLowerCase()
   // Ensure level is between 1 and 3
   const cardLevel = Math.max(1, Math.min(3, level))
   
   return `${baseUrl}/${cleanId}_${cardLevel}.jpg`
+}
+
+/**
+ * Generate alternative URL for forgeborn card by replacing dash with space
+ * Used as fallback if the original URL doesn't work
+ */
+export function getForgebornAlternativeUrl(cardId: string): string {
+  if (!cardId) return ''
+  const forgebornBaseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
+  // Replace dash with space if it appears before a number (common pattern: "steel-rosetta134" -> "steel rosetta134")
+  let processedCardId = cardId
+  // Pattern: look for dash followed by lowercase letters and then numbers (e.g., "steel-rosetta134")
+  processedCardId = processedCardId.replace(/([a-z])-([a-z]+)(\d+)/gi, '$1 $2$3')
+  // URL encode the cardId to preserve spaces as %20
+  const encodedCardId = encodeURIComponent(processedCardId)
+  return `${forgebornBaseUrl}/${encodedCardId}.jpg`
 }
 
 /**
@@ -517,17 +539,12 @@ export function getCardInfo(cardId: string, cardData?: any): CardInfo {
  * Fetch fused decks from API
  * 
  * @param playerName - player nickname
- * @param deckRank - optional deck rank filter (e.g., "Bronze")
  * @returns array of fused deck data
  */
-export async function fetchFusedDecksFromAPI(playerName: string, deckRank?: string): Promise<ApiDeck[]> {
+export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
   const encodedName = encodeURIComponent(playerName.toLowerCase())
   const pageSize = 200
-  let url = `${API_BASE_URL}/fuseddeck/app?pageSize=${pageSize}&username=${encodedName}`
-  
-  if (deckRank) {
-    url += `&deckRank=${encodeURIComponent(deckRank)}`
-  }
+  const url = `${API_BASE_URL}/fuseddeck/app?pageSize=${pageSize}&username=${encodedName}`
   
   console.log(`[API] Requesting fused decks for player: ${playerName}`)
   console.log(`[API] URL: ${url}`)
@@ -586,6 +603,7 @@ export async function fetchFusedDecksFromAPI(playerName: string, deckRank?: stri
             name: fusedDeck.name || 'Unnamed Fused Deck',
             format: 'Fused',
             created: fusedDeck.CreatedAt || fusedDeck.UpdatedAt,
+            updatedAt: fusedDeck.UpdatedAt || fusedDeck.updatedAt,
             faction: deck1.faction || deck2.faction, // Primary faction (first deck)
             forgebornId: fusedDeck.currentForgebornId || deck1.forgeborn?.id || deck2.forgeborn?.id,
             forgeborn: deck1.forgeborn || deck2.forgeborn,
@@ -593,6 +611,8 @@ export async function fetchFusedDecksFromAPI(playerName: string, deckRank?: stri
             digital: true, // Fused decks are digital
             tags: {},
             cardSetNo: undefined,
+            deckScore: fusedDeck.deckScore,
+            elo: fusedDeck.elo,
             // Store both deck IDs for later fetching
             fusedDeckIds: [deck1.id, deck2.id],
             myDecks: fusedDeck.myDecks,

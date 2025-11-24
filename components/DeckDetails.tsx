@@ -2,9 +2,36 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, ScrollArea, Divider, Image, Loader } from '@mantine/core'
-import { IconHandFinger, IconCalendar } from '@tabler/icons-react'
+import { IconHandFinger, IconCalendar, IconExternalLink, IconWorld } from '@tabler/icons-react'
 import type { Deck } from '@/store/deckStore'
-import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, type CardInfo } from '@/lib/api'
+import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForgebornAlternativeUrl, type CardInfo } from '@/lib/api'
+
+// Fetch full deck details from API
+async function fetchDeckDetails(deckId: string): Promise<any> {
+  try {
+    const url = `https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/${deckId}?inclCards=true&inclUsers=true`
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000),
+    })
+
+    if (!response.ok) {
+      console.warn(`[DeckDetails] Failed to fetch deck details for ${deckId}: ${response.status}`)
+      return null
+    }
+
+    const data = await response.json()
+    return data
+  } catch (error) {
+    console.warn(`[DeckDetails] Error fetching deck details for ${deckId}:`, error)
+    return null
+  }
+}
 
 // Helper function to process HTML content: remove line breaks and fix icon image URLs
 const processHtmlContent = (html: string): string => {
@@ -76,6 +103,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const [selectedLevel, setSelectedLevel] = useState<number>(1) // Current card level (1, 2, or 3)
   const [cardImages, setCardImages] = useState<Record<string, Record<number, string>>>({}) // cardId -> level -> imageUrl
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set())
+  const [fullDeckData, setFullDeckData] = useState<Deck | null>(null) // Full deck data with forgeborn.solbindCards
 
   // Helper function to get two source decks from fused deck
   const getFusedDeckSourceDecks = useMemo(() => {
@@ -142,6 +170,70 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     return [deck1, deck2]
   }, [deck, allDecks])
 
+  // Load full deck data when modal opens to get forgeborn.solbindCards
+  useEffect(() => {
+    if (!deck || !opened || !deck.id) {
+      // Reset fullDeckData when modal closes or deck is null
+      setFullDeckData(null)
+      return
+    }
+    
+    // Check if we already have forgeborn.solbindCards in current deck
+    const deckAny = deck as any
+    const hasSolbindCards = deckAny.forgeborn && 
+                           typeof deckAny.forgeborn === 'object' && 
+                           deckAny.forgeborn.solbindCards && 
+                           Array.isArray(deckAny.forgeborn.solbindCards) &&
+                           deckAny.forgeborn.solbindCards.length > 0
+    
+    if (hasSolbindCards) {
+      // Use existing deck data
+      setFullDeckData(deck)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[DeckDetails] ✅ Deck already has forgeborn.solbindCards:', deckAny.forgeborn.solbindCards.length)
+      }
+    } else {
+      // Fetch full deck details to get forgeborn.solbindCards
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[DeckDetails] 🔄 Fetching full deck data for:', deck.id)
+      }
+      
+      fetchDeckDetails(deck.id).then((fullData) => {
+        if (fullData) {
+          // Merge forgeborn data with existing deck data
+          const updatedDeck = {
+            ...deck,
+            forgeborn: fullData.forgeborn || deck.forgeborn,
+            cards: fullData.cardList || fullData.cards || deck.cards
+          } as Deck
+          
+          setFullDeckData(updatedDeck)
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[DeckDetails] ✅ Loaded full deck data:', {
+              deckId: deck.id,
+              hasForgeborn: !!fullData.forgeborn,
+              solbindCardsCount: fullData.forgeborn?.solbindCards?.length || 0,
+              forgeborn: fullData.forgeborn ? {
+                id: fullData.forgeborn.id,
+                name: fullData.forgeborn.name,
+                solbindCards: fullData.forgeborn.solbindCards?.map((sc: any) => ({
+                  id: sc.id,
+                  name: sc.name,
+                  cardType: sc.cardType
+                }))
+              } : null
+            })
+          }
+        }
+      }).catch((error) => {
+        console.warn('[DeckDetails] ❌ Error loading full deck data:', error)
+        // Fallback to existing deck data
+        setFullDeckData(deck)
+      })
+    }
+  }, [deck?.id, opened])
+
   // Log fused deck source decks data to server
   useEffect(() => {
     if (!deck || !opened) return
@@ -188,9 +280,10 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
   // Normalize cards with real names (memoized for stability)
   const normalizedCards: CardInfo[] = useMemo(() => {
-    if (!deck || !deck.cards || !Array.isArray(deck.cards)) return []
+    const deckToUse = fullDeckData || deck
+    if (!deckToUse || !deckToUse.cards || !Array.isArray(deckToUse.cards)) return []
     
-    const cards = deck.cards.map((card: any, index: number) => {
+    const cards = deckToUse.cards.map((card: any, index: number) => {
       if (typeof card === 'string') {
         // If card is just a string ID, try to find full card data
         return getCardInfo(card)
@@ -214,15 +307,30 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
     
     return cards
-  }, [deck?.id, deck?.cards])
+  }, [deck?.id, deck?.cards, fullDeckData])
 
   // First, extract all solbind card IDs to avoid circular dependency
   // Use a stable string representation for dependencies
   const solbindCardIdsSet = useMemo(() => {
-    if (!deck) return new Set<string>()
+    const deckToUse = fullDeckData || deck
+    if (!deckToUse) return new Set<string>()
     const ids = new Set<string>()
     
-    // Add Solbind cards from solbindCards arrays
+    // First, check forgeborn.solbindCards for Solbind cards
+    if (deckToUse.forgeborn && typeof deckToUse.forgeborn === 'object' && deckToUse.forgeborn.solbindCards && Array.isArray(deckToUse.forgeborn.solbindCards)) {
+      deckToUse.forgeborn.solbindCards.forEach((solbindCard: any) => {
+        if (solbindCard && solbindCard.id) {
+          // Only add if it's actually a Solbind card (rarity === 'Solbind')
+          // Second forgeborn (e.g., "Blighted Ironbeard") is not a Solbind card
+          const isSolbindCard = solbindCard.rarity === 'Solbind' || solbindCard.rarity === 'solbind'
+          if (isSolbindCard) {
+            ids.add(solbindCard.id)
+          }
+        }
+      })
+    }
+    
+    // Add Solbind cards from solbindCards arrays in normalizedCards
     normalizedCards.forEach(card => {
       const cardData = card as any
       if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
@@ -252,7 +360,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
     
     return ids
-  }, [normalizedCards, deck])
+  }, [normalizedCards, deck, fullDeckData])
   
   // Create a stable string representation for use in dependencies
   const solbindCardIdsKey = useMemo(() => {
@@ -265,7 +373,27 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       const imageUrl = getCardImageUrl(cardId, level, isForgeborn)
       const img = new window.Image()
       const timeout = setTimeout(() => {
+        // If original URL failed and this is forgeborn with dash, try alternative with space
+        if (isForgeborn && cardId.includes('-')) {
+          const alternativeUrl = getForgebornAlternativeUrl(cardId)
+          const altImg = new window.Image()
+          const altTimeout = setTimeout(() => {
         resolve(null)
+          }, 5000)
+          
+          altImg.onload = () => {
+            clearTimeout(altTimeout)
+            resolve(alternativeUrl)
+          }
+          altImg.onerror = () => {
+            clearTimeout(altTimeout)
+            resolve(null)
+          }
+          
+          altImg.src = alternativeUrl
+        } else {
+          resolve(null)
+        }
       }, isForgeborn ? 10000 : 5000)
       
       img.onload = () => {
@@ -274,7 +402,27 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
       img.onerror = () => {
         clearTimeout(timeout)
+        // If original URL failed and this is forgeborn with dash, try alternative with space
+        if (isForgeborn && cardId.includes('-')) {
+          const alternativeUrl = getForgebornAlternativeUrl(cardId)
+          const altImg = new window.Image()
+          const altTimeout = setTimeout(() => {
         resolve(null)
+          }, 5000)
+          
+          altImg.onload = () => {
+            clearTimeout(altTimeout)
+            resolve(alternativeUrl)
+          }
+          altImg.onerror = () => {
+            clearTimeout(altTimeout)
+            resolve(null)
+          }
+          
+          altImg.src = alternativeUrl
+        } else {
+          resolve(null)
+        }
       }
       img.src = imageUrl
     })
@@ -367,6 +515,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         return
       }
 
+      // Use full deck data if available
+      const deckForUse = fullDeckData || deck
+
       // Categorize cards (we need to compute these here since useMemo hooks are defined later)
       const forgebornCardsList: CardInfo[] = []
       const creatureCardsList: CardInfo[] = []
@@ -374,16 +525,240 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       const solbindCardsList: CardInfo[] = []
 
       // First, identify Forgeborn
-      if (deck?.forgebornId) {
+      if (deckForUse?.forgebornId) {
         const forgeborn = normalizedCards.find(card => 
-          card.id === deck.forgebornId || 
-          (card.id && deck.forgebornId && card.id.includes(deck.forgebornId)) ||
-          (deck.forgebornId && card.id && deck.forgebornId.includes(card.id))
+          card.id === deckForUse.forgebornId || 
+          (card.id && deckForUse.forgebornId && card.id.includes(deckForUse.forgebornId)) ||
+          (deckForUse.forgebornId && card.id && deckForUse.forgebornId.includes(card.id))
         )
         if (forgeborn) {
           forgebornCardsList.push(forgeborn)
+        } else if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.id) {
+          // If forgeborn not found in normalizedCards, try to get it from deckForUse.forgeborn object
+          const forgebornId = deckForUse.forgeborn.id || deckForUse.forgebornId
+          const forgebornFromObject = getCardInfo(forgebornId, deckForUse.forgeborn)
+          if (forgebornFromObject && !forgebornCardsList.some(fb => fb.id === forgebornFromObject.id)) {
+            forgebornCardsList.push(forgebornFromObject)
+          }
+        }
+      } else if (deckForUse?.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.id) {
+        // If no forgebornId but we have forgeborn object, use it
+        const forgebornFromObject = getCardInfo(deckForUse.forgeborn.id, deckForUse.forgeborn)
+        if (forgebornFromObject && !forgebornCardsList.some(fb => fb.id === forgebornFromObject.id)) {
+          forgebornCardsList.push(forgebornFromObject)
         }
       }
+      
+      // For fused decks, ensure first forgeborn is found from first source deck
+      // This is important because first forgeborn might not be in normalizedCards
+      if (deckForUse?.format === 'Fused') {
+        const [deck1, deck2] = getFusedDeckSourceDecks
+        const fusedDeckAny = deckForUse as any
+        
+        // Try to get first forgeborn from deck1
+        let firstForgebornId: string | undefined
+        let firstForgebornCard: any = null
+        
+        // First, try to get forgebornId from deck1 or fusedDeckAny
+        firstForgebornId = deckForUse?.forgebornId || (deck1 && (deck1 as any).forgebornId)
+        
+        // Also check myDecks directly if deck1 doesn't have full data
+        if (!firstForgebornId && fusedDeckAny.myDecks && Array.isArray(fusedDeckAny.myDecks) && fusedDeckAny.myDecks.length >= 1) {
+          const myDeck1 = fusedDeckAny.myDecks[0]
+          if (myDeck1 && typeof myDeck1 === 'object') {
+            firstForgebornId = myDeck1.forgebornId || myDeck1.forgeborn?.id || fusedDeckAny.currentForgebornId
+            
+            // Also check if forgeborn is in the cards array
+            if (myDeck1.cards && typeof myDeck1.cards === 'object') {
+              // cards might be an object with numeric keys
+              const cardsArray = Array.isArray(myDeck1.cards) 
+                ? myDeck1.cards 
+                : Object.values(myDeck1.cards)
+              
+              const forgebornInCards = cardsArray.find((c: any) => {
+                if (typeof c === 'object' && c !== null) {
+                  const cardType = c.cardType || c.CardType || c.type || c.Type
+                  return cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
+                }
+                return false
+              })
+              
+              if (forgebornInCards) {
+                firstForgebornCard = forgebornInCards
+                firstForgebornId = firstForgebornId || forgebornInCards.id || forgebornInCards.cardId || forgebornInCards.name
+              }
+            }
+          }
+        }
+        
+        // If we have firstForgebornId, try to find it
+        // Check if first forgeborn is already in the list by ID match
+        const firstForgebornAlreadyInList = firstForgebornId && forgebornCardsList.some(fb => 
+          fb.id === firstForgebornId || 
+          (fb.id && firstForgebornId && fb.id.includes(firstForgebornId)) ||
+          (firstForgebornId && fb.id && firstForgebornId.includes(fb.id))
+        )
+        
+        if (firstForgebornId && !firstForgebornAlreadyInList) {
+          // First, try to find first forgeborn in normalizedCards
+          let firstForgeborn = normalizedCards.find(card => 
+            card.id === firstForgebornId || 
+            (card.id && firstForgebornId && card.id.includes(firstForgebornId)) ||
+            (firstForgebornId && card.id && firstForgebornId.includes(card.id))
+          )
+          
+          // If not found in normalizedCards and we have firstForgebornCard, use it
+          if (!firstForgeborn && firstForgebornCard) {
+            const cardId = firstForgebornCard.id || firstForgebornCard.cardId || firstForgebornCard.name || firstForgebornId
+            firstForgeborn = getCardInfo(cardId, firstForgebornCard)
+          }
+          
+          // If still not found, try to find it in deck1.cards
+          if (!firstForgeborn && deck1 && deck1.cards && Array.isArray(deck1.cards)) {
+            const deck1Card = deck1.cards.find((c: any) => {
+              if (typeof c === 'string') {
+                return c === firstForgebornId
+              } else if (typeof c === 'object' && c !== null) {
+                const cId = c.id || c.cardId || c.name
+                return cId === firstForgebornId || 
+                       (cId && firstForgebornId && cId.includes(firstForgebornId)) ||
+                       (firstForgebornId && cId && firstForgebornId.includes(cId))
+              }
+              return false
+            })
+            
+            if (deck1Card) {
+              const cardId = typeof deck1Card === 'string' ? deck1Card : (deck1Card.id || deck1Card.cardId || deck1Card.name)
+              firstForgeborn = getCardInfo(cardId, typeof deck1Card === 'object' ? deck1Card : undefined)
+            }
+          }
+          
+          // If still not found, try to get forgeborn by cardType from deck1
+          if (!firstForgeborn && deck1 && deck1.cards && Array.isArray(deck1.cards)) {
+            const forgebornByTypeCard = deck1.cards.find((c: any) => {
+              if (typeof c === 'object' && c !== null) {
+                const cardType = c.cardType || c.CardType || c.type || c.Type
+                return cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
+              }
+              return false
+            })
+            
+            if (forgebornByTypeCard && typeof forgebornByTypeCard === 'object') {
+              const cardId = forgebornByTypeCard.id || forgebornByTypeCard.cardId || forgebornByTypeCard.name
+              firstForgeborn = getCardInfo(cardId, forgebornByTypeCard)
+            }
+          }
+          
+          if (firstForgeborn) {
+            console.log(`[DeckDetails] 🔥 Found first forgeborn for fused deck: ${firstForgeborn.id} (${firstForgeborn.name})`)
+            forgebornCardsList.push(firstForgeborn)
+          } else {
+            console.log(`[DeckDetails] ⚠️ First forgeborn not found for fused deck with ID: ${firstForgebornId}`)
+          }
+        }
+      }
+      
+      // For fused decks, add second forgeborn from the second source deck
+      if (deckForUse?.format === 'Fused') {
+        const [deck1, deck2] = getFusedDeckSourceDecks
+        const fusedDeckAny = deckForUse as any
+        
+        // Try to get second forgeborn from deck2
+        let secondForgebornId: string | undefined
+        let secondForgebornCard: any = null
+        
+        // First, try to get forgebornId from deck2
+        if (deck2 && (deck2 as any).forgebornId) {
+          secondForgebornId = (deck2 as any).forgebornId
+        }
+        
+        // Also check myDecks directly if deck2 doesn't have full data
+        if (!secondForgebornId && fusedDeckAny.myDecks && Array.isArray(fusedDeckAny.myDecks) && fusedDeckAny.myDecks.length >= 2) {
+          const myDeck2 = fusedDeckAny.myDecks[1]
+          if (myDeck2 && typeof myDeck2 === 'object') {
+            secondForgebornId = myDeck2.forgebornId || myDeck2.forgeborn?.id
+            
+            // Also check if forgeborn is in the cards array
+            if (myDeck2.cards && typeof myDeck2.cards === 'object') {
+              // cards might be an object with numeric keys
+              const cardsArray = Array.isArray(myDeck2.cards) 
+                ? myDeck2.cards 
+                : Object.values(myDeck2.cards)
+              
+              const forgebornInCards = cardsArray.find((c: any) => {
+                if (typeof c === 'object' && c !== null) {
+                  const cardType = c.cardType || c.CardType || c.type || c.Type
+                  return cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
+                }
+                return false
+              })
+              
+              if (forgebornInCards) {
+                secondForgebornCard = forgebornInCards
+                secondForgebornId = secondForgebornId || forgebornInCards.id || forgebornInCards.cardId || forgebornInCards.name
+              }
+            }
+          }
+        }
+        
+        // If we have secondForgebornId, try to find it
+        if (secondForgebornId) {
+          // First, try to find second forgeborn in normalizedCards
+          let secondForgeborn = normalizedCards.find(card => 
+            (card.id === secondForgebornId || 
+             (card.id && secondForgebornId && card.id.includes(secondForgebornId)) ||
+             (secondForgebornId && card.id && secondForgebornId.includes(card.id))) &&
+            !forgebornCardsList.some(fb => fb.id === card.id)
+          )
+          
+          // If not found in normalizedCards and we have secondForgebornCard, use it
+          if (!secondForgeborn && secondForgebornCard) {
+            const cardId = secondForgebornCard.id || secondForgebornCard.cardId || secondForgebornCard.name || secondForgebornId
+            secondForgeborn = getCardInfo(cardId, secondForgebornCard)
+          }
+          
+          // If still not found, try to find it in deck2.cards
+          if (!secondForgeborn && deck2 && deck2.cards && Array.isArray(deck2.cards)) {
+            const deck2Card = deck2.cards.find((c: any) => {
+              if (typeof c === 'string') {
+                return c === secondForgebornId
+              } else if (typeof c === 'object' && c !== null) {
+                const cId = c.id || c.cardId || c.name
+                return cId === secondForgebornId || 
+                       (cId && secondForgebornId && cId.includes(secondForgebornId)) ||
+                       (secondForgebornId && cId && secondForgebornId.includes(cId))
+              }
+              return false
+            })
+            
+            if (deck2Card) {
+              const cardId = typeof deck2Card === 'string' ? deck2Card : (deck2Card.id || deck2Card.cardId || deck2Card.name)
+              secondForgeborn = getCardInfo(cardId, typeof deck2Card === 'object' ? deck2Card : undefined)
+            }
+          }
+          
+          // If still not found, try to get forgeborn by cardType from deck2
+          if (!secondForgeborn && deck2 && deck2.cards && Array.isArray(deck2.cards)) {
+            const forgebornByTypeCard = deck2.cards.find((c: any) => {
+              if (typeof c === 'object' && c !== null) {
+                const cardType = c.cardType || c.CardType || c.type || c.Type
+                return cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
+              }
+              return false
+            })
+            
+            if (forgebornByTypeCard && typeof forgebornByTypeCard === 'object') {
+              const cardId = forgebornByTypeCard.id || forgebornByTypeCard.cardId || forgebornByTypeCard.name
+              secondForgeborn = getCardInfo(cardId, forgebornByTypeCard)
+            }
+          }
+          
+          if (secondForgeborn && !forgebornCardsList.some(fb => fb.id === secondForgeborn!.id)) {
+            forgebornCardsList.push(secondForgeborn)
+          }
+        }
+      }
+      
       if (forgebornCardsList.length === 0) {
         const forgebornByType = normalizedCards.find(card =>
           card.type?.toLowerCase().includes('forgeborn') ||
@@ -411,8 +786,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
         // Check if spell - prioritize cardType from original card data
         // Get original card data to check cardType properly
-        const originalCardForType = deck.cards && Array.isArray(deck.cards)
-          ? deck.cards.find((c: any, idx: number) => {
+        const originalCardForType = deckForUse && deckForUse.cards && Array.isArray(deckForUse.cards)
+          ? deckForUse.cards.find((c: any, idx: number) => {
               if (typeof c === 'string') {
                 return c === card.id
               }
@@ -438,7 +813,46 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         }
       })
 
-      // Also add Solbind cards from solbindCards arrays
+      // Also check forgeborn.solbindCards for second forgeborn (alternative forgeborn)
+      if (deckForUse && deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.solbindCards && Array.isArray(deckForUse.forgeborn.solbindCards)) {
+        deckForUse.forgeborn.solbindCards.forEach((solbindCard: any) => {
+          if (solbindCard && solbindCard.id) {
+            // Check if this is a Forgeborn card (alternative forgeborn, not a Solbind spell)
+            // Try different ways to get cardType
+            const cardType = solbindCard.cardType || solbindCard.CardType || solbindCard.type || solbindCard.Type
+            const isForgebornCard = cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
+            
+            // Also check rarity - if it's NOT Solbind and has Forgeborn type, it's a second forgeborn
+            const rarity = solbindCard.rarity || solbindCard.Rarity || ''
+            const isNotSolbind = !rarity || (typeof rarity === 'string' && !rarity.toLowerCase().includes('solbind'))
+            
+            if (isForgebornCard && isNotSolbind) {
+              // Check if this forgeborn is already in the list
+              const alreadyInList = forgebornCardsList.some(fb => 
+                fb.id === solbindCard.id || 
+                (fb.id && solbindCard.id && fb.id.includes(solbindCard.id)) ||
+                (solbindCard.id && fb.id && solbindCard.id.includes(fb.id))
+              )
+              
+              if (!alreadyInList) {
+                const secondForgeborn = getCardInfo(solbindCard.id, solbindCard)
+                forgebornCardsList.push(secondForgeborn)
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`[DeckDetails] ✅ Added second forgeborn to image loading list: ${secondForgeborn.name} (${secondForgeborn.id})`)
+                }
+              }
+            } else {
+              // Only add if it's actually a Solbind card (rarity === 'Solbind')
+              const isSolbindCard = solbindCard.rarity === 'Solbind' || solbindCard.rarity === 'solbind'
+              if (isSolbindCard && !solbindCardsList.some(c => c.id === solbindCard.id)) {
+                solbindCardsList.push(getCardInfo(solbindCard.id, solbindCard))
+              }
+            }
+          }
+        })
+      }
+      
+      // Also add Solbind cards from solbindCards arrays in normalizedCards
       normalizedCards.forEach(card => {
         const cardData = card as any
         if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
@@ -468,6 +882,14 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
         console.log(`[DeckDetails] 🔥 [1/5] Loading Forgeborn: ${card.id} (${card.name})`)
         const imageUrl = await loadSingleImage(card.id, 1, true)
+        
+        if (process.env.NODE_ENV === 'development') {
+          if (imageUrl) {
+            console.log(`[DeckDetails] ✅ Forgeborn image loaded: ${card.name} (${card.id}) -> ${imageUrl}`)
+          } else {
+            console.warn(`[DeckDetails] ⚠️ Forgeborn image failed to load: ${card.name} (${card.id})`)
+          }
+        }
         
         if (!isModalOpen) {
           console.log(`[DeckDetails] ⏹️ Stopping after Forgeborn load - modal closed`)
@@ -593,23 +1015,300 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       isModalOpen = false
       console.log(`[DeckDetails] 🧹 Cleanup: stopped image loading for deck ${deck?.id}`)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened, normalizedCards.length, deck?.id, solbindCardIdsKey]) // Only depend on stable values
+  }, [opened, normalizedCards.length, deck?.id, solbindCardIdsKey, getFusedDeckSourceDecks, deck]) // Include getFusedDeckSourceDecks for fused deck second forgeborn
 
   // Group cards by categories - must be before any conditional returns
   const forgebornCards: CardInfo[] = useMemo(() => {
-    if (!deck) return []
+    const deckForUse = fullDeckData || deck
+    if (!deckForUse) return []
+    
+    const forgebornList: CardInfo[] = []
     
     // First, try to find Forgeborn by forgebornId (most reliable)
-    if (deck.forgebornId) {
+    if (deckForUse.forgebornId) {
       const forgeborn = normalizedCards.find(card => 
-        card.id === deck.forgebornId || 
-        (card.id && deck.forgebornId && card.id.includes(deck.forgebornId)) ||
-        (deck.forgebornId && card.id && deck.forgebornId.includes(card.id))
+        card.id === deckForUse.forgebornId || 
+        (card.id && deckForUse.forgebornId && card.id.includes(deckForUse.forgebornId)) ||
+        (deckForUse.forgebornId && card.id && deckForUse.forgebornId.includes(card.id))
       )
       if (forgeborn) {
-        return [forgeborn]
+        forgebornList.push(forgeborn)
+      } else if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.id) {
+        // If forgeborn not found in normalizedCards, try to get it from deckForUse.forgeborn object
+        const forgebornId = deckForUse.forgeborn.id || deckForUse.forgebornId
+        const forgebornFromObject = getCardInfo(forgebornId, deckForUse.forgeborn)
+        if (forgebornFromObject && !forgebornList.some(fb => fb.id === forgebornFromObject.id)) {
+          forgebornList.push(forgebornFromObject)
+        }
       }
+    } else if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.id) {
+      // If no forgebornId but we have forgeborn object, use it
+      const forgebornFromObject = getCardInfo(deckForUse.forgeborn.id, deckForUse.forgeborn)
+      if (forgebornFromObject && !forgebornList.some(fb => fb.id === forgebornFromObject.id)) {
+        forgebornList.push(forgebornFromObject)
+      }
+    }
+    
+    // For fused decks, ensure first forgeborn is found from first source deck
+    // This is important because first forgeborn might not be in normalizedCards
+    if (deckForUse.format === 'Fused') {
+      const [deck1, deck2] = getFusedDeckSourceDecks
+      const fusedDeckAny = deckForUse as any
+      
+      // Try to get first forgeborn from deck1
+      let firstForgebornId: string | undefined
+      let firstForgebornCard: any = null
+      
+      // First, try to get forgebornId from deckForUse or fusedDeckAny
+      firstForgebornId = deckForUse.forgebornId || (deck1 && (deck1 as any).forgebornId)
+      
+      // Also check myDecks directly if deck1 doesn't have full data
+      if (!firstForgebornId && fusedDeckAny.myDecks && Array.isArray(fusedDeckAny.myDecks) && fusedDeckAny.myDecks.length >= 1) {
+        const myDeck1 = fusedDeckAny.myDecks[0]
+        if (myDeck1 && typeof myDeck1 === 'object') {
+          firstForgebornId = myDeck1.forgebornId || myDeck1.forgeborn?.id || fusedDeckAny.currentForgebornId
+          
+          // Also check if forgeborn is in the cards array
+          if (myDeck1.cards && typeof myDeck1.cards === 'object') {
+            // cards might be an object with numeric keys
+            const cardsArray = Array.isArray(myDeck1.cards) 
+              ? myDeck1.cards 
+              : Object.values(myDeck1.cards)
+            
+            const forgebornInCards = cardsArray.find((c: any) => {
+              if (typeof c === 'object' && c !== null) {
+                const cardType = c.cardType || c.CardType || c.type || c.Type
+                return cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
+              }
+              return false
+            })
+            
+            if (forgebornInCards) {
+              firstForgebornCard = forgebornInCards
+              firstForgebornId = firstForgebornId || forgebornInCards.id || forgebornInCards.cardId || forgebornInCards.name
+            }
+          }
+        }
+      }
+      
+      // If we have firstForgebornId, try to find it
+      // Check if first forgeborn is already in the list by ID match
+      const firstForgebornAlreadyInList = firstForgebornId && forgebornList.some(fb => 
+        fb.id === firstForgebornId || 
+        (fb.id && firstForgebornId && fb.id.includes(firstForgebornId)) ||
+        (firstForgebornId && fb.id && firstForgebornId.includes(fb.id))
+      )
+      
+      if (firstForgebornId && !firstForgebornAlreadyInList) {
+        // First, try to find first forgeborn in normalizedCards
+        let firstForgeborn = normalizedCards.find(card => 
+          card.id === firstForgebornId || 
+          (card.id && firstForgebornId && card.id.includes(firstForgebornId)) ||
+          (firstForgebornId && card.id && firstForgebornId.includes(card.id))
+        )
+        
+        // If not found in normalizedCards and we have firstForgebornCard, use it
+        if (!firstForgeborn && firstForgebornCard) {
+          const cardId = firstForgebornCard.id || firstForgebornCard.cardId || firstForgebornCard.name || firstForgebornId
+          firstForgeborn = getCardInfo(cardId, firstForgebornCard)
+        }
+        
+        // If still not found, try to find it in deck1.cards
+        if (!firstForgeborn && deck1 && deck1.cards && Array.isArray(deck1.cards)) {
+          const deck1Card = deck1.cards.find((c: any) => {
+            if (typeof c === 'string') {
+              return c === firstForgebornId
+            } else if (typeof c === 'object' && c !== null) {
+              const cId = c.id || c.cardId || c.name
+              return cId === firstForgebornId || 
+                     (cId && firstForgebornId && cId.includes(firstForgebornId)) ||
+                     (firstForgebornId && cId && firstForgebornId.includes(cId))
+            }
+            return false
+          })
+          
+          if (deck1Card) {
+            const cardId = typeof deck1Card === 'string' ? deck1Card : (deck1Card.id || deck1Card.cardId || deck1Card.name)
+            firstForgeborn = getCardInfo(cardId, typeof deck1Card === 'object' ? deck1Card : undefined)
+          }
+        }
+        
+        // If still not found, try to get forgeborn by cardType from deck1
+        if (!firstForgeborn && deck1 && deck1.cards && Array.isArray(deck1.cards)) {
+          const forgebornByTypeCard = deck1.cards.find((c: any) => {
+            if (typeof c === 'object' && c !== null) {
+              const cardType = c.cardType || c.CardType || c.type || c.Type
+              return cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
+            }
+            return false
+          })
+          
+          if (forgebornByTypeCard && typeof forgebornByTypeCard === 'object') {
+            const cardId = forgebornByTypeCard.id || forgebornByTypeCard.cardId || forgebornByTypeCard.name
+            firstForgeborn = getCardInfo(cardId, forgebornByTypeCard)
+          }
+        }
+        
+        if (firstForgeborn) {
+          forgebornList.push(firstForgeborn)
+        }
+      }
+    }
+    
+    // For fused decks, add second forgeborn from the second source deck
+    if (deckForUse.format === 'Fused') {
+      const [deck1, deck2] = getFusedDeckSourceDecks
+      const fusedDeckAny = deckForUse as any
+      
+      // Try to get second forgeborn from deck2
+      let secondForgebornId: string | undefined
+      let secondForgebornCard: any = null
+      
+      // First, try to get forgebornId from deck2
+      if (deck2 && (deck2 as any).forgebornId) {
+        secondForgebornId = (deck2 as any).forgebornId
+      }
+      
+      // Also check myDecks directly if deck2 doesn't have full data
+      if (!secondForgebornId && fusedDeckAny.myDecks && Array.isArray(fusedDeckAny.myDecks) && fusedDeckAny.myDecks.length >= 2) {
+        const myDeck2 = fusedDeckAny.myDecks[1]
+        if (myDeck2 && typeof myDeck2 === 'object') {
+          secondForgebornId = myDeck2.forgebornId || myDeck2.forgeborn?.id
+          
+          // Also check if forgeborn is in the cards array
+          if (myDeck2.cards && typeof myDeck2.cards === 'object') {
+            // cards might be an object with numeric keys
+            const cardsArray = Array.isArray(myDeck2.cards) 
+              ? myDeck2.cards 
+              : Object.values(myDeck2.cards)
+            
+            const forgebornInCards = cardsArray.find((c: any) => {
+              if (typeof c === 'object' && c !== null) {
+                const cardType = c.cardType || c.CardType || c.type || c.Type
+                return cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
+              }
+              return false
+            })
+            
+            if (forgebornInCards) {
+              secondForgebornCard = forgebornInCards
+              secondForgebornId = secondForgebornId || forgebornInCards.id || forgebornInCards.cardId || forgebornInCards.name
+            }
+          }
+        }
+      }
+      
+      // If we have secondForgebornId, try to find it
+      if (secondForgebornId) {
+        // First, try to find second forgeborn in normalizedCards
+        let secondForgeborn = normalizedCards.find(card => 
+          (card.id === secondForgebornId || 
+           (card.id && secondForgebornId && card.id.includes(secondForgebornId)) ||
+           (secondForgebornId && card.id && secondForgebornId.includes(card.id))) &&
+          !forgebornList.some(fb => fb.id === card.id)
+        )
+        
+        // If not found in normalizedCards and we have secondForgebornCard, use it
+        if (!secondForgeborn && secondForgebornCard) {
+          const cardId = secondForgebornCard.id || secondForgebornCard.cardId || secondForgebornCard.name || secondForgebornId
+          secondForgeborn = getCardInfo(cardId, secondForgebornCard)
+        }
+        
+        // If still not found, try to find it in deck2.cards
+        if (!secondForgeborn && deck2 && deck2.cards && Array.isArray(deck2.cards)) {
+          const deck2Card = deck2.cards.find((c: any) => {
+            if (typeof c === 'string') {
+              return c === secondForgebornId
+            } else if (typeof c === 'object' && c !== null) {
+              const cId = c.id || c.cardId || c.name
+              return cId === secondForgebornId || 
+                     (cId && secondForgebornId && cId.includes(secondForgebornId)) ||
+                     (secondForgebornId && cId && secondForgebornId.includes(cId))
+            }
+            return false
+          })
+          
+          if (deck2Card) {
+            const cardId = typeof deck2Card === 'string' ? deck2Card : (deck2Card.id || deck2Card.cardId || deck2Card.name)
+            secondForgeborn = getCardInfo(cardId, typeof deck2Card === 'object' ? deck2Card : undefined)
+          }
+        }
+        
+        // If still not found, try to get forgeborn by cardType from deck2
+        if (!secondForgeborn && deck2 && deck2.cards && Array.isArray(deck2.cards)) {
+          const forgebornByTypeCard = deck2.cards.find((c: any) => {
+            if (typeof c === 'object' && c !== null) {
+              const cardType = c.cardType || c.CardType || c.type || c.Type
+              return cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
+            }
+            return false
+          })
+          
+          if (forgebornByTypeCard && typeof forgebornByTypeCard === 'object') {
+            const cardId = forgebornByTypeCard.id || forgebornByTypeCard.cardId || forgebornByTypeCard.name
+            secondForgeborn = getCardInfo(cardId, forgebornByTypeCard)
+          }
+        }
+        
+        if (secondForgeborn && !forgebornList.some(fb => fb.id === secondForgeborn!.id)) {
+          forgebornList.push(secondForgeborn)
+        }
+      }
+    }
+    
+    // Check forgeborn.solbindCards for second forgeborn (alternative forgeborn)
+    if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object') {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[DeckDetails] Forgeborn object:', deckForUse.forgeborn)
+        console.log('[DeckDetails] Forgeborn solbindCards:', deckForUse.forgeborn.solbindCards)
+      }
+      
+      if (deckForUse.forgeborn.solbindCards && Array.isArray(deckForUse.forgeborn.solbindCards)) {
+        deckForUse.forgeborn.solbindCards.forEach((solbindCard: any) => {
+          if (solbindCard && solbindCard.id) {
+            // Check if this is a Forgeborn card (alternative forgeborn, not a Solbind spell)
+            // Try different ways to get cardType
+            const cardType = solbindCard.cardType || solbindCard.CardType || solbindCard.type || solbindCard.Type
+            const isForgebornCard = cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
+            
+            // Also check rarity - if it's NOT Solbind and has Forgeborn type, it's a second forgeborn
+            const rarity = solbindCard.rarity || solbindCard.Rarity || ''
+            const isNotSolbind = !rarity || (typeof rarity === 'string' && !rarity.toLowerCase().includes('solbind'))
+            
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`[DeckDetails] Checking solbindCard ${solbindCard.id}:`, {
+                name: solbindCard.name,
+                cardType,
+                rarity,
+                isForgebornCard,
+                isNotSolbind
+              })
+            }
+            
+            if (isForgebornCard && isNotSolbind) {
+              // Check if this forgeborn is already in the list
+              const alreadyInList = forgebornList.some(fb => 
+                fb.id === solbindCard.id || 
+                (fb.id && solbindCard.id && fb.id.includes(solbindCard.id)) ||
+                (solbindCard.id && fb.id && solbindCard.id.includes(fb.id))
+              )
+              
+              if (!alreadyInList) {
+                const secondForgeborn = getCardInfo(solbindCard.id, solbindCard)
+                forgebornList.push(secondForgeborn)
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`[DeckDetails] ✅ Added second forgeborn: ${secondForgeborn.name} (${secondForgeborn.id})`)
+                }
+              }
+            }
+          }
+        })
+      }
+    }
+    
+    // If we found forgeborn(s), return them
+    if (forgebornList.length > 0) {
+      return forgebornList
     }
     
     // Fallback: find by cardType
@@ -622,7 +1321,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
     
     return []
-  }, [normalizedCards, deck?.forgebornId, deck])
+  }, [normalizedCards, deck, fullDeckData, getFusedDeckSourceDecks])
 
   // Reset selected card when deck changes
   useEffect(() => {
@@ -661,16 +1360,23 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         levelManuallyChangedRef.current = false
         
         // For Solbind cards, find the first available level
-        const cardImageData = cardImages[selectedCard.id]
-        if (cardImageData) {
-          const availableLevels = Object.keys(cardImageData).map(Number).sort()
-          if (availableLevels.length > 0) {
-            setSelectedLevel(availableLevels[0])
+        // For other cards, start with level 1
+        if (solbindCardIdsSet.has(selectedCard.id) || (selectedCard as any).rarity === 'Solbind' || (selectedCard as any).rarity === 'solbind') {
+          const cardImageData = cardImages[selectedCard.id]
+          if (cardImageData) {
+            const availableLevels = Object.keys(cardImageData).map(Number).sort()
+            if (availableLevels.length > 0) {
+              setSelectedLevel(availableLevels[0])
+            } else {
+              // If no images loaded yet, wait for them to load
+              setSelectedLevel(1)
+            }
           } else {
+            // If no images loaded yet, wait for them to load
             setSelectedLevel(1)
           }
         } else {
-          // For all cards, start with level 1 (user can change it with level selector)
+          // For all non-solbind cards, start with level 1 (user can change it with level selector)
           setSelectedLevel(1)
         }
       }
@@ -678,6 +1384,37 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       // (this prevents level from resetting when images finish loading)
     }
   }, [selectedCard?.id]) // Only depend on card ID, not cardImages
+  
+  // Auto-select first available level for Solbind cards when images load
+  useEffect(() => {
+    if (!selectedCard) return
+    
+    const isSolbind = solbindCardIdsSet.has(selectedCard.id) ||
+                      (selectedCard as any).rarity === 'Solbind' ||
+                      (selectedCard as any).rarity === 'solbind'
+    
+    if (!isSolbind) return // Only auto-select for Solbind cards
+    
+    const cardImageData = cardImages[selectedCard.id]
+    if (!cardImageData) return // Wait for images to load
+    
+    // Find first available level
+    const availableLevels = Object.keys(cardImageData).map(Number).sort()
+    if (availableLevels.length === 0) return // No levels available
+    
+    const firstAvailableLevel = availableLevels[0]
+    
+    // Check if current selected level exists
+    const currentLevelExists = cardImageData[selectedLevel] !== undefined
+    
+    // If current level doesn't exist, switch to first available
+    if (!currentLevelExists && !levelManuallyChangedRef.current) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[DeckDetails] Auto-selecting first available level ${firstAvailableLevel} for Solbind card ${selectedCard.id} (current level ${selectedLevel} doesn't exist)`)
+      }
+      setSelectedLevel(firstAvailableLevel)
+    }
+  }, [selectedCard, cardImages, selectedLevel, solbindCardIdsSet])
   
   // Handler for level button click - mark as manually changed
   const handleLevelChange = (level: number) => {
@@ -760,19 +1497,39 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   }, [normalizedCards, forgebornCards, solbindCardIdsSet, deck])
 
   const solbindCards: CardInfo[] = useMemo(() => {
-    if (!deck) return []
+    const deckForUse = fullDeckData || deck
+    if (!deckForUse) return []
     
     // Extract Solbind cards from solbindCards arrays in other cards
     const solbindCardObjects: CardInfo[] = []
     
-    // First, find all cards that have solbindCards array and extract those cards
+    // First, check forgeborn.solbindCards (solbind cards attached to forgeborn)
+    if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.solbindCards && Array.isArray(deckForUse.forgeborn.solbindCards)) {
+      deckForUse.forgeborn.solbindCards.forEach((solbindCard: any) => {
+        if (solbindCard && solbindCard.id) {
+          // Only add if it's actually a Solbind card (rarity === 'Solbind')
+          // Second forgeborn (e.g., "Blighted Ironbeard") is not a Solbind card
+          const isSolbindCard = solbindCard.rarity === 'Solbind' || solbindCard.rarity === 'solbind'
+          if (isSolbindCard && !solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+            solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`[DeckDetails] ✅ Added Solbind card from forgeborn.solbindCards: ${solbindCard.name || solbindCard.id} (${solbindCard.id})`)
+            }
+          }
+        }
+      })
+    }
+    
+    // Second, find all cards that have solbindCards array and extract those cards
     normalizedCards.forEach(card => {
       const cardData = card as any
       if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
         cardData.solbindCards.forEach((solbindCard: any) => {
           if (solbindCard && solbindCard.id) {
             // Create CardInfo from solbind card data
+            if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
             solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+            }
           }
         })
       }
@@ -808,8 +1565,12 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
     })
     
+    if (process.env.NODE_ENV === 'development' && solbindCardObjects.length > 0) {
+      console.log(`[DeckDetails] 📋 Total Solbind cards found: ${solbindCardObjects.length}`, solbindCardObjects.map(c => c.name || c.id))
+    }
+    
     return solbindCardObjects
-  }, [normalizedCards, forgebornCards, solbindCardIdsSet, deck])
+  }, [normalizedCards, forgebornCards, solbindCardIdsSet, deck, fullDeckData])
 
   const creatureCards: CardInfo[] = useMemo(() => {
     if (!deck) return []
@@ -840,17 +1601,64 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
   }, [])
 
+  // Get rarity icon path based on card set and rarity
+  const getRarityIconPath = useCallback((cardSetNo?: string | number, rarity?: string, cardId?: string): string | null => {
+    if (!rarity) return null
+    
+    // Normalize rarity: "Common Rare" -> "CommonRare", "common rare" -> "CommonRare", etc.
+    let normalizedRarity = rarity.trim()
+    
+    // Handle "Common Rare" or "common rare" -> "CommonRare"
+    if (normalizedRarity.toLowerCase().includes('common') && normalizedRarity.toLowerCase().includes('rare')) {
+      normalizedRarity = 'CommonRare'
+    } else if (normalizedRarity.toLowerCase().includes('common') && !normalizedRarity.toLowerCase().includes('rare')) {
+      normalizedRarity = 'Common'
+    } else if (normalizedRarity.toLowerCase().includes('rare') && !normalizedRarity.toLowerCase().includes('common')) {
+      normalizedRarity = 'Rare'
+    } else if (normalizedRarity.toLowerCase().includes('darkforge')) {
+      normalizedRarity = 'Darkforge'
+    } else if (normalizedRarity.toLowerCase().includes('ls') || normalizedRarity.toLowerCase().includes('legendary')) {
+      normalizedRarity = 'LS'
+    } else if (normalizedRarity.toLowerCase().includes('solbind')) {
+      normalizedRarity = 'Solbind'
+    }
+    
+    // Get set number: first try cardSetNo, then try to extract from cardId, default to 1
+    let setNo = '1'
+    if (cardSetNo) {
+      setNo = String(cardSetNo)
+    } else if (cardId) {
+      // Extract set number from cardId (e.g., "s3nn1arrogant-butcher" -> "3")
+      const match = cardId.match(/^s(\d+)/i)
+      if (match && match[1]) {
+        setNo = match[1]
+      }
+    }
+    
+    return `/images/icons/rarity/S${setNo}_${normalizedRarity}.png`
+  }, [])
+
   // Early return AFTER all hooks
   if (!deck) return null
 
   const CardListItem = ({ card, onClick }: { card: CardInfo; onClick: () => void }) => {
-    const factionColor = getFactionBadgeColor(card.faction || deck.faction)
+    const cardData = card as any
+    const isBetrayer = cardData.betrayer === true || cardData.betrayer === 'true'
+    // For betrayer cards, use crossFaction for icon, otherwise use regular faction
+    const factionForIcon = isBetrayer && cardData.crossFaction 
+      ? cardData.crossFaction 
+      : (card.faction || deck.faction)
+    const factionColor = getFactionBadgeColor(factionForIcon)
+    const rarity = cardData.rarity || card.rarity
+    const rarityIconPath = getRarityIconPath(deck.cardSetNo, rarity, card.id)
+    const faction = (factionForIcon || '').toLowerCase()
+    const factionIconPath = faction ? `/images/icons/${faction}.png` : null
     
     return (
       <Button
         variant={selectedCard?.id === card.id ? 'filled' : 'subtle'}
         onClick={onClick}
-        className="w-full justify-start h-auto p-2"
+        className="w-full h-auto"
         styles={{
           root: {
             backgroundColor: selectedCard?.id === card.id 
@@ -862,24 +1670,57 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             '&:hover': {
               backgroundColor: 'rgba(74, 144, 226, 0.1)',
             },
+            justifyContent: 'flex-start',
+            paddingLeft: '0.5rem',
+            paddingRight: '0.5rem',
+            paddingTop: '0.5rem',
+            paddingBottom: '0.5rem',
+          },
+          inner: {
+            justifyContent: 'flex-start',
+            width: '100%',
           },
         }}
       >
-        <Group gap="xs" className="w-full" wrap="nowrap">
-          <IconHandFinger 
-            size={16} 
-            style={{ 
-              color: factionColor,
-              flexShrink: 0,
-            }} 
-          />
-          <div
-            className="w-4 h-4 rounded-full flex-shrink-0"
-            style={{
-              backgroundColor: factionColor,
-              opacity: 0.8,
-            }}
-          />
+        <Group gap="xs" className="w-full" wrap="nowrap" justify="flex-start" style={{ margin: 0 }}>
+          {factionIconPath ? (
+            <Image
+              src={factionIconPath}
+              alt={faction || 'Faction'}
+              w={16}
+              h={16}
+              style={{
+                flexShrink: 0,
+              }}
+            />
+          ) : (
+            <div
+              className="w-4 h-4 rounded-full flex-shrink-0"
+              style={{
+                backgroundColor: factionColor,
+                opacity: 0.8,
+              }}
+            />
+          )}
+          {rarityIconPath ? (
+            <Image
+              src={rarityIconPath}
+              alt={rarity || 'Rarity'}
+              w={16}
+              h={16}
+              style={{
+                flexShrink: 0,
+              }}
+            />
+          ) : (
+            <div
+              className="w-4 h-4 rounded-full flex-shrink-0"
+              style={{
+                backgroundColor: factionColor,
+                opacity: 0.8,
+              }}
+            />
+          )}
           <Text 
             size="sm" 
             className="text-white flex-1 text-left truncate"
@@ -915,25 +1756,101 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
               </Button>
             )}
             <Title order={3} className="text-white" style={{ flexShrink: 0 }}>
-              {deck.name || 'Untitled Deck'}
-            </Title>
+            {deck.name || 'Untitled Deck'}
+          </Title>
             <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-              {deck.deckRank && (
-                <Badge
-                  color={deck.deckRank === 'Unranked' ? 'gray' : 'blue'}
-                  variant="light"
-                  size="sm"
-                >
-                  {deck.deckRank}
-                </Badge>
-              )}
-              {deck.format && (
+            {deck.deckRank && (
+              <Badge
+                color={deck.deckRank === 'Unranked' ? 'gray' : 'blue'}
+                variant="light"
+                size="sm"
+              >
+                {deck.deckRank}
+              </Badge>
+            )}
+            {deck.format && (
                 <Badge
                   color="gray"
                   variant="light"
                   size="sm"
                 >
-                  {deck.format}
+                {deck.format}
+                </Badge>
+              )}
+            </Group>
+            {deck && (() => {
+              const isFused = deck.format === 'Fused' || (deck as any).format === 'Fused'
+              const solforgefusionUrl = isFused 
+                ? `https://solforgefusion.com/fused/${deck.id}`
+                : `https://solforgefusion.com/decks/${deck.id}`
+              
+              return (
+                <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                  {isFused ? (
+                    <Button
+                      component="a"
+                      href={`https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/fuseddeck/${deck.id}?inclCards=true&inclUsers=true`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      variant="subtle"
+                      size="xs"
+                      color="blue"
+                      leftSection={<IconExternalLink size={14} />}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ flexShrink: 0 }}
+                    >
+                      API
+                    </Button>
+                  ) : (
+                    <Button
+                      component="a"
+                      href={`https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/${deck.id}?inclCards=true&inclUsers=true`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      variant="subtle"
+                      size="xs"
+                      color="blue"
+                      leftSection={<IconExternalLink size={14} />}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ flexShrink: 0 }}
+                    >
+                      API
+                    </Button>
+                  )}
+                  <Button
+                    component="a"
+                    href={solforgefusionUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="subtle"
+                    size="xs"
+                    color="blue"
+                    leftSection={<IconWorld size={14} />}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ flexShrink: 0 }}
+                  >
+                    SFF
+                  </Button>
+                </Group>
+              )
+            })()}
+            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+              {(deck as any).deckScore !== undefined && (deck as any).deckScore !== null && (
+                <Badge
+                  color="grape"
+                  variant="light"
+                  size="sm"
+                >
+                  Score: {typeof (deck as any).deckScore === 'number' ? Math.round((deck as any).deckScore * 100) : (deck as any).deckScore}
+                </Badge>
+              )}
+              {(deck as any).elo !== undefined && (deck as any).elo !== null && (
+                <Badge
+                  color="violet"
+                  variant="light"
+                  size="sm"
+                >
+                  ELO: {typeof (deck as any).elo === 'number' ? Math.round((deck as any).elo) : (deck as any).elo}
                 </Badge>
               )}
             </Group>
@@ -975,9 +1892,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                           style={{ textDecorationThickness: '1px' }}
                         >
                           {sourceDeck2.name || 'Deck 2'}
-                        </Text>
-                      )}
-                    </Group>
+              </Text>
+            )}
+          </Group>
                   )
                 } else {
                   // Show links without click handler (just text)
@@ -1007,13 +1924,13 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           </Group>
         </Group>
       }
-      size="90vw"
+      size="85vw"
       centered
       styles={{
         content: {
           backgroundColor: 'rgba(30, 41, 59, 0.98)',
           border: '1px solid rgba(74, 144, 226, 0.3)',
-          maxWidth: '1400px',
+          maxWidth: '1200px',
         },
         header: {
           backgroundColor: 'rgba(30, 41, 59, 0.98)',
@@ -1027,15 +1944,15 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[70vh]">
         {/* Left column - card lists */}
         <div className="lg:col-span-1 flex flex-col">
-          <ScrollArea className="flex-1">
-            <Stack gap="md">
+          <ScrollArea className="flex-1" style={{ padding: 0 }}>
+            <Stack gap="md" align="flex-start" style={{ padding: 0, margin: 0 }}>
               {/* Forgeborn */}
               {forgebornCards.length > 0 && (
-                <div>
-                  <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase">
+                <div style={{ width: '100%' }}>
+                  <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase" style={{ paddingLeft: 0 }}>
                     Forgeborn
                   </Text>
-                  <Stack gap="xs">
+                  <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {forgebornCards.map((card) => (
                       <CardListItem
                         key={card.id}
@@ -1049,11 +1966,11 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
               {/* Creatures */}
               {creatureCards.length > 0 && (
-                <div>
-                  <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase">
+                <div style={{ width: '100%' }}>
+                  <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase" style={{ paddingLeft: 0 }}>
                     Creatures ({creatureCards.length})
                   </Text>
-                  <Stack gap="xs">
+                  <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {creatureCards.map((card) => (
                       <CardListItem
                         key={card.id}
@@ -1067,11 +1984,11 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
               {/* Spells */}
               {spellCards.length > 0 && (
-                <div>
-                  <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase">
+                <div style={{ width: '100%' }}>
+                  <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase" style={{ paddingLeft: 0 }}>
                     Spells ({spellCards.length})
                   </Text>
-                  <Stack gap="xs">
+                  <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {spellCards.map((card) => (
                       <CardListItem
                         key={card.id}
@@ -1085,11 +2002,11 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
               {/* Solbind */}
               {solbindCards.length > 0 && (
-                <div>
-                  <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase">
+                <div style={{ width: '100%' }}>
+                  <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase" style={{ paddingLeft: 0 }}>
                     Solbind ({solbindCards.length})
                   </Text>
-                  <Stack gap="xs">
+                  <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {solbindCards.map((card) => (
                       <CardListItem
                         key={card.id}
@@ -1103,11 +2020,11 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
               {/* If no categories, show all cards */}
               {forgebornCards.length === 0 && creatureCards.length === 0 && spellCards.length === 0 && solbindCards.length === 0 && normalizedCards.length > 0 && (
-                <div>
-                  <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase">
+                <div style={{ width: '100%' }}>
+                  <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase" style={{ paddingLeft: 0 }}>
                     Cards ({normalizedCards.length})
                   </Text>
-                  <Stack gap="xs">
+                  <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {normalizedCards.map((card) => (
                       <CardListItem
                         key={card.id}
@@ -1237,33 +2154,45 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                           </div>
                         )}
                         {/* Level selector buttons - show for creatures and spells (always show all 3 levels) */}
+                        {/* For Solbind cards, only show levels that have images */}
                         {!isForgeborn && (
                           <Group gap="xs" justify="center">
-                            {[1, 2, 3].map(level => {
-                              // For creatures and spells, always show all 3 levels
-                              // Even if image hasn't loaded yet
-                              const hasImage = cardImages[selectedCard.id]?.[level]
-                              const levelErrorKey = `${selectedCard.id}-${level}`
-                              const isLoading = !hasImage && !imageErrors.has(levelErrorKey)
-                              
-                              return (
-                                <Button
-                                  key={level}
-                                  size="sm"
-                                  variant={selectedLevel === level ? 'filled' : 'outline'}
-                                  onClick={() => handleLevelChange(level)}
-                                  // Always enabled - allow user to select any level even if image hasn't loaded yet
-                                  className={
-                                    selectedLevel === level
-                                      ? 'bg-sf-primary hover:bg-sf-primary/90'
-                                      : 'border-sf-primary/50 text-sf-primary hover:bg-sf-primary/20'
-                                  }
-                                >
-                                  Level {level}
-                                  {!hasImage && !imageErrors.has(`${selectedCard.id}-${level}`) && ' (loading...)'}
-                                </Button>
-                              )
-                            })}
+                            {[1, 2, 3]
+                              .filter(level => {
+                                // For Solbind cards, only show levels that have images (no placeholder for missing levels)
+                                if (isSolbind) {
+                                  const hasImage = cardImages[selectedCard.id]?.[level]
+                                  return !!hasImage // Only show if image exists
+                                }
+                                // For creatures and spells, always show all 3 levels
+                                // Even if image hasn't loaded yet (will show loading state)
+                                return true
+                              })
+                              .map(level => {
+                                // For creatures and spells, always show all 3 levels
+                                // Even if image hasn't loaded yet
+                                const hasImage = cardImages[selectedCard.id]?.[level]
+                                const levelErrorKey = `${selectedCard.id}-${level}`
+                                const isLoading = !hasImage && !imageErrors.has(levelErrorKey)
+                                
+                                return (
+                                  <Button
+                                    key={level}
+                                    size="sm"
+                                    variant={selectedLevel === level ? 'filled' : 'outline'}
+                                    onClick={() => handleLevelChange(level)}
+                                    // Always enabled - allow user to select any level even if image hasn't loaded yet
+                                    className={
+                                      selectedLevel === level
+                                        ? 'bg-sf-primary hover:bg-sf-primary/90'
+                                        : 'border-sf-primary/50 text-sf-primary hover:bg-sf-primary/20'
+                                    }
+                                  >
+                                    Level {level}
+                                    {!hasImage && !imageErrors.has(`${selectedCard.id}-${level}`) && ' (loading...)'}
+                                  </Button>
+                                )
+                              })}
                           </Group>
                         )}
                       </div>
