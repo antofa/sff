@@ -188,6 +188,11 @@ interface FilterState {
   spellType: string
   spellTypeCount: number | null
   deckName: string
+  cardSetNo: string[]
+  eloOperator: '>=' | '<=' | '='
+  eloValue: number | null
+  scoreOperator: '>=' | '<=' | '='
+  scoreValue: number | null
 }
 
 type ViewMode = 'decks' | 'fused' | 'both'
@@ -222,6 +227,11 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     spellType: '',
     spellTypeCount: null,
     deckName: '',
+    cardSetNo: [],
+    eloOperator: '>=',
+    eloValue: null,
+    scoreOperator: '>=',
+    scoreValue: null,
   })
   
   // Debounced filters for text inputs (0.5 second delay)
@@ -564,6 +574,33 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     return Array.from(spellTypesSet).sort()
   }, [decks, fusedDecks])
   
+  // Collect all unique card set numbers from all decks for the dropdown
+  const allCardSetNos = useMemo(() => {
+    const cardSetNosSet = new Set<string>()
+    
+    // Process both regular decks and fused decks
+    const allDecks = [...decks, ...fusedDecks]
+    
+    allDecks.forEach(deck => {
+      if (deck.cardSetNo) {
+        const setNo = String(deck.cardSetNo).trim()
+        if (setNo) {
+          cardSetNosSet.add(setNo)
+        }
+      }
+    })
+    
+    return Array.from(cardSetNosSet).sort((a, b) => {
+      // Sort numerically if both are numbers, otherwise alphabetically
+      const numA = Number(a)
+      const numB = Number(b)
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB
+      }
+      return a.localeCompare(b)
+    })
+  }, [decks, fusedDecks])
+  
   // Save scroll position when debouncedFilters change (after debounce delay)
   useEffect(() => {
     // Save scroll position and first visible deck ID before filters are applied
@@ -651,6 +688,11 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
       spellType: '',
       spellTypeCount: null,
       deckName: '',
+      cardSetNo: [],
+      eloOperator: '>=' as const,
+      eloValue: null,
+      scoreOperator: '>=' as const,
+      scoreValue: null,
     }
     setFilters(emptyFilters)
     // Note: debouncedFilters will update automatically after 500ms delay
@@ -669,7 +711,10 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
       debouncedFilters.freeCreaturesValue !== null ||
       debouncedFilters.creatureType ||
       (debouncedFilters.spellType && debouncedFilters.spellTypeCount !== null) ||
-      debouncedFilters.deckName
+      debouncedFilters.deckName ||
+      debouncedFilters.cardSetNo.length > 0 ||
+      debouncedFilters.eloValue !== null ||
+      debouncedFilters.scoreValue !== null
     )
   }, [debouncedFilters])
   
@@ -1819,6 +1864,60 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
         }
       }
       
+      // Filter by card set number (multi-select)
+      if (debouncedFilters.cardSetNo.length > 0) {
+        const deckSetNo = deck.cardSetNo ? String(deck.cardSetNo).trim() : null
+        if (!deckSetNo || !debouncedFilters.cardSetNo.includes(deckSetNo)) {
+          return false
+        }
+      }
+      
+      // Filter by ELO
+      if (debouncedFilters.eloValue !== null) {
+        const deckElo = (deck as any).elo !== undefined && (deck as any).elo !== null 
+          ? Number((deck as any).elo) 
+          : null
+        
+        if (deckElo === null) {
+          return false // Deck has no ELO, exclude it
+        }
+        
+        switch (debouncedFilters.eloOperator) {
+          case '>=':
+            if (deckElo < debouncedFilters.eloValue) return false
+            break
+          case '<=':
+            if (deckElo > debouncedFilters.eloValue) return false
+            break
+          case '=':
+            if (deckElo !== debouncedFilters.eloValue) return false
+            break
+        }
+      }
+      
+      // Filter by deck score
+      if (debouncedFilters.scoreValue !== null) {
+        const deckScore = (deck as any).deckScore !== undefined && (deck as any).deckScore !== null 
+          ? Number((deck as any).deckScore) 
+          : null
+        
+        if (deckScore === null) {
+          return false // Deck has no score, exclude it
+        }
+        
+        switch (debouncedFilters.scoreOperator) {
+          case '>=':
+            if (deckScore < debouncedFilters.scoreValue) return false
+            break
+          case '<=':
+            if (deckScore > debouncedFilters.scoreValue) return false
+            break
+          case '=':
+            if (deckScore !== debouncedFilters.scoreValue) return false
+            break
+        }
+      }
+      
       return true
     })
   }
@@ -2466,6 +2565,90 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                 </Grid.Col>
                 
                 <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <MultiSelect
+                    label="Card Set"
+                    placeholder="Select sets..."
+                    data={allCardSetNos.map(setNo => ({ value: setNo, label: `Set ${setNo}` }))}
+                    value={filters.cardSetNo}
+                    onChange={(value) => setFilters({ ...filters, cardSetNo: value })}
+                    clearable
+                    searchable
+                    styles={{
+                      label: { color: 'white' },
+                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                      dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                      option: { color: 'white' }
+                    }}
+                    disabled={allCardSetNos.length === 0}
+                  />
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Group gap="xs" align="flex-end">
+                    <Select
+                      label="ELO"
+                      value={filters.eloOperator}
+                      onChange={(value) => setFilters({ ...filters, eloOperator: value as any })}
+                      data={[
+                        { value: '>=', label: '≥' },
+                        { value: '<=', label: '≤' },
+                        { value: '=', label: '=' },
+                      ]}
+                      style={{ flex: '0 0 80px' }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                    <NumberInput
+                      placeholder="ELO value"
+                      value={filters.eloValue || undefined}
+                      onChange={(value) => setFilters({ ...filters, eloValue: typeof value === 'number' ? value : null })}
+                      min={0}
+                      style={{ flex: 1 }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                  </Group>
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Group gap="xs" align="flex-end">
+                    <Select
+                      label="Score"
+                      value={filters.scoreOperator}
+                      onChange={(value) => setFilters({ ...filters, scoreOperator: value as any })}
+                      data={[
+                        { value: '>=', label: '≥' },
+                        { value: '<=', label: '≤' },
+                        { value: '=', label: '=' },
+                      ]}
+                      style={{ flex: '0 0 80px' }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                    <NumberInput
+                      placeholder="Score value"
+                      value={filters.scoreValue !== null ? filters.scoreValue : undefined}
+                      onChange={(value) => setFilters({ ...filters, scoreValue: typeof value === 'number' ? value : null })}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      decimalScale={2}
+                      style={{ flex: 1 }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                  </Group>
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
                   <Select
                     label="Sort by"
                     value={filters.sortBy}
@@ -2612,7 +2795,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                   </Title>
                 </Group>
 
-                <Group gap="xs">
+                <Group gap={8}>
                   {deck.faction && (
                     <Image
                       src={`/images/icons/${deck.faction.toLowerCase()}.png`}
@@ -3077,7 +3260,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                             </Title>
                           </Group>
 
-                          <Group gap="xs">
+                          <Group gap={8}>
                             {(() => {
                               // For fused decks, show icons from both source decks
                               const [deck1, deck2] = getFusedDeckSourceDecks(deck, [...decks, ...fusedDecks])

@@ -402,6 +402,22 @@ export function getCardImageUrl(cardId: string, level: number = 1, isForgeborn: 
     return `${forgebornBaseUrl}/${encodedCardId}.jpg`
   }
   
+  // Check if this is a set 99 card (custom/promotional cards)
+  // Set 99 cards may use different path or format
+  const isSet99 = /^s99/i.test(cardId)
+  
+  if (isSet99) {
+    // For set 99 cards, try both resized and non-resized paths
+    // First try the standard resized path
+    const baseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards/resized'
+    // Clean ID but preserve more characters for set 99 (may have underscores or other chars)
+    let cleanId = cardId.replace(/[^a-z0-9\-_]/gi, '').toLowerCase()
+    const cardLevel = Math.max(1, Math.min(3, level))
+    
+    // Return resized path first (will try alternative in loadSingleImage if this fails)
+    return `${baseUrl}/${cleanId}_${cardLevel}.jpg`
+  }
+  
   // Regular cards use format: {cardId}_1.jpg, {cardId}_2.jpg, {cardId}_3.jpg from /public/cards/resized/
   const baseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards/resized'
   // Clean ID from special characters and ensure lowercase for regular cards

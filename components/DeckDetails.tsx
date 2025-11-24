@@ -372,13 +372,56 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     return new Promise((resolve) => {
       const imageUrl = getCardImageUrl(cardId, level, isForgeborn)
       const img = new window.Image()
-      const timeout = setTimeout(() => {
+      const isSet99 = /^s99/i.test(cardId)
+      
+      const tryAlternativeUrl = (): void => {
+        // For set 99 cards, try alternative paths
+        if (isSet99 && !isForgeborn) {
+          const baseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
+          // Try non-resized path for set 99
+          let cleanId = cardId.replace(/[^a-z0-9\-_]/gi, '').toLowerCase()
+          const cardLevel = Math.max(1, Math.min(3, level))
+          const alternativeUrl = `${baseUrl}/${cleanId}_${cardLevel}.jpg`
+          
+          const altImg = new window.Image()
+          const altTimeout = setTimeout(() => {
+            resolve(null)
+          }, 5000)
+          
+          altImg.onload = () => {
+            clearTimeout(altTimeout)
+            resolve(alternativeUrl)
+          }
+          altImg.onerror = () => {
+            clearTimeout(altTimeout)
+            // Try with URL-encoded original ID for set 99
+            const encodedId = encodeURIComponent(cardId)
+            const encodedUrl = `${baseUrl}/${encodedId}_${cardLevel}.jpg`
+            const encodedImg = new window.Image()
+            const encodedTimeout = setTimeout(() => {
+              resolve(null)
+            }, 5000)
+            
+            encodedImg.onload = () => {
+              clearTimeout(encodedTimeout)
+              resolve(encodedUrl)
+            }
+            encodedImg.onerror = () => {
+              clearTimeout(encodedTimeout)
+              resolve(null)
+            }
+            encodedImg.src = encodedUrl
+          }
+          altImg.src = alternativeUrl
+          return
+        }
+        
         // If original URL failed and this is forgeborn with dash, try alternative with space
         if (isForgeborn && cardId.includes('-')) {
           const alternativeUrl = getForgebornAlternativeUrl(cardId)
           const altImg = new window.Image()
           const altTimeout = setTimeout(() => {
-        resolve(null)
+            resolve(null)
           }, 5000)
           
           altImg.onload = () => {
@@ -394,6 +437,10 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         } else {
           resolve(null)
         }
+      }
+      
+      const timeout = setTimeout(() => {
+        tryAlternativeUrl()
       }, isForgeborn ? 10000 : 5000)
       
       img.onload = () => {
@@ -402,27 +449,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
       img.onerror = () => {
         clearTimeout(timeout)
-        // If original URL failed and this is forgeborn with dash, try alternative with space
-        if (isForgeborn && cardId.includes('-')) {
-          const alternativeUrl = getForgebornAlternativeUrl(cardId)
-          const altImg = new window.Image()
-          const altTimeout = setTimeout(() => {
-        resolve(null)
-          }, 5000)
-          
-          altImg.onload = () => {
-            clearTimeout(altTimeout)
-            resolve(alternativeUrl)
-          }
-          altImg.onerror = () => {
-            clearTimeout(altTimeout)
-            resolve(null)
-          }
-          
-          altImg.src = alternativeUrl
-        } else {
-          resolve(null)
-        }
+        tryAlternativeUrl()
       }
       img.src = imageUrl
     })
@@ -1607,19 +1634,37 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     
     // Normalize rarity: "Common Rare" -> "CommonRare", "common rare" -> "CommonRare", etc.
     let normalizedRarity = rarity.trim()
+    const lowerRarity = normalizedRarity.toLowerCase()
     
-    // Handle "Common Rare" or "common rare" -> "CommonRare"
-    if (normalizedRarity.toLowerCase().includes('common') && normalizedRarity.toLowerCase().includes('rare')) {
+    // Handle "Common Common" -> "CommonCommon" (spliced cards with two Common parts)
+    // Check for "common common" pattern (two words "common" separated by space)
+    if (lowerRarity === 'common common' || lowerRarity.match(/^common\s+common$/)) {
+      normalizedRarity = 'CommonCommon'
+    }
+    // Handle "Rare Rare" -> "RareRare" (spliced cards with two Rare parts)
+    else if (lowerRarity === 'rare rare' || lowerRarity.match(/^rare\s+rare$/)) {
+      normalizedRarity = 'RareRare'
+    }
+    // Handle "Rare Common" or "rare common" -> "RareCommon" (order matters: Rare first, then Common)
+    else if (lowerRarity.match(/^rare\s+common$/i) || (lowerRarity.startsWith('rare') && lowerRarity.includes('common') && !lowerRarity.startsWith('common'))) {
+      normalizedRarity = 'RareCommon'
+    }
+    // Handle "Common Rare" or "common rare" -> "CommonRare" (order matters: Common first, then Rare)
+    else if (lowerRarity.match(/^common\s+rare$/i) || (lowerRarity.startsWith('common') && lowerRarity.includes('rare'))) {
       normalizedRarity = 'CommonRare'
-    } else if (normalizedRarity.toLowerCase().includes('common') && !normalizedRarity.toLowerCase().includes('rare')) {
+    }
+    // Fallback: if both words present but order unclear, default to CommonRare
+    else if (lowerRarity.includes('common') && lowerRarity.includes('rare')) {
+      normalizedRarity = 'CommonRare'
+    } else if (lowerRarity.includes('common') && !lowerRarity.includes('rare')) {
       normalizedRarity = 'Common'
-    } else if (normalizedRarity.toLowerCase().includes('rare') && !normalizedRarity.toLowerCase().includes('common')) {
+    } else if (lowerRarity.includes('rare') && !lowerRarity.includes('common')) {
       normalizedRarity = 'Rare'
-    } else if (normalizedRarity.toLowerCase().includes('darkforge')) {
+    } else if (lowerRarity.includes('darkforge')) {
       normalizedRarity = 'Darkforge'
-    } else if (normalizedRarity.toLowerCase().includes('ls') || normalizedRarity.toLowerCase().includes('legendary')) {
+    } else if (lowerRarity.includes('ls') || lowerRarity.includes('legendary')) {
       normalizedRarity = 'LS'
-    } else if (normalizedRarity.toLowerCase().includes('solbind')) {
+    } else if (lowerRarity.includes('solbind')) {
       normalizedRarity = 'Solbind'
     }
     
@@ -1635,6 +1680,12 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
     }
     
+    // For set 99, use set 1 icons (s1_*.png)
+    if (setNo === '99') {
+      setNo = '1'
+    }
+    
+    // Return local path for all rarities (including CommonCommon and RareRare)
     return `/images/icons/rarity/S${setNo}_${normalizedRarity}.png`
   }, [])
 
@@ -1654,10 +1705,26 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     const faction = (factionForIcon || '').toLowerCase()
     const factionIconPath = faction ? `/images/icons/${faction}.png` : null
     
+    const handleClick = useCallback((e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      onClick()
+    }, [onClick])
+    
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+      // Also handle mousedown for better responsiveness
+      if (e.button === 0) { // Left mouse button only
+        e.preventDefault()
+        e.stopPropagation()
+        onClick()
+      }
+    }, [onClick])
+    
     return (
       <Button
         variant={selectedCard?.id === card.id ? 'filled' : 'subtle'}
-        onClick={onClick}
+        onClick={handleClick}
+        onMouseDown={handleMouseDown}
         className="w-full h-auto"
         styles={{
           root: {
@@ -1675,14 +1742,17 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             paddingRight: '0.5rem',
             paddingTop: '0.5rem',
             paddingBottom: '0.5rem',
+            cursor: 'pointer',
+            userSelect: 'none',
           },
           inner: {
             justifyContent: 'flex-start',
             width: '100%',
+            pointerEvents: 'none', // Prevent inner elements from blocking clicks
           },
         }}
       >
-        <Group gap="xs" className="w-full" wrap="nowrap" justify="flex-start" style={{ margin: 0 }}>
+        <Group gap="xs" className="w-full" wrap="nowrap" justify="flex-start" style={{ margin: 0, pointerEvents: 'none' }}>
           {factionIconPath ? (
             <Image
               src={factionIconPath}
@@ -1691,6 +1761,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
               h={16}
               style={{
                 flexShrink: 0,
+                pointerEvents: 'none',
               }}
             />
           ) : (
@@ -1699,6 +1770,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
               style={{
                 backgroundColor: factionColor,
                 opacity: 0.8,
+                pointerEvents: 'none',
               }}
             />
           )}
@@ -1710,6 +1782,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
               h={16}
               style={{
                 flexShrink: 0,
+                pointerEvents: 'none',
               }}
             />
           ) : (
@@ -1718,13 +1791,14 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
               style={{
                 backgroundColor: factionColor,
                 opacity: 0.8,
+                pointerEvents: 'none',
               }}
             />
           )}
           <Text 
             size="sm" 
             className="text-white flex-1 text-left truncate"
-            style={{ minWidth: 0 }}
+            style={{ minWidth: 0, pointerEvents: 'none' }}
           >
             {card.name}
           </Text>
@@ -1737,6 +1811,13 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     <Modal
       opened={opened}
       onClose={onClose}
+      transitionProps={{ duration: 300, timingFunction: 'ease-in-out' }}
+      overlayProps={{
+        backgroundOpacity: 0.55,
+        blur: 3,
+      }}
+      closeOnClickOutside={true}
+      closeOnEscape={true}
       title={
         <Group justify="space-between" className="w-full" wrap="nowrap">
           <Group gap="md" wrap="nowrap" className="flex-1 min-w-0">
@@ -1931,6 +2012,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           backgroundColor: 'rgba(30, 41, 59, 0.98)',
           border: '1px solid rgba(74, 144, 226, 0.3)',
           maxWidth: '1200px',
+          transition: 'transform 300ms ease-in-out, opacity 300ms ease-in-out',
         },
         header: {
           backgroundColor: 'rgba(30, 41, 59, 0.98)',
@@ -1938,6 +2020,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         },
         body: {
           padding: '1.5rem',
+        },
+        overlay: {
+          transition: 'opacity 300ms ease-in-out, backdrop-filter 300ms ease-in-out',
         },
       }}
     >

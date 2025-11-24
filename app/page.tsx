@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Container, Title, TextInput, Button, Paper, Loader, Stack } from '@mantine/core'
 import { IconSearch } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
@@ -12,7 +12,35 @@ import { BackgroundElements } from '@/components/BackgroundElements'
 export default function Home() {
   const [playerName, setPlayerName] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
+  const [isTyping, setIsTyping] = useState(false)
+  const searchedNameRef = useRef<string>('')
   const { decks, fusedDecks, loading, fetchDecks } = useDeckStore()
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value
+    setPlayerName(newValue)
+    // Mark as typing to hide DeckList and prevent blocking
+    setIsTyping(true)
+    // Reset search flag when text changes (using functional update to avoid dependency)
+    setHasSearched(prev => prev ? false : prev)
+    
+    // If field is cleared, reset typing state immediately
+    if (newValue === '') {
+      setIsTyping(false)
+      searchedNameRef.current = ''
+    }
+  }, [])
+
+  const handleInputFocus = useCallback(() => {
+    // Clear the field when user focuses on the input after successful search
+    // Only clear if results are displayed (not loading, has searched, and has results)
+    if (hasSearched && !loading && playerName && searchedNameRef.current === playerName && (decks.length > 0 || fusedDecks.length > 0)) {
+      setPlayerName('')
+      setHasSearched(false)
+      setIsTyping(false)
+      searchedNameRef.current = ''
+    }
+  }, [hasSearched, loading, playerName, decks.length, fusedDecks.length])
 
   const handleSearch = async () => {
     if (!playerName.trim()) {
@@ -24,7 +52,10 @@ export default function Home() {
       return
     }
 
+    setIsTyping(false)
     setHasSearched(true)
+    // Store the searched name to detect when user starts typing new text
+    searchedNameRef.current = playerName.trim()
 
     try {
       await fetchDecks(playerName.trim())
@@ -108,13 +139,8 @@ export default function Home() {
                 size="lg"
                 placeholder="Enter player nickname"
                 value={playerName}
-                onChange={(e) => {
-                  setPlayerName(e.target.value)
-                  // Reset search flag when text changes
-                  if (hasSearched) {
-                    setHasSearched(false)
-                  }
-                }}
+                onChange={handleInputChange}
+                onFocus={handleInputFocus}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleSearch()
@@ -143,11 +169,11 @@ export default function Home() {
             </div>
           )}
 
-          {!loading && (decks.length > 0 || fusedDecks.length > 0) && (
+          {!loading && !isTyping && (decks.length > 0 || fusedDecks.length > 0) && (
             <DeckList decks={decks} fusedDecks={fusedDecks} />
           )}
           
-          {!loading && decks.length === 0 && fusedDecks.length === 0 && hasSearched && (
+          {!loading && !isTyping && decks.length === 0 && fusedDecks.length === 0 && hasSearched && (
             <Paper
               p="xl"
               className="w-full max-w-2xl backdrop-blur-md border border-sf-primary/30 rounded-xl"
