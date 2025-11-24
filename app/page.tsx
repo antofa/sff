@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Container, Title, TextInput, Button, Paper, Loader, Stack } from '@mantine/core'
 import { IconSearch } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
@@ -15,6 +15,8 @@ export default function Home() {
   const [isTyping, setIsTyping] = useState(false)
   const searchedNameRef = useRef<string>('')
   const { decks, fusedDecks, loading, fetchDecks } = useDeckStore()
+  const lastSearchRef = useRef<string>('')
+
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value
@@ -56,6 +58,7 @@ export default function Home() {
     setHasSearched(true)
     // Store the searched name to detect when user starts typing new text
     searchedNameRef.current = playerName.trim()
+    lastSearchRef.current = playerName.trim()
 
     try {
       await fetchDecks(playerName.trim())
@@ -98,6 +101,19 @@ export default function Home() {
       })
     }
   }
+
+  // If вкладка была свернута и загрузка застыла, повторно дергаем поиск при возврате фокуса
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && loading && lastSearchRef.current) {
+        fetchDecks(lastSearchRef.current).catch(() => {
+          /* ошибки уже логируются внутри fetchDecks */
+        })
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [loading, fetchDecks])
 
   return (
     <main className="min-h-screen relative overflow-hidden">
@@ -190,4 +206,3 @@ export default function Home() {
     </main>
   )
 }
-

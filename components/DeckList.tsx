@@ -8,6 +8,100 @@ import type { Deck } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo } from '@/lib/api'
 
+// Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", etc.
+function formatSetName(setNo: string | number | null | undefined): string | null {
+  if (!setNo) return null
+  
+  const setStr = String(setNo).trim()
+  
+  // If it's already B1 or b1, return as B1
+  if (setStr.toUpperCase() === 'B1' || setStr.toLowerCase() === 'b1') {
+    return 'B1'
+  }
+  
+  // For numeric sets, format as S1, S2, S3, etc.
+  const numericMatch = setStr.match(/^(\d+)$/)
+  if (numericMatch) {
+    return `S${numericMatch[1]}`
+  }
+  
+  // If it already starts with S, return as is (but uppercase S)
+  if (/^s\d+/i.test(setStr)) {
+    return setStr.toUpperCase()
+  }
+  
+  // Otherwise return as is
+  return setStr
+}
+
+// Helper function to check if a card is from B1 set
+function isB1Card(card: any): boolean {
+  if (!card) return false
+  
+  // Handle string cards
+  if (typeof card === 'string') {
+    return /^b1_/i.test(card)
+  }
+  
+  // Handle object cards
+  if (typeof card === 'object' && card !== null) {
+    const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
+    const cardId = card.id || card.cardId || card.name
+    
+    // Check cardSetId/SK for B1
+    if (cardSetId && String(cardSetId).toLowerCase() === 'b1') {
+      return true
+    }
+    
+    // Check cardId for b1_ prefix
+    if (cardId && /^b1_/i.test(cardId)) {
+      return true
+    }
+  }
+  
+  return false
+}
+
+// Helper function to determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
+function getDeckSet(deck: Deck): string | null {
+  if (!deck) return null
+  
+  const deckAny = deck as any
+  
+  // For fused decks, check cards from source decks (myDecks) if cards array is empty
+  if (deckAny.format === 'Fused' && (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0)) {
+    // Check source decks (myDecks) for B1 cards
+    if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
+      for (const sourceDeck of deckAny.myDecks) {
+        if (sourceDeck && sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
+          const hasB1Card = sourceDeck.cards.some((card: any) => isB1Card(card))
+          if (hasB1Card) {
+            return 'B1'
+          }
+        }
+      }
+    }
+    
+    // If no B1 cards found in source decks, return null (fused decks don't have cardSetNo)
+    return null
+  }
+  
+  // For regular decks or fused decks with cards
+  if (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0) {
+    return deck.cardSetNo || null
+  }
+  
+  // Check if any card is from B1 set
+  const hasB1Card = deck.cards.some((card: any) => isB1Card(card))
+  
+  if (hasB1Card) {
+    return 'B1'
+  }
+  
+  // Otherwise use deck.cardSetNo
+  return deck.cardSetNo || null
+}
+
 // Helper function to count cards as sum of creatures + spells + solbind (excluding Forgeborn)
 function countPlayableCards(deck: Deck): { total: number; creatures: number; spells: number; solbind: number } {
   if (!deck.cards || !Array.isArray(deck.cards)) return { total: 0, creatures: 0, spells: 0, solbind: 0 }
@@ -582,18 +676,21 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     const allDecks = [...decks, ...fusedDecks]
     
     allDecks.forEach(deck => {
-      if (deck.cardSetNo) {
-        const setNo = String(deck.cardSetNo).trim()
-        if (setNo) {
-          cardSetNosSet.add(setNo)
-        }
+      // Use getDeckSet to determine the actual set (B1 if any card is from B1, otherwise deck.cardSetNo)
+      const deckSet = getDeckSet(deck)
+      if (deckSet) {
+        cardSetNosSet.add(deckSet)
       }
     })
     
     return Array.from(cardSetNosSet).sort((a, b) => {
+      // Sort B1 first, then numerically for S sets
+      if (a.toUpperCase() === 'B1') return -1
+      if (b.toUpperCase() === 'B1') return 1
+      
       // Sort numerically if both are numbers, otherwise alphabetically
-      const numA = Number(a)
-      const numB = Number(b)
+      const numA = Number(a.replace(/^s/i, ''))
+      const numB = Number(b.replace(/^s/i, ''))
       if (!isNaN(numA) && !isNaN(numB)) {
         return numA - numB
       }
@@ -1865,9 +1962,11 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
       }
       
       // Filter by card set number (multi-select)
+      // Use getDeckSet to get the actual set (B1 if any card is from B1, otherwise deck.cardSetNo)
       if (debouncedFilters.cardSetNo.length > 0) {
-        const deckSetNo = deck.cardSetNo ? String(deck.cardSetNo).trim() : null
-        if (!deckSetNo || !debouncedFilters.cardSetNo.includes(deckSetNo)) {
+        const deckSet = getDeckSet(deck)
+        const deckSetStr = deckSet ? String(deckSet).trim() : null
+        if (!deckSetStr || !debouncedFilters.cardSetNo.includes(deckSetStr)) {
           return false
         }
       }
@@ -1896,6 +1995,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
       }
       
       // Filter by deck score
+      // scoreValue is stored as 0-100 (multiplied by 100, like in display)
       if (debouncedFilters.scoreValue !== null) {
         const deckScore = (deck as any).deckScore !== undefined && (deck as any).deckScore !== null 
           ? Number((deck as any).deckScore) 
@@ -1905,15 +2005,18 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
           return false // Deck has no score, exclude it
         }
         
+        // Convert deckScore to 0-100 scale (like in display)
+        const deckScoreScaled = Math.round(deckScore * 100)
+        
         switch (debouncedFilters.scoreOperator) {
           case '>=':
-            if (deckScore < debouncedFilters.scoreValue) return false
+            if (deckScoreScaled < debouncedFilters.scoreValue) return false
             break
           case '<=':
-            if (deckScore > debouncedFilters.scoreValue) return false
+            if (deckScoreScaled > debouncedFilters.scoreValue) return false
             break
           case '=':
-            if (deckScore !== debouncedFilters.scoreValue) return false
+            if (deckScoreScaled !== debouncedFilters.scoreValue) return false
             break
         }
       }
@@ -2323,46 +2426,6 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                 <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
                   <Group gap="xs" align="flex-end">
                     <Select
-                      label="Rarity"
-                      placeholder="Select rarity..."
-                      value={filters.rarityType}
-                      onChange={(value) => setFilters({ 
-                        ...filters, 
-                        rarityType: value || '',
-                        rarityCount: value ? 1 : null // Set default value to 1 when rarity is selected
-                      })}
-                      data={[
-                        { value: 'Common', label: 'Common' },
-                        { value: 'Common Rare', label: 'Common Rare' },
-                        { value: 'Rare', label: 'Rare' },
-                        { value: 'LS', label: 'LS' },
-                        { value: 'Solbind', label: 'Solbind' },
-                      ]}
-                      clearable
-                      style={{ flex: 1 }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                    <NumberInput
-                      placeholder="Min count"
-                      value={filters.rarityCount || undefined}
-                      onChange={(value) => setFilters({ ...filters, rarityCount: typeof value === 'number' ? value : null })}
-                      min={0}
-                      style={{ flex: '0 0 120px' }}
-                      disabled={!filters.rarityType}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                  </Group>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Group gap="xs" align="flex-end">
-                    <Select
                       label="Creatures"
                       value={filters.creaturesOperator}
                       onChange={(value) => setFilters({ ...filters, creaturesOperator: value as any })}
@@ -2379,9 +2442,42 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                     />
                     <NumberInput
                       placeholder="Count"
-                      value={filters.creaturesValue || undefined}
-                      onChange={(value) => setFilters({ ...filters, creaturesValue: typeof value === 'number' ? value : null })}
+                      value={filters.creaturesValue ?? ''}
+                      onChange={(value) =>
+                        setFilters(prev => ({
+                          ...prev,
+                          creaturesValue: typeof value === 'number' ? value : null,
+                        }))
+                      }
                       min={0}
+                      rightSection={filters.creaturesValue !== null ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setFilters(prev => ({ ...prev, creaturesValue: null }))
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <IconX
+                            size={16}
+                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                          />
+                        </button>
+                      ) : null}
                       style={{ flex: 1 }}
                       styles={{
                         label: { color: 'white' },
@@ -2412,9 +2508,37 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                       />
                       <NumberInput
                         placeholder="Count"
-                        value={filters.freeCreaturesValue || undefined}
+                        value={filters.freeCreaturesValue ?? undefined}
                         onChange={(value) => setFilters({ ...filters, freeCreaturesValue: typeof value === 'number' ? value : null })}
                         min={0}
+                        rightSection={filters.freeCreaturesValue !== null && filters.freeCreaturesValue !== undefined ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setFilters({ ...filters, freeCreaturesValue: null })
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <IconX
+                              size={16}
+                              style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                            />
+                          </button>
+                        ) : null}
                         style={{ flex: 1, minWidth: 0 }}
                         styles={{
                           input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
@@ -2449,9 +2573,42 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                     />
                     <NumberInput
                       placeholder="Min count"
-                      value={filters.creatureTypeCount || undefined}
-                      onChange={(value) => setFilters({ ...filters, creatureTypeCount: typeof value === 'number' ? value : null })}
+                      value={filters.creatureTypeCount ?? ''}
+                      onChange={(value) =>
+                        setFilters(prev => ({
+                          ...prev,
+                          creatureTypeCount: typeof value === 'number' ? value : null,
+                        }))
+                      }
                       min={0}
+                      rightSection={filters.creatureTypeCount !== null ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setFilters(prev => ({ ...prev, creatureTypeCount: null }))
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <IconX
+                            size={16}
+                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                          />
+                        </button>
+                      ) : null}
                       style={{ flex: '0 0 120px' }}
                       disabled={!filters.creatureType}
                       styles={{
@@ -2481,9 +2638,42 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                     />
                     <NumberInput
                       placeholder="Count"
-                      value={filters.spellsValue || undefined}
-                      onChange={(value) => setFilters({ ...filters, spellsValue: typeof value === 'number' ? value : null })}
+                      value={filters.spellsValue ?? ''}
+                      onChange={(value) =>
+                        setFilters(prev => ({
+                          ...prev,
+                          spellsValue: typeof value === 'number' ? value : null,
+                        }))
+                      }
                       min={0}
+                      rightSection={filters.spellsValue !== null ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setFilters(prev => ({ ...prev, spellsValue: null }))
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <IconX
+                            size={16}
+                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                          />
+                        </button>
+                      ) : null}
                       style={{ flex: 1 }}
                       styles={{
                         label: { color: 'white' },
@@ -2514,9 +2704,37 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                       />
                       <NumberInput
                         placeholder="Count"
-                        value={filters.freeSpellsValue || undefined}
+                        value={filters.freeSpellsValue ?? undefined}
                         onChange={(value) => setFilters({ ...filters, freeSpellsValue: typeof value === 'number' ? value : null })}
                         min={0}
+                        rightSection={filters.freeSpellsValue !== null && filters.freeSpellsValue !== undefined ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setFilters({ ...filters, freeSpellsValue: null })
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <IconX
+                              size={16}
+                              style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                            />
+                          </button>
+                        ) : null}
                         style={{ flex: 1, minWidth: 0 }}
                         styles={{
                           input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
@@ -2551,9 +2769,42 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                     />
                     <NumberInput
                       placeholder="Min count"
-                      value={filters.spellTypeCount || undefined}
-                      onChange={(value) => setFilters({ ...filters, spellTypeCount: typeof value === 'number' ? value : null })}
+                      value={filters.spellTypeCount ?? ''}
+                      onChange={(value) =>
+                        setFilters(prev => ({
+                          ...prev,
+                          spellTypeCount: typeof value === 'number' ? value : null,
+                        }))
+                      }
                       min={0}
+                      rightSection={filters.spellTypeCount !== null ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setFilters(prev => ({ ...prev, spellTypeCount: null }))
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <IconX
+                            size={16}
+                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                          />
+                        </button>
+                      ) : null}
                       style={{ flex: '0 0 120px' }}
                       disabled={!filters.spellType}
                       styles={{
@@ -2568,7 +2819,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                   <MultiSelect
                     label="Card Set"
                     placeholder="Select sets..."
-                    data={allCardSetNos.map(setNo => ({ value: setNo, label: `Set ${setNo}` }))}
+                    data={allCardSetNos.map(setNo => ({ value: setNo, label: formatSetName(setNo) || `Set ${setNo}` }))}
                     value={filters.cardSetNo}
                     onChange={(value) => setFilters({ ...filters, cardSetNo: value })}
                     clearable
@@ -2602,9 +2853,39 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                     />
                     <NumberInput
                       placeholder="ELO value"
-                      value={filters.eloValue || undefined}
-                      onChange={(value) => setFilters({ ...filters, eloValue: typeof value === 'number' ? value : null })}
+                      value={filters.eloValue ?? ''}
+                      onChange={(value) => {
+                        setFilters(prev => ({ ...prev, eloValue: typeof value === 'number' ? value : null }))
+                      }}
                       min={0}
+                      rightSection={filters.eloValue !== null ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setFilters(prev => ({ ...prev, eloValue: null }))
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <IconX
+                            size={16}
+                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                          />
+                        </button>
+                      ) : null}
                       style={{ flex: 1 }}
                       styles={{
                         label: { color: 'white' },
@@ -2632,14 +2913,119 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                       }}
                     />
                     <NumberInput
-                      placeholder="Score value"
-                      value={filters.scoreValue !== null ? filters.scoreValue : undefined}
-                      onChange={(value) => setFilters({ ...filters, scoreValue: typeof value === 'number' ? value : null })}
+                      placeholder="Score value (0-100)"
+                      value={filters.scoreValue ?? ''}
+                      onChange={(value) =>
+                        setFilters(prev => ({
+                          ...prev,
+                          scoreValue: typeof value === 'number' ? value : null,
+                        }))
+                      }
                       min={0}
-                      max={1}
-                      step={0.01}
-                      decimalScale={2}
+                      max={100}
+                      step={1}
+                      rightSection={filters.scoreValue !== null ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setFilters(prev => ({ ...prev, scoreValue: null }))
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <IconX
+                            size={16}
+                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                          />
+                        </button>
+                      ) : null}
                       style={{ flex: 1 }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                  </Group>
+                </Grid.Col>
+                
+                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                  <Group gap="xs" align="flex-end">
+                    <Select
+                      label="Rarity"
+                      placeholder="Select rarity..."
+                      value={filters.rarityType}
+                      onChange={(value) => setFilters({ 
+                        ...filters, 
+                        rarityType: value || '',
+                        rarityCount: value ? 1 : null // Set default value to 1 when rarity is selected
+                      })}
+                      data={[
+                        { value: 'Common', label: 'Common' },
+                        { value: 'Common Rare', label: 'Common Rare' },
+                        { value: 'Rare', label: 'Rare' },
+                        { value: 'LS', label: 'LS' },
+                        { value: 'Solbind', label: 'Solbind' },
+                      ]}
+                      clearable
+                      style={{ flex: 1 }}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      }}
+                    />
+                    <NumberInput
+                      placeholder="Min count"
+                      value={filters.rarityCount ?? ''}
+                      onChange={(value) =>
+                        setFilters(prev => ({
+                          ...prev,
+                          rarityCount: typeof value === 'number' ? value : null,
+                        }))
+                      }
+                      min={0}
+                      rightSection={filters.rarityCount !== null ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setFilters(prev => ({ ...prev, rarityCount: null }))
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <IconX
+                            size={16}
+                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                          />
+                        </button>
+                      ) : null}
+                      style={{ flex: '0 0 120px' }}
+                      disabled={!filters.rarityType}
                       styles={{
                         label: { color: 'white' },
                         input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
@@ -2796,29 +3182,34 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                 </Group>
 
                 <Group gap={8}>
-                  {deck.faction && (
-                    <Image
-                      src={`/images/icons/${deck.faction.toLowerCase()}.png`}
-                      alt={deck.faction}
-                      h={18}
-                      w="auto"
-                      style={{
-                        display: 'inline-block',
-                        verticalAlign: 'middle',
-                        flexShrink: 0,
-                        marginRight: '0px',
-                      }}
-                    />
-                  )}
-                  {deck.cardSetNo && (
-                    <Badge
-                      color="indigo"
-                      variant="light"
-                      size="sm"
-                    >
-                      Set {deck.cardSetNo}
-                    </Badge>
-                  )}
+                  <Group gap={4}>
+                    {deck.faction && (
+                      <Image
+                        src={`/images/icons/${deck.faction.toLowerCase()}.png`}
+                        alt={deck.faction}
+                        h={20}
+                        w="auto"
+                        style={{
+                          display: 'inline-block',
+                          verticalAlign: 'middle',
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    {(() => {
+                      const deckSet = getDeckSet(deck)
+                      const formattedSet = formatSetName(deckSet)
+                      return formattedSet ? (
+                        <Badge
+                          color="indigo"
+                          variant="light"
+                          size="sm"
+                        >
+                          {formattedSet}
+                        </Badge>
+                      ) : null
+                    })()}
+                  </Group>
                   {deck.cards && Array.isArray(deck.cards) && (
                     <Badge
                       color="blue"
@@ -3261,52 +3652,59 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                           </Group>
 
                           <Group gap={8}>
-                            {(() => {
-                              // For fused decks, show icons from both source decks
-                              const [deck1, deck2] = getFusedDeckSourceDecks(deck, [...decks, ...fusedDecks])
-                              const factions: string[] = []
-                              
-                              if (deck1?.faction) {
-                                factions.push(deck1.faction)
-                              }
-                              if (deck2?.faction) {
-                                factions.push(deck2.faction)
-                              }
-                              
-                              // If we couldn't get factions from source decks, fall back to deck.faction
-                              if (factions.length === 0 && deck.faction) {
-                                factions.push(deck.faction)
-                              }
-                              
-                              return (
-                                <>
-                                  {factions.map((faction, index) => (
-                                    <Image
-                                      key={`${deck.id}-faction-${index}`}
-                                      src={`/images/icons/${faction.toLowerCase()}.png`}
-                                      alt={faction}
-                                      h={18}
-                                      w="auto"
-                                      style={{
-                                        display: 'inline-block',
-                                        verticalAlign: 'middle',
-                                        flexShrink: 0,
-                                        marginRight: index === factions.length - 1 ? '0px' : '0',
-                                      }}
-                                    />
-                                  ))}
-                                </>
-                              )
-                            })()}
-                            {deck.cardSetNo && (
-                              <Badge
-                                color="indigo"
-                                variant="light"
-                                size="sm"
-                              >
-                                Set {deck.cardSetNo}
-                              </Badge>
-                            )}
+                            <Group gap={4}>
+                              {(() => {
+                                // For fused decks, show icons from both source decks
+                                const [deck1, deck2] = getFusedDeckSourceDecks(deck, [...decks, ...fusedDecks])
+                                const factionSets: Array<{ faction: string; setNo: string | number | null }> = []
+                                
+                                if (deck1?.faction) {
+                                  // Use getDeckSet to determine the actual set (B1 if any card is from B1, otherwise deck.cardSetNo)
+                                  const deck1Set = getDeckSet(deck1)
+                                  factionSets.push({ faction: deck1.faction, setNo: deck1Set || null })
+                                }
+                                if (deck2?.faction) {
+                                  // Use getDeckSet to determine the actual set (B1 if any card is from B1, otherwise deck.cardSetNo)
+                                  const deck2Set = getDeckSet(deck2)
+                                  factionSets.push({ faction: deck2.faction, setNo: deck2Set || null })
+                                }
+                                
+                                // If we couldn't get factions from source decks, fall back to deck.faction
+                                if (factionSets.length === 0 && deck.faction) {
+                                  const deckSet = getDeckSet(deck)
+                                  factionSets.push({ faction: deck.faction, setNo: deckSet || null })
+                                }
+                                
+                                return (
+                                  <>
+                                    {factionSets.map((item, index) => (
+                                      <Group key={`${deck.id}-faction-set-${index}`} gap={4}>
+                                        <Image
+                                          src={`/images/icons/${item.faction.toLowerCase()}.png`}
+                                          alt={item.faction}
+                                          h={20}
+                                          w="auto"
+                                          style={{
+                                            display: 'inline-block',
+                                            verticalAlign: 'middle',
+                                            flexShrink: 0,
+                                          }}
+                                        />
+                                        {item.setNo && (
+                                          <Badge
+                                            color="indigo"
+                                            variant="light"
+                                            size="sm"
+                                          >
+                                            {formatSetName(item.setNo)}
+                                          </Badge>
+                                        )}
+                                      </Group>
+                                    ))}
+                                  </>
+                                )
+                              })()}
+                            </Group>
                             {deck.cards && Array.isArray(deck.cards) && (
                               <Badge
                                 color="blue"
@@ -3745,4 +4143,3 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     </>
   )
 }
-

@@ -178,6 +178,16 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       return
     }
     
+    // If cached data belongs to a different deck, reset it
+    if (fullDeckData && fullDeckData.id !== deck.id) {
+      setFullDeckData(null)
+    }
+    
+    // If we already loaded full data for this deck, do nothing
+    if (fullDeckData && fullDeckData.id === deck.id) {
+      return
+    }
+    
     // Check if we already have forgeborn.solbindCards in current deck
     const deckAny = deck as any
     const hasSolbindCards = deckAny.forgeborn && 
@@ -232,7 +242,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         setFullDeckData(deck)
       })
     }
-  }, [deck?.id, opened])
+  }, [deck?.id, opened, fullDeckData])
 
   // Log fused deck source decks data to server
   useEffect(() => {
@@ -281,9 +291,21 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   // Normalize cards with real names (memoized for stability)
   const normalizedCards: CardInfo[] = useMemo(() => {
     const deckToUse = fullDeckData || deck
-    if (!deckToUse || !deckToUse.cards || !Array.isArray(deckToUse.cards)) return []
+    if (!deckToUse) return []
+
+    // Support cards as array, object with numeric keys, or cardList
+    let rawCards: any[] = []
+    if (Array.isArray(deckToUse.cards)) {
+      rawCards = deckToUse.cards
+    } else if (deckToUse.cards && typeof deckToUse.cards === 'object') {
+      rawCards = Object.values(deckToUse.cards)
+    } else if (Array.isArray((deckToUse as any).cardList)) {
+      rawCards = (deckToUse as any).cardList
+    }
+
+    if (rawCards.length === 0) return []
     
-    const cards = deckToUse.cards.map((card: any, index: number) => {
+    const cards = rawCards.map((card: any, index: number) => {
       if (typeof card === 'string') {
         // If card is just a string ID, try to find full card data
         return getCardInfo(card)
@@ -307,7 +329,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
     
     return cards
-  }, [deck?.id, deck?.cards, fullDeckData])
+  }, [deck?.id, deck?.cards, (deck as any)?.cardList, fullDeckData])
 
   // First, extract all solbind card IDs to avoid circular dependency
   // Use a stable string representation for dependencies
@@ -551,6 +573,70 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       const spellCardsList: CardInfo[] = []
       const solbindCardsList: CardInfo[] = []
 
+      // Normalize forgeborn id/name to a comparable key (handles different set prefixes)
+      const normalizeForgebornKey = (id?: string, name?: string): string => {
+        const lowerId = (id || '').toLowerCase()
+        const lowerName = (name || '').toLowerCase()
+        const knownNames = ['cercee', 'ironbeard', 'xerxes', 'kitaru', 'nova']
+        const keyFromName = knownNames.find(n => lowerName.includes(n))
+        const keyFromId = knownNames.find(n => lowerId.includes(n))
+        if (keyFromName) return keyFromName
+        if (keyFromId) return keyFromId
+        return lowerId ? lowerId.replace(/[^a-z]/g, '') : ''
+      }
+
+      // Helper function to check if a forgeborn is already in the list
+      // Handles different ID variants (e.g., s2nn1cercee324 vs s2nn1cercee431)
+      const isForgebornInList = (
+        forgebornId: string,
+        forgebornList: CardInfo[],
+        forgebornName?: string
+      ): boolean => {
+        if (!forgebornId) return false
+        const targetKey = normalizeForgebornKey(forgebornId, forgebornName)
+        return forgebornList.some(fb => {
+          if (!fb.id) return false
+          // Exact match
+          if (fb.id === forgebornId) return true
+          const fbKey = normalizeForgebornKey(fb.id, fb.name)
+          if (targetKey && fbKey && targetKey === fbKey) return true
+          // Partial match
+          return (fb.id.includes(forgebornId) || forgebornId.includes(fb.id))
+        })
+      }
+
+      // Try to find richer forgeborn data from deck objects (preserve abilities/cardType)
+      const findForgebornDetails = (id?: string): any | null => {
+        if (!id) return null
+        const decksToSearch = [deckForUse, ...(deckForUse?.format === 'Fused' ? getFusedDeckSourceDecks.filter(Boolean) : [])]
+        for (const d of decksToSearch) {
+          const dAny = d as any
+          if (dAny?.forgeborn && (dAny.forgeborn.id === id || dAny.forgebornId === id || (dAny.forgeborn.id && id.includes(dAny.forgeborn.id)))) {
+            return dAny.forgeborn
+          }
+        }
+        return null
+      }
+
+      // Helper function to add forgeborn to list if not already present, enriched with API data when available
+      const addForgebornIfNotExists = (forgeborn: CardInfo | null, forgebornId?: string): void => {
+        if (!forgeborn) return
+        const idToCheck = forgebornId || forgeborn.id
+        if (!idToCheck) return
+        if (!isForgebornInList(idToCheck, forgebornCardsList, forgeborn.name)) {
+          const apiDetails = findForgebornDetails(idToCheck)
+          const mergedCard: CardInfo = {
+            ...apiDetails,
+            ...forgeborn,
+            id: forgeborn.id || apiDetails?.id || idToCheck,
+            cardType: apiDetails?.cardType || (forgeborn as any).cardType || 'Forgeborn',
+            type: apiDetails?.type || (forgeborn as any).type || apiDetails?.cardType || 'Forgeborn',
+            name: forgeborn.name || apiDetails?.name || apiDetails?.title,
+          } as CardInfo
+          forgebornCardsList.push(mergedCard)
+        }
+      }
+
       // First, identify Forgeborn
       if (deckForUse?.forgebornId) {
         const forgeborn = normalizedCards.find(card => 
@@ -559,21 +645,17 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           (deckForUse.forgebornId && card.id && deckForUse.forgebornId.includes(card.id))
         )
         if (forgeborn) {
-          forgebornCardsList.push(forgeborn)
+          addForgebornIfNotExists(forgeborn, deckForUse.forgebornId)
         } else if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.id) {
           // If forgeborn not found in normalizedCards, try to get it from deckForUse.forgeborn object
           const forgebornId = deckForUse.forgeborn.id || deckForUse.forgebornId
           const forgebornFromObject = getCardInfo(forgebornId, deckForUse.forgeborn)
-          if (forgebornFromObject && !forgebornCardsList.some(fb => fb.id === forgebornFromObject.id)) {
-            forgebornCardsList.push(forgebornFromObject)
-          }
+          addForgebornIfNotExists(forgebornFromObject, forgebornId)
         }
       } else if (deckForUse?.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.id) {
         // If no forgebornId but we have forgeborn object, use it
         const forgebornFromObject = getCardInfo(deckForUse.forgeborn.id, deckForUse.forgeborn)
-        if (forgebornFromObject && !forgebornCardsList.some(fb => fb.id === forgebornFromObject.id)) {
-          forgebornCardsList.push(forgebornFromObject)
-        }
+        addForgebornIfNotExists(forgebornFromObject, deckForUse.forgeborn.id)
       }
       
       // For fused decks, ensure first forgeborn is found from first source deck
@@ -581,6 +663,27 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       if (deckForUse?.format === 'Fused') {
         const [deck1, deck2] = getFusedDeckSourceDecks
         const fusedDeckAny = deckForUse as any
+
+        const tryAddDeckForgeborn = (sourceDeck: any) => {
+          if (!sourceDeck) return
+          const id = sourceDeck.forgebornId || sourceDeck.forgeborn?.id
+          if (!id) return
+          let fbCard = normalizedCards.find(card =>
+            card.id === id ||
+            (card.id && id && card.id.includes(id)) ||
+            (id && card.id && id.includes(card.id))
+          )
+          if (!fbCard && sourceDeck.forgeborn) {
+            fbCard = getCardInfo(id, sourceDeck.forgeborn)
+          }
+          if (fbCard) {
+            addForgebornIfNotExists(fbCard, id)
+          }
+        }
+
+        // Always try to add both source forgeborn cards, regardless of currentForgebornId
+        tryAddDeckForgeborn(deck1)
+        tryAddDeckForgeborn(deck2)
         
         // Try to get first forgeborn from deck1
         let firstForgebornId: string | undefined
@@ -619,12 +722,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         }
         
         // If we have firstForgebornId, try to find it
-        // Check if first forgeborn is already in the list by ID match
-        const firstForgebornAlreadyInList = firstForgebornId && forgebornCardsList.some(fb => 
-          fb.id === firstForgebornId || 
-          (fb.id && firstForgebornId && fb.id.includes(firstForgebornId)) ||
-          (firstForgebornId && fb.id && firstForgebornId.includes(fb.id))
-        )
+        // Check if first forgeborn is already in the list
+        const firstForgebornAlreadyInList = firstForgebornId && isForgebornInList(firstForgebornId, forgebornCardsList)
         
         if (firstForgebornId && !firstForgebornAlreadyInList) {
           // First, try to find first forgeborn in normalizedCards
@@ -677,8 +776,12 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           }
           
           if (firstForgeborn) {
-            console.log(`[DeckDetails] 🔥 Found first forgeborn for fused deck: ${firstForgeborn.id} (${firstForgeborn.name})`)
-            forgebornCardsList.push(firstForgeborn)
+            addForgebornIfNotExists(firstForgeborn, firstForgebornId)
+            if (isForgebornInList(firstForgebornId, forgebornCardsList)) {
+              console.log(`[DeckDetails] 🔥 Found first forgeborn for fused deck: ${firstForgeborn.id} (${firstForgeborn.name})`)
+            } else {
+              console.log(`[DeckDetails] ℹ️ First forgeborn ${firstForgeborn.id} already in list, skipping`)
+            }
           } else {
             console.log(`[DeckDetails] ⚠️ First forgeborn not found for fused deck with ID: ${firstForgebornId}`)
           }
@@ -735,7 +838,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             (card.id === secondForgebornId || 
              (card.id && secondForgebornId && card.id.includes(secondForgebornId)) ||
              (secondForgebornId && card.id && secondForgebornId.includes(card.id))) &&
-            !forgebornCardsList.some(fb => fb.id === card.id)
+            !isForgebornInList(card.id, forgebornCardsList)
           )
           
           // If not found in normalizedCards and we have secondForgebornCard, use it
@@ -780,8 +883,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             }
           }
           
-          if (secondForgeborn && !forgebornCardsList.some(fb => fb.id === secondForgeborn!.id)) {
-            forgebornCardsList.push(secondForgeborn)
+          if (secondForgeborn) {
+            addForgebornIfNotExists(secondForgeborn, secondForgebornId)
           }
         }
       }
@@ -792,7 +895,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           (card as any).cardType?.toLowerCase().includes('forgeborn')
         )
         if (forgebornByType) {
-          forgebornCardsList.push(forgebornByType)
+          addForgebornIfNotExists(forgebornByType)
         }
       }
 
@@ -801,6 +904,13 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         if (forgebornCardsList.includes(card)) return
         
         const cardData = card as any
+        const cardTypeLower = (cardData.cardType || cardData.type || '').toLowerCase()
+        // If this is actually a Forgeborn card but wasn't added yet, add and skip
+        if (cardTypeLower.includes('forgeborn')) {
+          addForgebornIfNotExists(card, card.id)
+          return
+        }
+
         const isSolbind = solbindCardIdsSet.has(card.id) ||
                          cardData.rarity === 'Solbind' || cardData.rarity === 'solbind' ||
                          card.type?.toLowerCase() === 'solbind' ||
@@ -855,15 +965,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             
             if (isForgebornCard && isNotSolbind) {
               // Check if this forgeborn is already in the list
-              const alreadyInList = forgebornCardsList.some(fb => 
-                fb.id === solbindCard.id || 
-                (fb.id && solbindCard.id && fb.id.includes(solbindCard.id)) ||
-                (solbindCard.id && fb.id && solbindCard.id.includes(fb.id))
-              )
-              
-              if (!alreadyInList) {
+              if (!isForgebornInList(solbindCard.id, forgebornCardsList)) {
                 const secondForgeborn = getCardInfo(solbindCard.id, solbindCard)
-                forgebornCardsList.push(secondForgeborn)
+                addForgebornIfNotExists(secondForgeborn, solbindCard.id)
                 if (process.env.NODE_ENV === 'development') {
                   console.log(`[DeckDetails] ✅ Added second forgeborn to image loading list: ${secondForgeborn.name} (${secondForgeborn.id})`)
                 }
@@ -1050,6 +1154,68 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     if (!deckForUse) return []
     
     const forgebornList: CardInfo[] = []
+
+    const normalizeForgebornKey = (id?: string, name?: string): string => {
+      const lowerId = (id || '').toLowerCase()
+      const lowerName = (name || '').toLowerCase()
+      const knownNames = ['cercee', 'ironbeard', 'xerxes', 'kitaru', 'nova']
+      const keyFromName = knownNames.find(n => lowerName.includes(n))
+      const keyFromId = knownNames.find(n => lowerId.includes(n))
+      if (keyFromName) return keyFromName
+      if (keyFromId) return keyFromId
+      return lowerId ? lowerId.replace(/[^a-z]/g, '') : ''
+    }
+    
+    const findForgebornDetails = (id?: string): any | null => {
+      if (!id) return null
+      const decksToSearch = [deckForUse, ...(deckForUse?.format === 'Fused' ? getFusedDeckSourceDecks.filter(Boolean) : [])]
+      for (const d of decksToSearch) {
+        const dAny = d as any
+        if (dAny?.forgeborn && (dAny.forgeborn.id === id || dAny.forgebornId === id || (dAny.forgeborn.id && id.includes(dAny.forgeborn.id)))) {
+          return dAny.forgeborn
+        }
+      }
+      return null
+    }
+    
+    // Helper function to check if a forgeborn is already in the list
+    // Handles different ID variants (e.g., s2nn1cercee324 vs s2nn1cercee431)
+    const isForgebornInList = (
+      forgebornId: string,
+      forgebornList: CardInfo[],
+      forgebornName?: string
+    ): boolean => {
+      if (!forgebornId) return false
+      const targetKey = normalizeForgebornKey(forgebornId, forgebornName)
+      return forgebornList.some(fb => {
+        if (!fb.id) return false
+        // Exact match
+        if (fb.id === forgebornId) return true
+        const fbKey = normalizeForgebornKey(fb.id, fb.name)
+        if (targetKey && fbKey && targetKey === fbKey) return true
+        // Partial match
+        return (fb.id.includes(forgebornId) || forgebornId.includes(fb.id))
+      })
+    }
+
+    // Helper function to add forgeborn to list if not already present
+    const addForgebornIfNotExists = (forgeborn: CardInfo | null, forgebornId?: string): void => {
+      if (!forgeborn) return
+      const idToCheck = forgebornId || forgeborn.id
+      if (!idToCheck) return
+      if (!isForgebornInList(idToCheck, forgebornList, forgeborn.name)) {
+        const apiDetails = findForgebornDetails(idToCheck)
+        const mergedCard: CardInfo = {
+          ...apiDetails,
+          ...forgeborn,
+          id: forgeborn.id || apiDetails?.id || idToCheck,
+          cardType: apiDetails?.cardType || (forgeborn as any).cardType || 'Forgeborn',
+          type: apiDetails?.type || (forgeborn as any).type || apiDetails?.cardType || 'Forgeborn',
+          name: forgeborn.name || apiDetails?.name || apiDetails?.title,
+        } as CardInfo
+        forgebornList.push(mergedCard)
+      }
+    }
     
     // First, try to find Forgeborn by forgebornId (most reliable)
     if (deckForUse.forgebornId) {
@@ -1059,21 +1225,17 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         (deckForUse.forgebornId && card.id && deckForUse.forgebornId.includes(card.id))
       )
       if (forgeborn) {
-        forgebornList.push(forgeborn)
+        addForgebornIfNotExists(forgeborn, deckForUse.forgebornId)
       } else if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.id) {
         // If forgeborn not found in normalizedCards, try to get it from deckForUse.forgeborn object
         const forgebornId = deckForUse.forgeborn.id || deckForUse.forgebornId
         const forgebornFromObject = getCardInfo(forgebornId, deckForUse.forgeborn)
-        if (forgebornFromObject && !forgebornList.some(fb => fb.id === forgebornFromObject.id)) {
-          forgebornList.push(forgebornFromObject)
-        }
+        addForgebornIfNotExists(forgebornFromObject, forgebornId)
       }
     } else if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.id) {
       // If no forgebornId but we have forgeborn object, use it
       const forgebornFromObject = getCardInfo(deckForUse.forgeborn.id, deckForUse.forgeborn)
-      if (forgebornFromObject && !forgebornList.some(fb => fb.id === forgebornFromObject.id)) {
-        forgebornList.push(forgebornFromObject)
-      }
+      addForgebornIfNotExists(forgebornFromObject, deckForUse.forgeborn.id)
     }
     
     // For fused decks, ensure first forgeborn is found from first source deck
@@ -1081,6 +1243,27 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     if (deckForUse.format === 'Fused') {
       const [deck1, deck2] = getFusedDeckSourceDecks
       const fusedDeckAny = deckForUse as any
+
+      const tryAddDeckForgeborn = (sourceDeck: any) => {
+        if (!sourceDeck) return
+        const id = sourceDeck.forgebornId || sourceDeck.forgeborn?.id
+        if (!id) return
+        let fbCard = normalizedCards.find(card =>
+          card.id === id ||
+          (card.id && id && card.id.includes(id)) ||
+          (id && card.id && id.includes(card.id))
+        )
+        if (!fbCard && sourceDeck.forgeborn) {
+          fbCard = getCardInfo(id, sourceDeck.forgeborn)
+        }
+        if (fbCard) {
+          addForgebornIfNotExists(fbCard, id)
+        }
+      }
+
+      // Always try to add both source forgeborn cards, regardless of currentForgebornId
+      tryAddDeckForgeborn(deck1)
+      tryAddDeckForgeborn(deck2)
       
       // Try to get first forgeborn from deck1
       let firstForgebornId: string | undefined
@@ -1119,12 +1302,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
       
       // If we have firstForgebornId, try to find it
-      // Check if first forgeborn is already in the list by ID match
-      const firstForgebornAlreadyInList = firstForgebornId && forgebornList.some(fb => 
-        fb.id === firstForgebornId || 
-        (fb.id && firstForgebornId && fb.id.includes(firstForgebornId)) ||
-        (firstForgebornId && fb.id && firstForgebornId.includes(fb.id))
-      )
+      // Check if first forgeborn is already in the list
+      const firstForgebornAlreadyInList = firstForgebornId && isForgebornInList(firstForgebornId, forgebornList)
       
       if (firstForgebornId && !firstForgebornAlreadyInList) {
         // First, try to find first forgeborn in normalizedCards
@@ -1177,7 +1356,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         }
         
         if (firstForgeborn) {
-          forgebornList.push(firstForgeborn)
+          addForgebornIfNotExists(firstForgeborn, firstForgebornId)
         }
       }
     }
@@ -1227,13 +1406,13 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       
       // If we have secondForgebornId, try to find it
       if (secondForgebornId) {
-        // First, try to find second forgeborn in normalizedCards
-        let secondForgeborn = normalizedCards.find(card => 
-          (card.id === secondForgebornId || 
-           (card.id && secondForgebornId && card.id.includes(secondForgebornId)) ||
-           (secondForgebornId && card.id && secondForgebornId.includes(card.id))) &&
-          !forgebornList.some(fb => fb.id === card.id)
-        )
+          // First, try to find second forgeborn in normalizedCards
+          let secondForgeborn = normalizedCards.find(card => 
+            (card.id === secondForgebornId || 
+             (card.id && secondForgebornId && card.id.includes(secondForgebornId)) ||
+             (secondForgebornId && card.id && secondForgebornId.includes(card.id))) &&
+            !isForgebornInList(card.id, forgebornList)
+          )
         
         // If not found in normalizedCards and we have secondForgebornCard, use it
         if (!secondForgeborn && secondForgebornCard) {
@@ -1277,8 +1456,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           }
         }
         
-        if (secondForgeborn && !forgebornList.some(fb => fb.id === secondForgeborn!.id)) {
-          forgebornList.push(secondForgeborn)
+        if (secondForgeborn) {
+          addForgebornIfNotExists(secondForgeborn, secondForgebornId)
         }
       }
     }
@@ -1314,15 +1493,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             
             if (isForgebornCard && isNotSolbind) {
               // Check if this forgeborn is already in the list
-              const alreadyInList = forgebornList.some(fb => 
-                fb.id === solbindCard.id || 
-                (fb.id && solbindCard.id && fb.id.includes(solbindCard.id)) ||
-                (solbindCard.id && fb.id && solbindCard.id.includes(fb.id))
-              )
-              
-              if (!alreadyInList) {
+              if (!isForgebornInList(solbindCard.id, forgebornList)) {
                 const secondForgeborn = getCardInfo(solbindCard.id, solbindCard)
-                forgebornList.push(secondForgeborn)
+                addForgebornIfNotExists(secondForgeborn, solbindCard.id)
                 if (process.env.NODE_ENV === 'development') {
                   console.log(`[DeckDetails] ✅ Added second forgeborn: ${secondForgeborn.name} (${secondForgeborn.id})`)
                 }
@@ -1350,26 +1523,57 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     return []
   }, [normalizedCards, deck, fullDeckData, getFusedDeckSourceDecks])
 
+  // Track last deck ID to detect deck changes
+  const lastDeckIdRef = useRef<string | null>(null)
+  const lastForgebornCardsLengthRef = useRef<number>(0)
+  
   // Reset selected card when deck changes
   useEffect(() => {
-    if (deck?.id) {
+    const currentDeckId = deck?.id || null
+    const prevDeckId = lastDeckIdRef.current
+
+    if (currentDeckId && prevDeckId !== currentDeckId) {
+      lastDeckIdRef.current = currentDeckId
+      lastForgebornCardsLengthRef.current = 0
       setSelectedCard(null)
       setSelectedLevel(1)
     }
   }, [deck?.id]) // Reset when deck changes
 
+
   // Select the first card by default when deck changes or modal opens
   // Prefer Forgeborn if available, otherwise select the first card
   useEffect(() => {
-    if (opened && normalizedCards.length > 0 && !selectedCard) {
-      // First, try to select Forgeborn if available
+    const hasCards = normalizedCards.length > 0
+    const hasForgeborn = forgebornCards.length > 0
+    const normalizedIds = new Set(normalizedCards.map(c => c.id).filter(Boolean))
+    if (opened && (hasCards || hasForgeborn)) {
+      const deckChanged = lastDeckIdRef.current !== deck?.id
+      const forgebornBecameAvailable = forgebornCards.length > 0 && lastForgebornCardsLengthRef.current === 0
+      const selectedCardIsFromDeck = selectedCard ? normalizedIds.has(selectedCard.id || '') : false
+      
+      // Update ref for forgeborn cards length
       if (forgebornCards.length > 0) {
-        setSelectedCard(forgebornCards[0])
-        setSelectedLevel(1)
-      } else {
-        // If no Forgeborn, select the first card
-        setSelectedCard(normalizedCards[0])
-        setSelectedLevel(1)
+        lastForgebornCardsLengthRef.current = forgebornCards.length
+      }
+      
+      // If no card is selected, or deck changed, or forgeborn became available
+      if (!selectedCard || deckChanged || !selectedCardIsFromDeck) {
+        // No remembered selection, pick defaults
+        if (forgebornCards.length > 0) {
+          setSelectedCard(forgebornCards[0])
+          setSelectedLevel(1)
+        } else {
+          setSelectedCard(normalizedCards[0])
+          setSelectedLevel(1)
+        }
+      } else if (forgebornBecameAvailable && selectedCard) {
+        // If forgeborn became available and current card is not forgeborn, select forgeborn
+        const isCurrentCardForgeborn = forgebornCards.some(fb => fb.id === selectedCard.id)
+        if (!isCurrentCardForgeborn) {
+          setSelectedCard(forgebornCards[0])
+          setSelectedLevel(1)
+        }
       }
     }
   }, [opened, normalizedCards.length, deck?.id, forgebornCards, selectedCard]) // Only depend on stable values
@@ -1601,11 +1805,26 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
   const creatureCards: CardInfo[] = useMemo(() => {
     if (!deck) return []
-    return normalizedCards.filter(card =>
-      !forgebornCards.includes(card) &&
-      !spellCards.includes(card) &&
-      !solbindCards.includes(card)
-    )
+    // Create sets of IDs for faster lookup
+    const forgebornIds = new Set(forgebornCards.map(fb => fb.id).filter(Boolean))
+    const spellIds = new Set(spellCards.map(sp => sp.id).filter(Boolean))
+    const solbindIds = new Set(solbindCards.map(sb => sb.id).filter(Boolean))
+    
+    return normalizedCards.filter(card => {
+      if (!card.id) return true
+      const cardData = card as any
+      const cardTypeLower = (cardData.cardType || cardData.type || '').toLowerCase()
+      // Check if card is forgeborn by ID (handles variants like s2nn1cercee324 vs s2nn1cercee431)
+      const isForgeborn = forgebornIds.has(card.id) || 
+        Array.from(forgebornIds).some(fbId => {
+          if (!fbId || !card.id) return false
+          const fbBase = fbId.replace(/\d+$/, '').toLowerCase()
+          const cardBase = card.id.replace(/\d+$/, '').toLowerCase()
+          return fbBase === cardBase && (fbBase.includes('cercee') || fbBase.includes('ironbeard') || fbBase.includes('xerxes') || fbBase.includes('kitaru'))
+        }) ||
+        cardTypeLower.includes('forgeborn')
+      return !isForgeborn && !spellIds.has(card.id) && !solbindIds.has(card.id)
+    })
   }, [normalizedCards, forgebornCards, spellCards, solbindCards, deck])
 
   const getFactionColor = useCallback((faction?: string) => {
@@ -1629,7 +1848,102 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   }, [])
 
   // Get rarity icon path based on card set and rarity
-  const getRarityIconPath = useCallback((cardSetNo?: string | number, rarity?: string, cardId?: string): string | null => {
+  // Helper function to check if a card is from B1 set
+  const isB1Card = useCallback((card: CardInfo | any): boolean => {
+    if (!card) return false
+    
+    const cardData = card as any
+    const cardSetId = cardData.cardSetId || cardData.CardSetId || cardData.SK || cardData.sk
+    const cardId = card.id || cardData.id || cardData.cardId || cardData.name
+    
+    // Check cardSetId/SK for B1
+    if (cardSetId && String(cardSetId).toLowerCase() === 'b1') {
+      return true
+    }
+    
+    // Check cardId for b1_ prefix
+    if (cardId && /^b1_/i.test(cardId)) {
+      return true
+    }
+    
+    return false
+  }, [])
+
+  // Helper function to determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
+  const getDeckSet = useCallback((deck: Deck | null, normalizedCards: CardInfo[]): string | null => {
+    if (!deck) return null
+    
+    const deckAny = deck as any
+    
+    // For fused decks, check cards from source decks (myDecks) if normalizedCards is empty
+    if (deckAny.format === 'Fused' && normalizedCards.length === 0) {
+      // Check source decks (myDecks) for B1 cards
+      if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
+        for (const sourceDeck of deckAny.myDecks) {
+          if (sourceDeck && sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
+            const hasB1Card = sourceDeck.cards.some((card: any) => {
+              // Handle string cards
+              if (typeof card === 'string') {
+                return /^b1_/i.test(card)
+              }
+              // Handle object cards
+              if (typeof card === 'object' && card !== null) {
+                const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
+                const cardId = card.id || card.cardId || card.name
+                if (cardSetId && String(cardSetId).toLowerCase() === 'b1') return true
+                if (cardId && /^b1_/i.test(cardId)) return true
+              }
+              return false
+            })
+            if (hasB1Card) {
+              return 'B1'
+            }
+          }
+        }
+      }
+      
+      // If no B1 cards found in source decks, return null (fused decks don't have cardSetNo)
+      return null
+    }
+    
+    // Check if any card in normalizedCards is from B1 set
+    const hasB1Card = normalizedCards.some(card => isB1Card(card))
+    
+    if (hasB1Card) {
+      return 'B1'
+    }
+    
+    // Otherwise use deck.cardSetNo
+    return deck.cardSetNo || null
+  }, [isB1Card])
+  
+  // Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", etc.
+  const formatSetName = useCallback((setNo: string | number | null | undefined): string | null => {
+    if (!setNo) return null
+    
+    const setStr = String(setNo).trim()
+    
+    // If it's already B1 or b1, return as B1
+    if (setStr.toUpperCase() === 'B1' || setStr.toLowerCase() === 'b1') {
+      return 'B1'
+    }
+    
+    // For numeric sets, format as S1, S2, S3, etc.
+    const numericMatch = setStr.match(/^(\d+)$/)
+    if (numericMatch) {
+      return `S${numericMatch[1]}`
+    }
+    
+    // If it already starts with S, return as is (but uppercase S)
+    if (/^s\d+/i.test(setStr)) {
+      return setStr.toUpperCase()
+    }
+    
+    // Otherwise return as is
+    return setStr
+  }, [])
+
+  const getRarityIconPath = useCallback((cardSetNo?: string | number, rarity?: string, cardId?: string, cardData?: any): string | null => {
     if (!rarity) return null
     
     // Normalize rarity: "Common Rare" -> "CommonRare", "common rare" -> "CommonRare", etc.
@@ -1668,15 +1982,58 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       normalizedRarity = 'Solbind'
     }
     
-    // Get set number: first try cardSetNo, then try to extract from cardId, default to 1
+    // Get card set from card data first (cardSetId or SK), then fallback to cardSetNo parameter, then cardId
+    let cardSet: string | undefined = undefined
+    
+    // Try to get cardSetId or SK from cardData (most reliable - per-card set information)
+    if (cardData) {
+      cardSet = cardData.cardSetId || cardData.CardSetId || cardData.SK || cardData.sk
+      // SK might be in format like "b1" or "s3", normalize it
+      if (cardSet) {
+        cardSet = String(cardSet).toLowerCase().trim()
+      }
+    }
+    
+    // Fallback to cardSetNo parameter
+    if (!cardSet && cardSetNo) {
+      cardSet = String(cardSetNo).toLowerCase().trim()
+    }
+    
+    // Fallback: try to extract from cardId
+    if (!cardSet && cardId) {
+      // Check for b1_ prefix first
+      if (/^b1_/i.test(cardId)) {
+        cardSet = 'b1'
+      } else {
+        // Extract set number from cardId (e.g., "s3nn1arrogant-butcher" -> "3")
+        const match = cardId.match(/^s(\d+)/i)
+        if (match && match[1]) {
+          cardSet = `s${match[1]}`
+        }
+      }
+    }
+    
+    // Check if this is B1 set (Betrayer set)
+    // B1 can be identified by cardSet being "B1" or "b1", or by cardId starting with "b1_"
+    const isB1Set = 
+      (cardSet && (cardSet.toUpperCase() === 'B1' || cardSet === 'b1')) ||
+      (cardId && /^b1_/i.test(cardId))
+    
+    if (isB1Set) {
+      // Return B1 rarity icons (b1_*.png -> B1_*.png)
+      return `/images/icons/rarity/B1_${normalizedRarity}.png`
+    }
+    
+    // Get set number for S sets: extract number from cardSet (e.g., "s3" -> "3", "3" -> "3")
     let setNo = '1'
-    if (cardSetNo) {
-      setNo = String(cardSetNo)
-    } else if (cardId) {
-      // Extract set number from cardId (e.g., "s3nn1arrogant-butcher" -> "3")
-      const match = cardId.match(/^s(\d+)/i)
+    if (cardSet) {
+      // Remove "s" prefix if present and extract number
+      const match = cardSet.match(/^s?(\d+)/i)
       if (match && match[1]) {
         setNo = match[1]
+      } else {
+        // If it's just a number, use it directly
+        setNo = cardSet
       }
     }
     
@@ -1689,19 +2046,38 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     return `/images/icons/rarity/S${setNo}_${normalizedRarity}.png`
   }, [])
 
+  // Determine deck set (B1 if any card is from B1, otherwise deck.cardSetNo)
+  const deckSet = useMemo(() => {
+    if (!deck) return null
+    return getDeckSet(deck, normalizedCards)
+  }, [deck, normalizedCards, getDeckSet])
+  
+  const formattedDeckSet = useMemo(() => {
+    return formatSetName(deckSet)
+  }, [deckSet, formatSetName])
+
   // Early return AFTER all hooks
   if (!deck) return null
 
   const CardListItem = ({ card, onClick }: { card: CardInfo; onClick: () => void }) => {
     const cardData = card as any
     const isBetrayer = cardData.betrayer === true || cardData.betrayer === 'true'
+    // Check if this is a Forgeborn card
+    const isForgeborn = deck?.forgebornId === card.id || 
+                       card.id === deck?.forgebornId ||
+                       (card.id && deck?.forgebornId && card.id.includes(deck.forgebornId)) ||
+                       (deck?.forgebornId && card.id && deck.forgebornId.includes(card.id)) ||
+                       card.type?.toLowerCase().includes('forgeborn') ||
+                       cardData.cardType?.toLowerCase().includes('forgeborn')
     // For betrayer cards, use crossFaction for icon, otherwise use regular faction
     const factionForIcon = isBetrayer && cardData.crossFaction 
       ? cardData.crossFaction 
       : (card.faction || deck.faction)
     const factionColor = getFactionBadgeColor(factionForIcon)
     const rarity = cardData.rarity || card.rarity
-    const rarityIconPath = getRarityIconPath(deck.cardSetNo, rarity, card.id)
+    // For Forgeborn cards, don't show rarity icon, use circle instead
+    // Use cardSetId or SK from card data if available, otherwise fallback to deck.cardSetNo
+    const rarityIconPath = isForgeborn ? null : getRarityIconPath(deck.cardSetNo, rarity, card.id, cardData)
     const faction = (factionForIcon || '').toLowerCase()
     const factionIconPath = faction ? `/images/icons/${faction}.png` : null
     
@@ -1836,9 +2212,35 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                 ← Back to Fused
               </Button>
             )}
-            <Title order={3} className="text-white" style={{ flexShrink: 0 }}>
-            {deck.name || 'Untitled Deck'}
-          </Title>
+            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+              <Title order={3} className="text-white" style={{ flexShrink: 0 }}>
+                {deck.name || 'Untitled Deck'}
+              </Title>
+              {formattedDeckSet && (
+                <Group gap={4} wrap="nowrap">
+                  {deck.faction && (
+                    <Image
+                      src={`/images/icons/${deck.faction.toLowerCase()}.png`}
+                      alt={deck.faction}
+                      h={20}
+                      w="auto"
+                      style={{
+                        display: 'inline-block',
+                        verticalAlign: 'middle',
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                  <Badge
+                    color="indigo"
+                    variant="light"
+                    size="sm"
+                  >
+                    {formattedDeckSet}
+                  </Badge>
+                </Group>
+              )}
+            </Group>
             <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
             {deck.deckRank && (
               <Badge
@@ -1943,18 +2345,44 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                   return (
                     <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
                       {sourceDeck1 && (
-                        <Text
-                          size="xs"
-                          className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            // Pass current deck as parent when navigating to source deck
-                            onDeckClick(sourceDeck1, deck)
-                          }}
-                          style={{ textDecorationThickness: '1px' }}
-                        >
-                          {sourceDeck1.name || 'Deck 1'}
-                        </Text>
+                        <Group gap="xs" wrap="nowrap">
+                          <Text
+                            size="xs"
+                            className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              // Pass current deck as parent when navigating to source deck
+                              onDeckClick(sourceDeck1, deck)
+                            }}
+                            style={{ textDecorationThickness: '1px' }}
+                          >
+                            {sourceDeck1.name || 'Deck 1'}
+                          </Text>
+                          {sourceDeck1.cardSetNo && (
+                            <Group gap={4} wrap="nowrap">
+                              {sourceDeck1.faction && (
+                                <Image
+                                  src={`/images/icons/${sourceDeck1.faction.toLowerCase()}.png`}
+                                  alt={sourceDeck1.faction}
+                                  h={20}
+                                  w="auto"
+                                  style={{
+                                    display: 'inline-block',
+                                    verticalAlign: 'middle',
+                                    flexShrink: 0,
+                                  }}
+                                />
+                              )}
+                              <Badge
+                                color="indigo"
+                                variant="light"
+                                size="xs"
+                              >
+                                {formatSetName(sourceDeck1.cardSetNo)}
+                              </Badge>
+                            </Group>
+                          )}
+                        </Group>
                       )}
                       {sourceDeck1 && sourceDeck2 && (
                         <Text size="xs" className="text-gray-500">
@@ -1962,19 +2390,45 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                         </Text>
                       )}
                       {sourceDeck2 && (
-                        <Text
-                          size="xs"
-                          className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            // Pass current deck as parent when navigating to source deck
-                            onDeckClick(sourceDeck2, deck)
-                          }}
-                          style={{ textDecorationThickness: '1px' }}
-                        >
-                          {sourceDeck2.name || 'Deck 2'}
-              </Text>
-            )}
+                        <Group gap="xs" wrap="nowrap">
+                          <Text
+                            size="xs"
+                            className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              // Pass current deck as parent when navigating to source deck
+                              onDeckClick(sourceDeck2, deck)
+                            }}
+                            style={{ textDecorationThickness: '1px' }}
+                          >
+                            {sourceDeck2.name || 'Deck 2'}
+                          </Text>
+                          {sourceDeck2.cardSetNo && (
+                            <Group gap={4} wrap="nowrap">
+                              {sourceDeck2.faction && (
+                                <Image
+                                  src={`/images/icons/${sourceDeck2.faction.toLowerCase()}.png`}
+                                  alt={sourceDeck2.faction}
+                                  h={20}
+                                  w="auto"
+                                  style={{
+                                    display: 'inline-block',
+                                    verticalAlign: 'middle',
+                                    flexShrink: 0,
+                                  }}
+                                />
+                              )}
+                              <Badge
+                                color="indigo"
+                                variant="light"
+                                size="xs"
+                              >
+                                {formatSetName(sourceDeck2.cardSetNo)}
+                              </Badge>
+                            </Group>
+                          )}
+                        </Group>
+                      )}
           </Group>
                   )
                 } else {
@@ -1982,9 +2436,35 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                   return (
                     <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
                       {sourceDeck1 && (
-                        <Text size="xs" className="text-blue-400">
-                          {sourceDeck1.name || 'Deck 1'}
-                        </Text>
+                        <Group gap="xs" wrap="nowrap">
+                          <Text size="xs" className="text-blue-400">
+                            {sourceDeck1.name || 'Deck 1'}
+                          </Text>
+                          {sourceDeck1.cardSetNo && (
+                            <Group gap={4} wrap="nowrap">
+                              {sourceDeck1.faction && (
+                                <Image
+                                  src={`/images/icons/${sourceDeck1.faction.toLowerCase()}.png`}
+                                  alt={sourceDeck1.faction}
+                                  h={20}
+                                  w="auto"
+                                  style={{
+                                    display: 'inline-block',
+                                    verticalAlign: 'middle',
+                                    flexShrink: 0,
+                                  }}
+                                />
+                              )}
+                              <Badge
+                                color="indigo"
+                                variant="light"
+                                size="xs"
+                              >
+                                {formatSetName(sourceDeck1.cardSetNo)}
+                              </Badge>
+                            </Group>
+                          )}
+                        </Group>
                       )}
                       {sourceDeck1 && sourceDeck2 && (
                         <Text size="xs" className="text-gray-500">
@@ -1992,9 +2472,35 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                         </Text>
                       )}
                       {sourceDeck2 && (
-                        <Text size="xs" className="text-blue-400">
-                          {sourceDeck2.name || 'Deck 2'}
-                        </Text>
+                        <Group gap="xs" wrap="nowrap">
+                          <Text size="xs" className="text-blue-400">
+                            {sourceDeck2.name || 'Deck 2'}
+                          </Text>
+                          {sourceDeck2.cardSetNo && (
+                            <Group gap={4} wrap="nowrap">
+                              {sourceDeck2.faction && (
+                                <Image
+                                  src={`/images/icons/${sourceDeck2.faction.toLowerCase()}.png`}
+                                  alt={sourceDeck2.faction}
+                                  h={20}
+                                  w="auto"
+                                  style={{
+                                    display: 'inline-block',
+                                    verticalAlign: 'middle',
+                                    flexShrink: 0,
+                                  }}
+                                />
+                              )}
+                              <Badge
+                                color="indigo"
+                                variant="light"
+                                size="xs"
+                              >
+                                {formatSetName(sourceDeck2.cardSetNo)}
+                              </Badge>
+                            </Group>
+                          )}
+                        </Group>
                       )}
                     </Group>
                   )
@@ -2038,9 +2544,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     Forgeborn
                   </Text>
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
-                    {forgebornCards.map((card) => (
+                    {forgebornCards.map((card, index) => (
                       <CardListItem
-                        key={card.id}
+                        key={`forgeborn-${card.id}-${index}`}
                         card={card}
                         onClick={() => setSelectedCard(card)}
                       />
@@ -2056,9 +2562,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     Creatures ({creatureCards.length})
                   </Text>
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
-                    {creatureCards.map((card) => (
+                    {creatureCards.map((card, index) => (
                       <CardListItem
-                        key={card.id}
+                        key={`creature-${card.id}-${index}`}
                         card={card}
                         onClick={() => setSelectedCard(card)}
                       />
@@ -2074,9 +2580,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     Spells ({spellCards.length})
                   </Text>
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
-                    {spellCards.map((card) => (
+                    {spellCards.map((card, index) => (
                       <CardListItem
-                        key={card.id}
+                        key={`spell-${card.id}-${index}`}
                         card={card}
                         onClick={() => setSelectedCard(card)}
                       />
@@ -2092,9 +2598,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     Solbind ({solbindCards.length})
                   </Text>
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
-                    {solbindCards.map((card) => (
+                    {solbindCards.map((card, index) => (
                       <CardListItem
-                        key={card.id}
+                        key={`solbind-${card.id}-${index}`}
                         card={card}
                         onClick={() => setSelectedCard(card)}
                       />
@@ -2110,9 +2616,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     Cards ({normalizedCards.length})
                   </Text>
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
-                    {normalizedCards.map((card) => (
+                    {normalizedCards.map((card, index) => (
                       <CardListItem
-                        key={card.id}
+                        key={`card-${card.id}-${index}`}
                         card={card}
                         onClick={() => setSelectedCard(card)}
                       />
@@ -2191,6 +2697,12 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                       // (we'll show a placeholder while loading)
                       const isCreatureOrSpell = !isForgeborn && !isSolbind
                       
+                      // Check if card has images for all levels (1, 2, 3)
+                      // If not, disable mouse scrolling (usually Solbind cards)
+                      const availableLevels = cardImageData ? Object.keys(cardImageData).map(Number).sort() : []
+                      const hasAllLevels = availableLevels.length === 3 && availableLevels.includes(1) && availableLevels.includes(2) && availableLevels.includes(3)
+                      const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
+                      
                       return (cardImageData && effectiveImageUrl && !hasError) || (isCreatureOrSpell && !hasError) ? (
                       <div className="relative w-full h-full flex flex-col items-center justify-center gap-4">
                         {effectiveImageUrl ? (
@@ -2203,8 +2715,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                               maxHeight: isForgeborn ? '600px' : '450px',
                               transform: isForgeborn ? 'rotate(-90deg)' : 'none',
                             }}
-                            onMouseMove={!isForgeborn ? handleMouseMove : undefined}
-                            onMouseLeave={!isForgeborn ? handleMouseLeave : undefined}
+                            onMouseMove={shouldEnableMouseScroll ? handleMouseMove : undefined}
+                            onMouseLeave={shouldEnableMouseScroll ? handleMouseLeave : undefined}
                             onError={(e) => {
                               console.error(`[DeckDetails] Image error for ${selectedCard.id} level ${effectiveLevel}:`, e)
                               setImageErrors(prev => new Set(prev).add(`${selectedCard.id}-${effectiveLevel}`))
@@ -2323,7 +2835,31 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
                     {selectedCard.type && (
                       <Text size="sm" className="text-gray-400">
-                        Type: <span className="text-white">{selectedCard.type}</span>
+                        {(() => {
+                          const cardData = selectedCard as any
+                          const typeFromData = cardData.cardType || cardData.type || selectedCard.type
+                          const isForgeborn =
+                            forgebornCards.some(fb => {
+                              if (!fb.id || !selectedCard.id) return false
+                              if (fb.id === selectedCard.id) return true
+                              const fbBase = fb.id.replace(/\d+$/, '').toLowerCase()
+                              const cardBase = selectedCard.id.replace(/\d+$/, '').toLowerCase()
+                              return fbBase === cardBase
+                            }) ||
+                            (deck?.forgebornId &&
+                              (selectedCard.id === deck.forgebornId ||
+                               selectedCard.id?.includes(deck.forgebornId) ||
+                               deck.forgebornId.includes(selectedCard.id || ''))) ||
+                            (typeFromData && String(typeFromData).toLowerCase().includes('forgeborn'))
+                          
+                          const displayType = isForgeborn ? 'Forgeborn' : typeFromData
+                          
+                          return (
+                            <>
+                              Type: <span className="text-white">{displayType || 'Unknown'}</span>
+                            </>
+                          )
+                        })()}
                       </Text>
                     )}
 
