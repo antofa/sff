@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, ScrollArea, Divider, Image, Loader } from '@mantine/core'
 import { IconHandFinger, IconCalendar, IconExternalLink, IconWorld } from '@tabler/icons-react'
 import type { Deck } from '@/store/deckStore'
 import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForgebornAlternativeUrl, type CardInfo } from '@/lib/api'
 
-// Fetch full deck details from API
+// Fetch full deck details directly from API (faster than going through API route)
 async function fetchDeckDetails(deckId: string): Promise<any> {
   try {
     const url = `https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/${deckId}?inclCards=true&inclUsers=true`
@@ -14,21 +14,17 @@ async function fetchDeckDetails(deckId: string): Promise<any> {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
       },
-      cache: 'no-store',
       signal: AbortSignal.timeout(10000),
     })
 
     if (!response.ok) {
-      console.warn(`[DeckDetails] Failed to fetch deck details for ${deckId}: ${response.status}`)
       return null
     }
 
     const data = await response.json()
     return data
   } catch (error) {
-    console.warn(`[DeckDetails] Error fetching deck details for ${deckId}:`, error)
     return null
   }
 }
@@ -88,6 +84,112 @@ const processHtmlContent = (html: string): string => {
   
   return processed
 }
+
+// Pure helper function - moved outside component for better performance
+function getFactionBadgeColor(faction?: string): string {
+  switch (faction) {
+    case 'Alloyin': return '#06b6d4'
+    case 'Uterra': return '#14b8a6'
+    case 'Tempys': return '#f97316'
+    case 'Nekrium': return '#a855f7'
+    default: return '#6b7280'
+  }
+}
+
+// Memoized CardListItem component - defined outside to prevent recreation on each render
+interface CardListItemProps {
+  card: CardInfo
+  isSelected: boolean
+  factionIconPath: string | null
+  rarityIconPath: string | null
+  factionColor: string
+  onClick: () => void
+}
+
+const CardListItem = memo(function CardListItem({ 
+  card, 
+  isSelected, 
+  factionIconPath, 
+  rarityIconPath, 
+  factionColor,
+  onClick 
+}: CardListItemProps) {
+  return (
+    <div style={{ 
+      // CSS containment for better performance - browser can skip rendering off-screen items
+      contentVisibility: 'auto',
+      containIntrinsicSize: '0 40px', // Approximate height for layout
+    }}>
+      <Button
+        variant={isSelected ? 'filled' : 'subtle'}
+        onClick={onClick}
+        className="w-full h-auto"
+        styles={{
+          root: {
+            backgroundColor: isSelected 
+              ? 'rgba(74, 144, 226, 0.2)' 
+              : 'transparent',
+            border: isSelected 
+              ? '1px solid rgba(74, 144, 226, 0.5)' 
+              : '1px solid transparent',
+            '&:hover': {
+              backgroundColor: 'rgba(74, 144, 226, 0.1)',
+            },
+            justifyContent: 'flex-start',
+            paddingLeft: '0.5rem',
+            paddingRight: '0.5rem',
+            paddingTop: '0.5rem',
+            paddingBottom: '0.5rem',
+            cursor: 'pointer',
+            userSelect: 'none',
+          },
+          inner: {
+            justifyContent: 'flex-start',
+            width: '100%',
+          },
+        }}
+      >
+        <Group gap="xs" className="w-full" wrap="nowrap" justify="flex-start" style={{ margin: 0 }}>
+          {factionIconPath ? (
+            <Image
+              src={factionIconPath}
+              alt="Faction"
+              w={16}
+              h={16}
+              style={{ flexShrink: 0 }}
+            />
+          ) : (
+            <div
+              className="w-4 h-4 rounded-full flex-shrink-0"
+              style={{ backgroundColor: factionColor, opacity: 0.8 }}
+            />
+          )}
+          {rarityIconPath ? (
+            <Image
+              src={rarityIconPath}
+              alt="Rarity"
+              w={16}
+              h={16}
+              style={{ flexShrink: 0 }}
+            />
+          ) : (
+            <div
+              className="w-4 h-4 rounded-full flex-shrink-0"
+              style={{ backgroundColor: factionColor, opacity: 0.8 }}
+            />
+          )}
+          <Text 
+            size="sm" 
+            className="text-white flex-1 text-left truncate"
+            style={{ minWidth: 0 }}
+          >
+            {card.name}
+          </Text>
+        </Group>
+      </Button>
+    </div>
+  )
+})
 
 interface DeckDetailsProps {
   deck: Deck | null
@@ -172,9 +274,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
   // Load full deck data when modal opens to get forgeborn.solbindCards
   useEffect(() => {
+    // Only fetch when modal is open and we have a deck
     if (!deck || !opened || !deck.id) {
-      // Reset fullDeckData when modal closes or deck is null
-      setFullDeckData(null)
+      // Don't reset fullDeckData on close - keep it cached for faster reopening
       return
     }
     
@@ -317,16 +419,10 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       return getCardInfo(`card-${index}`)
     })
     
-    // Log card types for debugging
-    if (process.env.NODE_ENV === 'development' && cards.length > 0) {
-      console.log('[DeckDetails] Card types:', cards.map(c => ({ 
-        id: c.id, 
-        name: c.name, 
-        type: c.type,
-        rarity: (c as any).rarity,
-        cardType: (c as any).cardType
-      })))
-    }
+    // Debug logging disabled for performance
+    // if (process.env.NODE_ENV === 'development' && cards.length > 0) {
+    //   console.log('[DeckDetails] Card types:', cards.map(c => ({ id: c.id, name: c.name, type: c.type })))
+    // }
     
     return cards
   }, [deck?.id, deck?.cards, (deck as any)?.cardList, fullDeckData])
@@ -378,7 +474,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     })
     
     if (process.env.NODE_ENV === 'development' && ids.size > 0) {
-      console.log(`[DeckDetails] Solbind card IDs:`, Array.from(ids))
+      // console.log(`[DeckDetails] Solbind card IDs:`, Array.from(ids))
     }
     
     return ids
@@ -531,8 +627,137 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
   }
 
-  // Load card images in specific order: Forgeborn -> Creatures/Spells Level 1 -> Level 2 -> Level 3 -> Solbind
+  // Load images only for the selected card (lazy loading for performance)
   useEffect(() => {
+    if (!opened || !selectedCard) return
+
+    let isCanceled = false
+    
+    const loadSelectedCardImages = async () => {
+      const cardData = selectedCard as any
+      const isForgeborn = deck?.forgebornId === selectedCard.id || 
+                         selectedCard.id === deck?.forgebornId ||
+                         selectedCard.type?.toLowerCase().includes('forgeborn') ||
+                         cardData.cardType?.toLowerCase().includes('forgeborn')
+      
+      // Check if already loaded
+      if (cardImages[selectedCard.id] && Object.keys(cardImages[selectedCard.id]).length > 0) {
+        return
+      }
+      
+      try {
+        if (isForgeborn) {
+          // Load single forgeborn image
+          const imageUrl = await loadSingleImage(selectedCard.id, 1, true)
+          if (!isCanceled && imageUrl) {
+            setCardImages(prev => ({
+              ...prev,
+              [selectedCard.id]: { 1: imageUrl, 2: imageUrl, 3: imageUrl }
+            }))
+          }
+        } else {
+          // Load all 3 levels in parallel
+          const [level1, level2, level3] = await Promise.all([
+            loadSingleImage(selectedCard.id, 1, false),
+            loadSingleImage(selectedCard.id, 2, false),
+            loadSingleImage(selectedCard.id, 3, false),
+          ])
+          
+          if (!isCanceled) {
+            const newImages: Record<number, string> = {}
+            if (level1) newImages[1] = level1
+            if (level2) newImages[2] = level2
+            if (level3) newImages[3] = level3
+            
+            if (Object.keys(newImages).length > 0) {
+              setCardImages(prev => ({
+                ...prev,
+                [selectedCard.id]: newImages
+              }))
+            }
+          }
+        }
+      } catch (error) {
+        if (!isCanceled) {
+          setImageErrors(prev => new Set(prev).add(selectedCard.id))
+        }
+      }
+    }
+    
+    loadSelectedCardImages()
+    
+    return () => {
+      isCanceled = true
+    }
+  }, [selectedCard?.id, opened, deck?.forgebornId])
+
+  // Background preload all card images (delayed to not block UI)
+  useEffect(() => {
+    if (!opened || normalizedCards.length === 0) return
+    
+    let isCanceled = false
+    
+    // Delay background loading to let UI render first
+    const timeoutId = setTimeout(async () => {
+      if (isCanceled) return
+      
+      // Load all cards in background with low priority
+      for (const card of normalizedCards) {
+        if (isCanceled) break
+        
+        // Skip if already loaded
+        if (cardImages[card.id] && Object.keys(cardImages[card.id]).length > 0) {
+          continue
+        }
+        
+        const cardData = card as any
+        const isForgeborn = deck?.forgebornId === card.id || 
+                           card.id === deck?.forgebornId ||
+                           card.type?.toLowerCase().includes('forgeborn') ||
+                           cardData.cardType?.toLowerCase().includes('forgeborn')
+        
+        try {
+          if (isForgeborn) {
+            const imageUrl = await loadSingleImage(card.id, 1, true)
+            if (!isCanceled && imageUrl) {
+              setCardImages(prev => ({
+                ...prev,
+                [card.id]: { 1: imageUrl, 2: imageUrl, 3: imageUrl }
+              }))
+            }
+          } else {
+            // Load levels sequentially to reduce parallel load
+            for (const level of [1, 2, 3]) {
+              if (isCanceled) break
+              const imageUrl = await loadSingleImage(card.id, level, false)
+              if (!isCanceled && imageUrl) {
+                setCardImages(prev => ({
+                  ...prev,
+                  [card.id]: { ...prev[card.id], [level]: imageUrl }
+                }))
+              }
+            }
+          }
+        } catch {
+          // Silently ignore background loading errors
+        }
+        
+        // Small delay between cards to not overwhelm the browser
+        if (!isCanceled) {
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
+      }
+    }, 300) // Start background loading 300ms after modal opens
+    
+    return () => {
+      isCanceled = true
+      clearTimeout(timeoutId)
+    }
+  }, [opened, normalizedCards.length, deck?.id])
+
+  // DISABLED: Old preload all images - too slow
+  // Load card images in specific order: Forgeborn -> Creatures/Spells Level 1 -> Level 2 -> Level 3 -> Solbind
+  /* useEffect(() => {
     if (!opened || normalizedCards.length === 0) return
 
     // Track if the modal is still open to prevent state updates after closing
@@ -1144,9 +1369,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     // Cleanup: mark modal as closed when it closes or component unmounts
     return () => {
       isModalOpen = false
-      console.log(`[DeckDetails] 🧹 Cleanup: stopped image loading for deck ${deck?.id}`)
     }
-  }, [opened, normalizedCards.length, deck?.id, solbindCardIdsKey, getFusedDeckSourceDecks, deck]) // Include getFusedDeckSourceDecks for fused deck second forgeborn
+  }, [opened, normalizedCards.length, deck?.id, solbindCardIdsKey, getFusedDeckSourceDecks, deck]) */ // DISABLED - end of old preload useEffect
 
   // Group cards by categories - must be before any conditional returns
   const forgebornCards: CardInfo[] = useMemo(() => {
@@ -1465,8 +1689,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     // Check forgeborn.solbindCards for second forgeborn (alternative forgeborn)
     if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object') {
       if (process.env.NODE_ENV === 'development') {
-        console.log('[DeckDetails] Forgeborn object:', deckForUse.forgeborn)
-        console.log('[DeckDetails] Forgeborn solbindCards:', deckForUse.forgeborn.solbindCards)
+        // console.log('[DeckDetails] Forgeborn object:', deckForUse.forgeborn)
+        // console.log('[DeckDetails] Forgeborn solbindCards:', deckForUse.forgeborn.solbindCards)
       }
       
       if (deckForUse.forgeborn.solbindCards && Array.isArray(deckForUse.forgeborn.solbindCards)) {
@@ -1482,13 +1706,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             const isNotSolbind = !rarity || (typeof rarity === 'string' && !rarity.toLowerCase().includes('solbind'))
             
             if (process.env.NODE_ENV === 'development') {
-              console.log(`[DeckDetails] Checking solbindCard ${solbindCard.id}:`, {
-                name: solbindCard.name,
-                cardType,
-                rarity,
-                isForgebornCard,
-                isNotSolbind
-              })
+              // Debug logging disabled for performance
+              // console.log(`[DeckDetails] Checking solbindCard...`)
             }
             
             if (isForgebornCard && isNotSolbind) {
@@ -1641,7 +1860,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     // If current level doesn't exist, switch to first available
     if (!currentLevelExists && !levelManuallyChangedRef.current) {
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[DeckDetails] Auto-selecting first available level ${firstAvailableLevel} for Solbind card ${selectedCard.id} (current level ${selectedLevel} doesn't exist)`)
+        // console.log(`[DeckDetails] Auto-selecting first available level...`)
       }
       setSelectedLevel(firstAvailableLevel)
     }
@@ -1744,7 +1963,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           if (isSolbindCard && !solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
             solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
             if (process.env.NODE_ENV === 'development') {
-              console.log(`[DeckDetails] ✅ Added Solbind card from forgeborn.solbindCards: ${solbindCard.name || solbindCard.id} (${solbindCard.id})`)
+              // console.log(`[DeckDetails] ✅ Added Solbind card...`)
             }
           }
         }
@@ -1797,7 +2016,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     })
     
     if (process.env.NODE_ENV === 'development' && solbindCardObjects.length > 0) {
-      console.log(`[DeckDetails] 📋 Total Solbind cards found: ${solbindCardObjects.length}`, solbindCardObjects.map(c => c.name || c.id))
+      // console.log(`[DeckDetails] Total Solbind cards found: ${solbindCardObjects.length}`)
     }
     
     return solbindCardObjects
@@ -1837,15 +2056,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
   }, [])
 
-  const getFactionBadgeColor = useCallback((faction?: string) => {
-    switch (faction) {
-      case 'Alloyin': return '#06b6d4'
-      case 'Uterra': return '#14b8a6'
-      case 'Tempys': return '#f97316'
-      case 'Nekrium': return '#a855f7'
-      default: return '#6b7280'
-    }
-  }, [])
+  // getFactionBadgeColor moved outside component for better performance
 
   // Get rarity icon path based on card set and rarity
   // Helper function to check if a card is from B1 set
@@ -2059,141 +2270,41 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   // Early return AFTER all hooks
   if (!deck) return null
 
-  const CardListItem = ({ card, onClick }: { card: CardInfo; onClick: () => void }) => {
+  // Helper to compute CardListItem props from card data
+  const getCardListItemProps = (card: CardInfo) => {
     const cardData = card as any
     const isBetrayer = cardData.betrayer === true || cardData.betrayer === 'true'
-    // Check if this is a Forgeborn card
     const isForgeborn = deck?.forgebornId === card.id || 
                        card.id === deck?.forgebornId ||
                        (card.id && deck?.forgebornId && card.id.includes(deck.forgebornId)) ||
                        (deck?.forgebornId && card.id && deck.forgebornId.includes(card.id)) ||
                        card.type?.toLowerCase().includes('forgeborn') ||
                        cardData.cardType?.toLowerCase().includes('forgeborn')
-    // For betrayer cards, use crossFaction for icon, otherwise use regular faction
     const factionForIcon = isBetrayer && cardData.crossFaction 
       ? cardData.crossFaction 
       : (card.faction || deck.faction)
-    const factionColor = getFactionBadgeColor(factionForIcon)
-    const rarity = cardData.rarity || card.rarity
-    // For Forgeborn cards, don't show rarity icon, use circle instead
-    // Use cardSetId or SK from card data if available, otherwise fallback to deck.cardSetNo
-    const rarityIconPath = isForgeborn ? null : getRarityIconPath(deck.cardSetNo, rarity, card.id, cardData)
     const faction = (factionForIcon || '').toLowerCase()
-    const factionIconPath = faction ? `/images/icons/${faction}.png` : null
+    const rarity = cardData.rarity || card.rarity
     
-    const handleClick = useCallback((e: React.MouseEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      onClick()
-    }, [onClick])
-    
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
-      // Also handle mousedown for better responsiveness
-      if (e.button === 0) { // Left mouse button only
-        e.preventDefault()
-        e.stopPropagation()
-        onClick()
-      }
-    }, [onClick])
-    
-    return (
-      <Button
-        variant={selectedCard?.id === card.id ? 'filled' : 'subtle'}
-        onClick={handleClick}
-        onMouseDown={handleMouseDown}
-        className="w-full h-auto"
-        styles={{
-          root: {
-            backgroundColor: selectedCard?.id === card.id 
-              ? 'rgba(74, 144, 226, 0.2)' 
-              : 'transparent',
-            border: selectedCard?.id === card.id 
-              ? '1px solid rgba(74, 144, 226, 0.5)' 
-              : '1px solid transparent',
-            '&:hover': {
-              backgroundColor: 'rgba(74, 144, 226, 0.1)',
-            },
-            justifyContent: 'flex-start',
-            paddingLeft: '0.5rem',
-            paddingRight: '0.5rem',
-            paddingTop: '0.5rem',
-            paddingBottom: '0.5rem',
-            cursor: 'pointer',
-            userSelect: 'none',
-          },
-          inner: {
-            justifyContent: 'flex-start',
-            width: '100%',
-            pointerEvents: 'none', // Prevent inner elements from blocking clicks
-          },
-        }}
-      >
-        <Group gap="xs" className="w-full" wrap="nowrap" justify="flex-start" style={{ margin: 0, pointerEvents: 'none' }}>
-          {factionIconPath ? (
-            <Image
-              src={factionIconPath}
-              alt={faction || 'Faction'}
-              w={16}
-              h={16}
-              style={{
-                flexShrink: 0,
-                pointerEvents: 'none',
-              }}
-            />
-          ) : (
-            <div
-              className="w-4 h-4 rounded-full flex-shrink-0"
-              style={{
-                backgroundColor: factionColor,
-                opacity: 0.8,
-                pointerEvents: 'none',
-              }}
-            />
-          )}
-          {rarityIconPath ? (
-            <Image
-              src={rarityIconPath}
-              alt={rarity || 'Rarity'}
-              w={16}
-              h={16}
-              style={{
-                flexShrink: 0,
-                pointerEvents: 'none',
-              }}
-            />
-          ) : (
-            <div
-              className="w-4 h-4 rounded-full flex-shrink-0"
-              style={{
-                backgroundColor: factionColor,
-                opacity: 0.8,
-                pointerEvents: 'none',
-              }}
-            />
-          )}
-          <Text 
-            size="sm" 
-            className="text-white flex-1 text-left truncate"
-            style={{ minWidth: 0, pointerEvents: 'none' }}
-          >
-            {card.name}
-          </Text>
-        </Group>
-      </Button>
-    )
+    return {
+      factionIconPath: faction ? `/images/icons/${faction}.png` : null,
+      rarityIconPath: isForgeborn ? null : getRarityIconPath(deck.cardSetNo, rarity, card.id, cardData),
+      factionColor: getFactionBadgeColor(factionForIcon),
+    }
   }
 
   return (
     <Modal
       opened={opened}
       onClose={onClose}
-      transitionProps={{ duration: 300, timingFunction: 'ease-in-out' }}
+      transitionProps={{ duration: 0 }}
       overlayProps={{
-        backgroundOpacity: 0.55,
-        blur: 3,
+        backgroundOpacity: 0.6,
+        blur: 0,
       }}
       closeOnClickOutside={true}
       closeOnEscape={true}
+      keepMounted={false}
       title={
         <Group justify="space-between" className="w-full" wrap="nowrap">
           <Group gap="md" wrap="nowrap" className="flex-1 min-w-0">
@@ -2544,13 +2655,20 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     Forgeborn
                   </Text>
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
-                    {forgebornCards.map((card, index) => (
-                      <CardListItem
-                        key={`forgeborn-${card.id}-${index}`}
-                        card={card}
-                        onClick={() => setSelectedCard(card)}
-                      />
-                    ))}
+                    {forgebornCards.map((card, index) => {
+                      const props = getCardListItemProps(card)
+                      return (
+                        <CardListItem
+                          key={`forgeborn-${card.id}-${index}`}
+                          card={card}
+                          isSelected={selectedCard?.id === card.id}
+                          factionIconPath={props.factionIconPath}
+                          rarityIconPath={props.rarityIconPath}
+                          factionColor={props.factionColor}
+                          onClick={() => setSelectedCard(card)}
+                        />
+                      )
+                    })}
                   </Stack>
                 </div>
               )}
@@ -2562,13 +2680,20 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     Creatures ({creatureCards.length})
                   </Text>
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
-                    {creatureCards.map((card, index) => (
-                      <CardListItem
-                        key={`creature-${card.id}-${index}`}
-                        card={card}
-                        onClick={() => setSelectedCard(card)}
-                      />
-                    ))}
+                    {creatureCards.map((card, index) => {
+                      const props = getCardListItemProps(card)
+                      return (
+                        <CardListItem
+                          key={`creature-${card.id}-${index}`}
+                          card={card}
+                          isSelected={selectedCard?.id === card.id}
+                          factionIconPath={props.factionIconPath}
+                          rarityIconPath={props.rarityIconPath}
+                          factionColor={props.factionColor}
+                          onClick={() => setSelectedCard(card)}
+                        />
+                      )
+                    })}
                   </Stack>
                 </div>
               )}
@@ -2580,13 +2705,20 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     Spells ({spellCards.length})
                   </Text>
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
-                    {spellCards.map((card, index) => (
-                      <CardListItem
-                        key={`spell-${card.id}-${index}`}
-                        card={card}
-                        onClick={() => setSelectedCard(card)}
-                      />
-                    ))}
+                    {spellCards.map((card, index) => {
+                      const props = getCardListItemProps(card)
+                      return (
+                        <CardListItem
+                          key={`spell-${card.id}-${index}`}
+                          card={card}
+                          isSelected={selectedCard?.id === card.id}
+                          factionIconPath={props.factionIconPath}
+                          rarityIconPath={props.rarityIconPath}
+                          factionColor={props.factionColor}
+                          onClick={() => setSelectedCard(card)}
+                        />
+                      )
+                    })}
                   </Stack>
                 </div>
               )}
@@ -2598,13 +2730,20 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     Solbind ({solbindCards.length})
                   </Text>
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
-                    {solbindCards.map((card, index) => (
-                      <CardListItem
-                        key={`solbind-${card.id}-${index}`}
-                        card={card}
-                        onClick={() => setSelectedCard(card)}
-                      />
-                    ))}
+                    {solbindCards.map((card, index) => {
+                      const props = getCardListItemProps(card)
+                      return (
+                        <CardListItem
+                          key={`solbind-${card.id}-${index}`}
+                          card={card}
+                          isSelected={selectedCard?.id === card.id}
+                          factionIconPath={props.factionIconPath}
+                          rarityIconPath={props.rarityIconPath}
+                          factionColor={props.factionColor}
+                          onClick={() => setSelectedCard(card)}
+                        />
+                      )
+                    })}
                   </Stack>
                 </div>
               )}
@@ -2616,13 +2755,20 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     Cards ({normalizedCards.length})
                   </Text>
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
-                    {normalizedCards.map((card, index) => (
-                      <CardListItem
-                        key={`card-${card.id}-${index}`}
-                        card={card}
-                        onClick={() => setSelectedCard(card)}
-                      />
-                    ))}
+                    {normalizedCards.map((card, index) => {
+                      const props = getCardListItemProps(card)
+                      return (
+                        <CardListItem
+                          key={`card-${card.id}-${index}`}
+                          card={card}
+                          isSelected={selectedCard?.id === card.id}
+                          factionIconPath={props.factionIconPath}
+                          rarityIconPath={props.rarityIconPath}
+                          factionColor={props.factionColor}
+                          onClick={() => setSelectedCard(card)}
+                        />
+                      )
+                    })}
                   </Stack>
                 </div>
               )}
@@ -2654,19 +2800,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                       // Check error for specific card-level combination
                       const levelErrorKey = `${selectedCard.id}-${selectedLevel}`
                       const hasError = imageErrors.has(levelErrorKey)
-                      
-                      // Always log for debugging, especially for Solbind
-                      console.log(`[DeckDetails] Rendering card image:`, {
-                        cardId: selectedCard.id,
-                        cardName: selectedCard.name,
-                        level: selectedLevel,
-                        hasImageData: !!cardImageData,
-                        currentImageUrl,
-                        hasError,
-                        allLevels: cardImageData ? Object.keys(cardImageData) : [],
-                        allImageUrls: cardImageData
-                      })
-                      
+
                       // Check if this is a Forgeborn card
                       const isForgeborn = deck?.forgebornId === selectedCard.id || 
                                          selectedCard.id === deck?.forgebornId ||
@@ -2710,6 +2844,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                             src={effectiveImageUrl}
                             alt={isForgeborn ? selectedCard.name : isSolbind ? selectedCard.name : `${selectedCard.name} Level ${effectiveLevel}`}
                             className="max-w-full max-h-full object-contain"
+                            loading="lazy"
+                            decoding="async"
                             style={{
                               maxWidth: isForgeborn ? '400px' : '300px',
                               maxHeight: isForgeborn ? '600px' : '450px',
@@ -2718,7 +2854,6 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                             onMouseMove={shouldEnableMouseScroll ? handleMouseMove : undefined}
                             onMouseLeave={shouldEnableMouseScroll ? handleMouseLeave : undefined}
                             onError={(e) => {
-                              console.error(`[DeckDetails] Image error for ${selectedCard.id} level ${effectiveLevel}:`, e)
                               setImageErrors(prev => new Set(prev).add(`${selectedCard.id}-${effectiveLevel}`))
                             }}
                           />

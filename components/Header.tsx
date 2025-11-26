@@ -1,11 +1,13 @@
 'use client'
 
-import { Container, Group, Button, Text } from '@mantine/core'
-import { IconSettings, IconBrandDiscord, IconPower } from '@tabler/icons-react'
+import { Container, Group, Button, Text, Avatar, Menu, Loader } from '@mantine/core'
+import { IconSettings, IconBrandDiscord, IconLogout, IconUser } from '@tabler/icons-react'
+import { useSession, signIn, signOut } from 'next-auth/react'
 import Image from 'next/image'
 import { useState } from 'react'
 
 export function Header() {
+  const { data: session, status } = useSession()
   const [logoError, setLogoError] = useState(false)
   const [logoSrc, setLogoSrc] = useState('https://solforgefusion.com/images/logo.png')
 
@@ -18,6 +20,22 @@ export function Header() {
     } else {
       setLogoError(true)
     }
+  }
+
+  const handleDiscordLogin = () => {
+    signIn('discord')
+  }
+
+  const handleLogout = () => {
+    signOut()
+  }
+
+  // Get Discord avatar URL
+  const getDiscordAvatarUrl = () => {
+    if (session?.user?.discordId && session?.user?.avatar) {
+      return `https://cdn.discordapp.com/avatars/${session.user.discordId}/${session.user.avatar}.png`
+    }
+    return session?.user?.image || null
   }
 
   return (
@@ -50,6 +68,7 @@ export function Header() {
               </Text>
             )}
           </Group>
+
           <Group gap="xs">
             <Button
               variant="subtle"
@@ -59,26 +78,68 @@ export function Header() {
             >
               <IconSettings size={18} />
             </Button>
-            <Button
-              variant="subtle"
-              color="gray"
-              size="sm"
-              className="text-white hover:bg-sf-primary/20 transition-colors"
-            >
-              <IconBrandDiscord size={18} />
-            </Button>
-            <Button
-              variant="subtle"
-              color="gray"
-              size="sm"
-              className="text-white hover:bg-sf-primary/20 transition-colors"
-            >
-              <IconPower size={18} />
-            </Button>
+
+            {status === 'loading' ? (
+              <Loader size="sm" color="blue" />
+            ) : session ? (
+              // User is authenticated
+              <Menu shadow="md" width={200} position="bottom-end">
+                <Menu.Target>
+                  <Button
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    className="text-white hover:bg-sf-primary/20 transition-colors"
+                    leftSection={
+                      <Avatar
+                        src={getDiscordAvatarUrl()}
+                        size={24}
+                        radius="xl"
+                        alt={session.user?.name || 'User'}
+                      >
+                        <IconUser size={14} />
+                      </Avatar>
+                    }
+                  >
+                    <Text size="sm" truncate maw={100}>
+                      {session.user?.username || session.user?.name || 'User'}
+                    </Text>
+                  </Button>
+                </Menu.Target>
+
+                <Menu.Dropdown>
+                  <Menu.Label>
+                    <Group gap="xs">
+                      <IconBrandDiscord size={14} />
+                      <Text size="xs">{session.user?.email || 'Discord'}</Text>
+                    </Group>
+                  </Menu.Label>
+                  <Menu.Divider />
+                  <Menu.Item
+                    color="red"
+                    leftSection={<IconLogout size={14} />}
+                    onClick={handleLogout}
+                  >
+                    Sign Out
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            ) : (
+              // User is not authenticated
+              <Button
+                variant="filled"
+                color="indigo"
+                size="sm"
+                leftSection={<IconBrandDiscord size={18} />}
+                onClick={handleDiscordLogin}
+                className="transition-all hover:scale-105"
+              >
+                Sign in with Discord
+              </Button>
+            )}
           </Group>
         </Group>
       </Container>
     </header>
   )
 }
-

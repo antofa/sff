@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import { MantineProvider } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { SessionProvider } from '@/components/SessionProvider'
 import { ErrorHandler } from './error-handler'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
@@ -37,27 +38,29 @@ export default function RootLayout({
             `,
           }}
         />
-        <MantineProvider
-          defaultColorScheme="dark"
-          theme={{
-            defaultRadius: 'md',
-            components: {
-              Paper: {
-                defaultProps: {
-                  style: {
-                    backgroundColor: 'rgba(30, 41, 59, 0.6)',
+        <SessionProvider>
+          <MantineProvider
+            defaultColorScheme="dark"
+            theme={{
+              defaultRadius: 'md',
+              components: {
+                Paper: {
+                  defaultProps: {
+                    style: {
+                      backgroundColor: 'rgba(30, 41, 59, 0.6)',
+                    },
                   },
                 },
               },
-            },
-          }}
-        >
-          <ErrorHandler />
-          <ErrorBoundary>
-            <Notifications position="top-right" />
-            {children}
-          </ErrorBoundary>
-        </MantineProvider>
+            }}
+          >
+            <ErrorHandler />
+            <ErrorBoundary>
+              <Notifications position="top-right" />
+              {children}
+            </ErrorBoundary>
+          </MantineProvider>
+        </SessionProvider>
       </body>
     </html>
   )

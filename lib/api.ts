@@ -142,7 +142,7 @@ async function fetchDeckDetails(deckId: string): Promise<any> {
         'Accept': 'application/json',
         'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
       },
-      cache: 'no-store',
+      next: { revalidate: 3600 }, // Cache for 1 hour
       signal: AbortSignal.timeout(10000),
     })
 
@@ -181,8 +181,8 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
           'Accept': 'application/json',
           'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
         },
-        // In Next.js we can use cache: 'no-store' for server requests
-        cache: 'no-store',
+        // Cache for 1 hour with time-based revalidation
+        next: { revalidate: 3600 },
         // Increase timeout
         signal: AbortSignal.timeout(20000), // 20 seconds
       })
@@ -247,7 +247,7 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
             'Accept': 'application/json',
             'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
           },
-          cache: 'no-store',
+          next: { revalidate: 3600 }, // Cache for 1 hour
           signal: AbortSignal.timeout(20000),
         })
       } catch (fetchError) {
@@ -572,7 +572,7 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
         'Accept': 'application/json',
         'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
       },
-      cache: 'no-store',
+      next: { revalidate: 3600 }, // Cache for 1 hour
       signal: AbortSignal.timeout(20000),
     })
 

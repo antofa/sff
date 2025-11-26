@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react'
+import { useState, useMemo, useEffect, useRef, useLayoutEffect, useTransition } from 'react'
 import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
 import { useDebouncedValue } from '@mantine/hooks'
@@ -749,16 +749,22 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     }
   }, [])
 
+  // Use transition for non-blocking UI updates when opening deck details
+  const [, startTransition] = useTransition()
+  
   const handleDeckClick = (deck: Deck, parentFused?: Deck | null) => {
+    // Set deck data first
     setSelectedDeck(deck)
     // Only set parentFusedDeck if the deck being opened is NOT the parent itself
-    // This prevents showing "Back to Fused" when returning to the fused deck
     if (parentFused && deck.id !== parentFused.id) {
       setParentFusedDeck(parentFused)
     } else {
       setParentFusedDeck(null)
     }
-    setDetailsOpened(true)
+    // Open modal in a transition (allows React to batch updates)
+    startTransition(() => {
+      setDetailsOpened(true)
+    })
   }
   
   const clearFilters = () => {
@@ -4123,6 +4129,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
         deck={selectedDeck}
         opened={detailsOpened}
         onClose={() => {
+          // Close immediately (no animation delay)
           setDetailsOpened(false)
           setSelectedDeck(null)
           setParentFusedDeck(null)
