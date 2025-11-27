@@ -195,7 +195,7 @@ interface DeckDetailsProps {
   deck: Deck | null
   opened: boolean
   onClose: () => void
-  onDeckClick?: (deck: Deck, parentDeck?: Deck | null) => void
+  onDeckClick: (deck: Deck, parentDeck?: Deck | null) => void
   allDecks?: Deck[]
   parentFusedDeck?: Deck | null
 }
@@ -206,6 +206,20 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const [cardImages, setCardImages] = useState<Record<string, Record<number, string>>>({}) // cardId -> level -> imageUrl
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set())
   const [fullDeckData, setFullDeckData] = useState<Deck | null>(null) // Full deck data with forgeborn.solbindCards
+  const levelManuallyChangedRef = useRef<boolean>(false)
+  const lastSelectedCardIdRef = useRef<string | null>(null)
+  const handleSelectCard = useCallback((card: CardInfo) => {
+    levelManuallyChangedRef.current = false
+    lastSelectedCardIdRef.current = card.id || null
+    const cachedLevels = cardImages[card.id]
+    if (cachedLevels) {
+      const availableLevels = Object.keys(cachedLevels).map(Number).sort()
+      setSelectedLevel(availableLevels[0] || 1)
+    } else {
+      setSelectedLevel(1)
+    }
+    setSelectedCard(card)
+  }, [cardImages])
 
   // Helper function to get two source decks from fused deck
   const getFusedDeckSourceDecks = useMemo(() => {
@@ -271,6 +285,72 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     
     return [deck1, deck2]
   }, [deck, allDecks])
+
+  const formatSourceDeckExpireDate = (sourceDeck: Deck | null) => {
+    const expireDate = (sourceDeck as any)?.expireDate || (sourceDeck as any)?.created
+    if (!expireDate) return null
+    const parsed = new Date(expireDate)
+    if (Number.isNaN(parsed.getTime())) return null
+    return parsed.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    })
+  }
+
+  const renderSourceDeckMeta = (sourceDeck: Deck | null) => {
+    if (!sourceDeck) return null
+
+    const deckScore = (sourceDeck as any).deckScore
+    const elo = (sourceDeck as any).elo
+    const expireDateLabel = formatSourceDeckExpireDate(sourceDeck)
+
+    const badges: JSX.Element[] = []
+
+    if (deckScore !== undefined && deckScore !== null) {
+      badges.push(
+        <Badge
+          key="score"
+          color="grape"
+          variant="light"
+          size="xs"
+        >
+          Score: {typeof deckScore === 'number' ? Math.round(deckScore * 100) : deckScore}
+        </Badge>
+      )
+    }
+
+    if (elo !== undefined && elo !== null) {
+      badges.push(
+        <Badge
+          key="elo"
+          color="violet"
+          variant="light"
+          size="xs"
+        >
+          ELO: {typeof elo === 'number' ? Math.round(elo) : elo}
+        </Badge>
+      )
+    }
+
+    const expireNode = expireDateLabel ? (
+      <Group key="expire" gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+        <IconCalendar size={12} className="text-gray-400" />
+        <Text size="xs" className="text-gray-400">
+          Expire: {expireDateLabel}
+        </Text>
+      </Group>
+    ) : null
+
+    if (badges.length === 0 && !expireNode) return null
+
+    return (
+      <Group gap="xs" wrap="wrap">
+        {badges}
+        {expireNode}
+      </Group>
+    )
+  }
 
   // Load full deck data when modal opens to get forgeborn.solbindCards
   useEffect(() => {
@@ -373,7 +453,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       allDecksIds: allDecks.map(d => d.id),
       foundDeck1: deck1 ? { id: deck1.id, name: deck1.name } : null,
       foundDeck2: deck2 ? { id: deck2.id, name: deck2.name } : null,
-      hasOnDeckClick: !!onDeckClick
+      hasOnDeckClick: true
     }
     
     // Send log to server
@@ -727,15 +807,21 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             }
           } else {
             // Load levels sequentially to reduce parallel load
+            // Collect levels locally so we update state once and don't drop earlier loads
+            const loadedLevels: Record<number, string> = {}
             for (const level of [1, 2, 3]) {
               if (isCanceled) break
               const imageUrl = await loadSingleImage(card.id, level, false)
               if (!isCanceled && imageUrl) {
-                setCardImages(prev => ({
-                  ...prev,
-                  [card.id]: { ...prev[card.id], [level]: imageUrl }
-                }))
+                loadedLevels[level] = imageUrl
               }
+            }
+
+            if (!isCanceled && Object.keys(loadedLevels).length > 0) {
+              setCardImages(prev => ({
+                ...prev,
+                [card.id]: { ...prev[card.id], ...loadedLevels }
+              }))
             }
           }
         } catch {
@@ -1766,10 +1852,13 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     const hasCards = normalizedCards.length > 0
     const hasForgeborn = forgebornCards.length > 0
     const normalizedIds = new Set(normalizedCards.map(c => c.id).filter(Boolean))
+    const forgebornIds = new Set(forgebornCards.map(c => c.id).filter(Boolean))
     if (opened && (hasCards || hasForgeborn)) {
       const deckChanged = lastDeckIdRef.current !== deck?.id
       const forgebornBecameAvailable = forgebornCards.length > 0 && lastForgebornCardsLengthRef.current === 0
-      const selectedCardIsFromDeck = selectedCard ? normalizedIds.has(selectedCard.id || '') : false
+      const selectedCardIsFromDeck = selectedCard 
+        ? (normalizedIds.has(selectedCard.id || '') || forgebornIds.has(selectedCard.id || ''))
+        : false
       
       // Update ref for forgeborn cards length
       if (forgebornCards.length > 0) {
@@ -1780,28 +1869,21 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       if (!selectedCard || deckChanged || !selectedCardIsFromDeck) {
         // No remembered selection, pick defaults
         if (forgebornCards.length > 0) {
-          setSelectedCard(forgebornCards[0])
-          setSelectedLevel(1)
+          handleSelectCard(forgebornCards[0])
         } else {
-          setSelectedCard(normalizedCards[0])
-          setSelectedLevel(1)
+          handleSelectCard(normalizedCards[0])
         }
       } else if (forgebornBecameAvailable && selectedCard) {
         // If forgeborn became available and current card is not forgeborn, select forgeborn
         const isCurrentCardForgeborn = forgebornCards.some(fb => fb.id === selectedCard.id)
         if (!isCurrentCardForgeborn) {
-          setSelectedCard(forgebornCards[0])
-          setSelectedLevel(1)
+          handleSelectCard(forgebornCards[0])
         }
       }
     }
-  }, [opened, normalizedCards.length, deck?.id, forgebornCards, selectedCard]) // Only depend on stable values
+  }, [opened, normalizedCards.length, deck?.id, forgebornCards, selectedCard, handleSelectCard]) // Only depend on stable values
 
   // Reset level when card changes (but preserve if user selected a different level)
-  // Use ref to track if level was manually changed by user
-  const levelManuallyChangedRef = useRef<boolean>(false)
-  const lastSelectedCardIdRef = useRef<string | null>(null)
-  
   useEffect(() => {
     if (selectedCard) {
       // Only reset level if card actually changed (not just on image load)
@@ -2308,7 +2390,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       title={
         <Group justify="space-between" className="w-full" wrap="nowrap">
           <Group gap="md" wrap="nowrap" className="flex-1 min-w-0">
-            {parentFusedDeck && onDeckClick && (
+            {parentFusedDeck && (
               <Button
                 variant="subtle"
                 size="xs"
@@ -2452,170 +2534,119 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
               const [sourceDeck1, sourceDeck2] = getFusedDeckSourceDecks
               
               if (sourceDeck1 || sourceDeck2) {
-                if (onDeckClick) {
-                  return (
-                    <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-                      {sourceDeck1 && (
-                        <Group gap="xs" wrap="nowrap">
-                          <Text
-                            size="xs"
-                            className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              // Pass current deck as parent when navigating to source deck
-                              onDeckClick(sourceDeck1, deck)
-                            }}
-                            style={{ textDecorationThickness: '1px' }}
-                          >
-                            {sourceDeck1.name || 'Deck 1'}
-                          </Text>
-                          {sourceDeck1.cardSetNo && (
-                            <Group gap={4} wrap="nowrap">
-                              {sourceDeck1.faction && (
-                                <Image
-                                  src={`/images/icons/${sourceDeck1.faction.toLowerCase()}.png`}
-                                  alt={sourceDeck1.faction}
-                                  h={20}
-                                  w="auto"
-                                  style={{
-                                    display: 'inline-block',
-                                    verticalAlign: 'middle',
-                                    flexShrink: 0,
-                                  }}
-                                />
-                              )}
-                              <Badge
-                                color="indigo"
-                                variant="light"
+                return (
+                  <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                    {sourceDeck1 && (
+                      <Stack gap={4} style={{ flexShrink: 0 }}>
+                        {(() => {
+                          const meta = renderSourceDeckMeta(sourceDeck1)
+                          return (
+                            <>
+                              <Text
                                 size="xs"
+                                className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  // Pass current deck as parent when navigating to source deck
+                                  onDeckClick(sourceDeck1, deck)
+                                }}
+                                style={{ textDecorationThickness: '1px' }}
                               >
-                                {formatSetName(sourceDeck1.cardSetNo)}
-                              </Badge>
-                            </Group>
-                          )}
-                        </Group>
-                      )}
-                      {sourceDeck1 && sourceDeck2 && (
-                        <Text size="xs" className="text-gray-500">
-                          +
-                        </Text>
-                      )}
-                      {sourceDeck2 && (
-                        <Group gap="xs" wrap="nowrap">
-                          <Text
-                            size="xs"
-                            className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              // Pass current deck as parent when navigating to source deck
-                              onDeckClick(sourceDeck2, deck)
-                            }}
-                            style={{ textDecorationThickness: '1px' }}
-                          >
-                            {sourceDeck2.name || 'Deck 2'}
-                          </Text>
-                          {sourceDeck2.cardSetNo && (
-                            <Group gap={4} wrap="nowrap">
-                              {sourceDeck2.faction && (
-                                <Image
-                                  src={`/images/icons/${sourceDeck2.faction.toLowerCase()}.png`}
-                                  alt={sourceDeck2.faction}
-                                  h={20}
-                                  w="auto"
-                                  style={{
-                                    display: 'inline-block',
-                                    verticalAlign: 'middle',
-                                    flexShrink: 0,
-                                  }}
-                                />
+                                {sourceDeck1.name || 'Deck 1'}
+                              </Text>
+                              {(sourceDeck1.cardSetNo || meta) && (
+                                <Group gap={6} wrap="wrap">
+                                  {sourceDeck1.cardSetNo && (
+                                    <Group gap={6} wrap="nowrap">
+                                      {sourceDeck1.faction && (
+                                        <Image
+                                          src={`/images/icons/${sourceDeck1.faction.toLowerCase()}.png`}
+                                          alt={sourceDeck1.faction}
+                                          h={20}
+                                          w="auto"
+                                          style={{
+                                            display: 'inline-block',
+                                            verticalAlign: 'middle',
+                                            flexShrink: 0,
+                                          }}
+                                        />
+                                      )}
+                                      <Badge
+                                        color="indigo"
+                                        variant="light"
+                                        size="xs"
+                                      >
+                                        {formatSetName(sourceDeck1.cardSetNo)}
+                                      </Badge>
+                                    </Group>
+                                  )}
+                                  {meta}
+                                </Group>
                               )}
-                              <Badge
-                                color="indigo"
-                                variant="light"
+                            </>
+                          )
+                        })()}
+                      </Stack>
+                    )}
+                    {sourceDeck1 && sourceDeck2 && (
+                      <Text size="xs" className="text-gray-500">
+                        +
+                      </Text>
+                    )}
+                    {sourceDeck2 && (
+                      <Stack gap={4} style={{ flexShrink: 0 }}>
+                        {(() => {
+                          const meta = renderSourceDeckMeta(sourceDeck2)
+                          return (
+                            <>
+                              <Text
                                 size="xs"
+                                className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  // Pass current deck as parent when navigating to source deck
+                                  onDeckClick(sourceDeck2, deck)
+                                }}
+                                style={{ textDecorationThickness: '1px' }}
                               >
-                                {formatSetName(sourceDeck2.cardSetNo)}
-                              </Badge>
-                            </Group>
-                          )}
-                        </Group>
-                      )}
-          </Group>
-                  )
-                } else {
-                  // Show links without click handler (just text)
-                  return (
-                    <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-                      {sourceDeck1 && (
-                        <Group gap="xs" wrap="nowrap">
-                          <Text size="xs" className="text-blue-400">
-                            {sourceDeck1.name || 'Deck 1'}
-                          </Text>
-                          {sourceDeck1.cardSetNo && (
-                            <Group gap={4} wrap="nowrap">
-                              {sourceDeck1.faction && (
-                                <Image
-                                  src={`/images/icons/${sourceDeck1.faction.toLowerCase()}.png`}
-                                  alt={sourceDeck1.faction}
-                                  h={20}
-                                  w="auto"
-                                  style={{
-                                    display: 'inline-block',
-                                    verticalAlign: 'middle',
-                                    flexShrink: 0,
-                                  }}
-                                />
+                                {sourceDeck2.name || 'Deck 2'}
+                              </Text>
+                              {(sourceDeck2.cardSetNo || meta) && (
+                                <Group gap={6} wrap="wrap">
+                                  {sourceDeck2.cardSetNo && (
+                                    <Group gap={6} wrap="nowrap">
+                                      {sourceDeck2.faction && (
+                                        <Image
+                                          src={`/images/icons/${sourceDeck2.faction.toLowerCase()}.png`}
+                                          alt={sourceDeck2.faction}
+                                          h={20}
+                                          w="auto"
+                                          style={{
+                                            display: 'inline-block',
+                                            verticalAlign: 'middle',
+                                            flexShrink: 0,
+                                          }}
+                                        />
+                                      )}
+                                      <Badge
+                                        color="indigo"
+                                        variant="light"
+                                        size="xs"
+                                      >
+                                        {formatSetName(sourceDeck2.cardSetNo)}
+                                      </Badge>
+                                    </Group>
+                                  )}
+                                  {meta}
+                                </Group>
                               )}
-                              <Badge
-                                color="indigo"
-                                variant="light"
-                                size="xs"
-                              >
-                                {formatSetName(sourceDeck1.cardSetNo)}
-                              </Badge>
-                            </Group>
-                          )}
-                        </Group>
-                      )}
-                      {sourceDeck1 && sourceDeck2 && (
-                        <Text size="xs" className="text-gray-500">
-                          +
-                        </Text>
-                      )}
-                      {sourceDeck2 && (
-                        <Group gap="xs" wrap="nowrap">
-                          <Text size="xs" className="text-blue-400">
-                            {sourceDeck2.name || 'Deck 2'}
-                          </Text>
-                          {sourceDeck2.cardSetNo && (
-                            <Group gap={4} wrap="nowrap">
-                              {sourceDeck2.faction && (
-                                <Image
-                                  src={`/images/icons/${sourceDeck2.faction.toLowerCase()}.png`}
-                                  alt={sourceDeck2.faction}
-                                  h={20}
-                                  w="auto"
-                                  style={{
-                                    display: 'inline-block',
-                                    verticalAlign: 'middle',
-                                    flexShrink: 0,
-                                  }}
-                                />
-                              )}
-                              <Badge
-                                color="indigo"
-                                variant="light"
-                                size="xs"
-                              >
-                                {formatSetName(sourceDeck2.cardSetNo)}
-                              </Badge>
-                            </Group>
-                          )}
-                        </Group>
-                      )}
-                    </Group>
-                  )
-                }
+                            </>
+                          )
+                        })()}
+                      </Stack>
+                    )}
+                  </Group>
+                )
               }
               return null
             })()}
@@ -2665,7 +2696,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
-                          onClick={() => setSelectedCard(card)}
+                          onClick={() => handleSelectCard(card)}
                         />
                       )
                     })}
@@ -2690,7 +2721,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
-                          onClick={() => setSelectedCard(card)}
+                          onClick={() => handleSelectCard(card)}
                         />
                       )
                     })}
@@ -2715,7 +2746,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
-                          onClick={() => setSelectedCard(card)}
+                          onClick={() => handleSelectCard(card)}
                         />
                       )
                     })}
@@ -2740,7 +2771,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
-                          onClick={() => setSelectedCard(card)}
+                          onClick={() => handleSelectCard(card)}
                         />
                       )
                     })}
@@ -2765,7 +2796,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
-                          onClick={() => setSelectedCard(card)}
+                          onClick={() => handleSelectCard(card)}
                         />
                       )
                     })}
