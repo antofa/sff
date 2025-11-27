@@ -3,6 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { 
   saveDecks, 
   getPlayerDecks, 
@@ -10,6 +11,11 @@ import {
   searchDecks 
 } from '@/lib/supabase'
 import type { Deck } from '@/store/deckStore'
+import type { Database } from '@/types/database'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseServer = createClient<Database>(supabaseUrl, supabaseServiceKey)
 
 /**
  * GET /api/saved-decks
@@ -171,4 +177,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-

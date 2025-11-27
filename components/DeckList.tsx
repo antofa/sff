@@ -62,6 +62,21 @@ function isB1Card(card: any): boolean {
   return false
 }
 
+// Helper to resolve expiry timestamp (ms) for a deck: expireAt/expire_date/created fallback
+function getExpiryTimestamp(deck: Deck): number | null {
+  const deckAny = deck as any
+  const expireRaw =
+    deckAny?.expireAt ??
+    deckAny?.expire_at ??
+    deckAny?.expireDate ??
+    deckAny?.expire_date ??
+    deckAny?.created ??
+    null
+  if (!expireRaw) return null
+  const ts = new Date(expireRaw).getTime()
+  return Number.isNaN(ts) ? null : ts
+}
+
 // Helper function to determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
 function getDeckSet(deck: Deck): string | null {
   if (!deck) return null
@@ -934,30 +949,26 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
   const currentTimeUTC = new Date().getTime()
   const halfDecks = useMemo(() => {
     return decks.filter(deck => {
-      if (!deck.created) {
-        // Decks without expiry date
-        // Show in 'all' and 'active' modes
-        return debouncedFilters.expiryFilter === 'all' || debouncedFilters.expiryFilter === 'active'
+      const expiry = getExpiryTimestamp(deck)
+      if (expiry === null) {
+        // No expiry info: treat as active unless explicitly filtering only expired/expiring
+        if (debouncedFilters.expiryFilter === 'expired') return false
+        if (debouncedFilters.expiryFilter === 'expiring') return false
+        return true
       }
-      
-      const expiryDate = new Date(deck.created).getTime()
-      const isExpired = expiryDate < currentTimeUTC
-      const isExpiring = expiryDate >= currentTimeUTC
-      
+      const isExpired = expiry < currentTimeUTC
+      const isExpiring = expiry >= currentTimeUTC
       switch (debouncedFilters.expiryFilter) {
         case 'all':
-          return true // Show all decks
+          return true
         case 'active':
-          // Show decks without dates (already handled above) + expiring decks
           return isExpiring
         case 'expiring':
-          // Show only expiring decks
           return isExpiring
         case 'expired':
-          // Show only expired decks
           return isExpired
         default:
-        return true
+          return true
       }
     })
   }, [decks, debouncedFilters.expiryFilter])
@@ -995,14 +1006,14 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     let regularDecksCount = 0
     if (viewMode === 'decks' || viewMode === 'both') {
       regularDecksCount = decks.filter(deck => {
-        if (!deck.created) {
-          // Decks without expiry date
-          return debouncedFilters.expiryFilter === 'all' || debouncedFilters.expiryFilter === 'active'
+        const expiry = getExpiryTimestamp(deck)
+        if (expiry === null) {
+          if (debouncedFilters.expiryFilter === 'expired') return false
+          if (debouncedFilters.expiryFilter === 'expiring') return false
+          return true
         }
-        
-        const expiryDate = new Date(deck.created).getTime()
-        const isExpired = expiryDate < currentTimeUTC
-        const isExpiring = expiryDate >= currentTimeUTC
+        const isExpired = expiry < currentTimeUTC
+        const isExpiring = expiry >= currentTimeUTC
         
         switch (debouncedFilters.expiryFilter) {
           case 'all':
@@ -3181,11 +3192,28 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                 }}
               >
               <Stack gap="sm">
-                <Group justify="space-between" align="flex-start" wrap="nowrap">
-                  <Title order={4} className="text-white flex-1" lineClamp={2}>
-                    {deck.name || 'Untitled'}
-                  </Title>
-                </Group>
+                {(deck as any).playerName && (
+                  <Text size="sm" className="text-gray-300" fw={600}>
+                    Owner: {(deck as any).playerName}
+                    {deck.created && (
+                      <span className="text-gray-400">
+                        {' '}
+                        ·{' '}
+                        {new Date(deck.created).toLocaleString(undefined, {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    )}
+                  </Text>
+                )}
+
+                <Title order={4} className="text-white flex-1" lineClamp={2}>
+                  {deck.name || 'Untitled'}
+                </Title>
 
                 <Group gap={8}>
                   <Group gap={4}>

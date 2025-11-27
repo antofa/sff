@@ -143,7 +143,7 @@ async function fetchDeckDetails(deckId: string): Promise<any> {
         'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
       },
       next: { revalidate: 3600 }, // Cache for 1 hour
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(60000),
     })
 
     if (!response.ok) {
@@ -181,10 +181,9 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
           'Accept': 'application/json',
           'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
         },
-        // Cache for 1 hour with time-based revalidation
         next: { revalidate: 3600 },
-        // Increase timeout
-        signal: AbortSignal.timeout(20000), // 20 seconds
+        // Allow background-throttled tabs more time
+        signal: AbortSignal.timeout(60000),
       })
     } catch (fetchError) {
       console.error(`[API] Fetch error:`, fetchError)
@@ -248,7 +247,7 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
             'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
           },
           next: { revalidate: 3600 }, // Cache for 1 hour
-          signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(60000),
         })
       } catch (fetchError) {
         console.error(`[API] Fetch error for page ${pageCount + 2}:`, fetchError)
@@ -573,7 +572,7 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
         'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
       },
       next: { revalidate: 3600 }, // Cache for 1 hour
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(60000),
     })
 
     if (!response.ok) {

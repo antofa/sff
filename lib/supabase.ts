@@ -9,8 +9,9 @@ import type { Deck } from '@/store/deckStore'
 // Environment variables for Supabase connection
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey
 
-// Create Supabase client
+// Create Supabase client (anon by default; API routes can override with service key)
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
 
 /**
@@ -363,4 +364,3 @@ export async function searchDecks(criteria: {
   
   return { data: (data as unknown as PlayerDeck[]) ?? [], error: null, count: count ?? 0 }
 }
-

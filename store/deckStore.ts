@@ -101,11 +101,19 @@ export const useDeckStore = create<DeckStore>((set) => ({
         // Single array (regular decks only, for backward compatibility)
         regularDecks = data
       }
+
+      const owner = playerName.trim()
+      const taggedRegular = Array.isArray(regularDecks)
+        ? regularDecks.map(deck => ({ ...deck, playerName: owner }))
+        : []
+      const taggedFused = Array.isArray(fusedDecks)
+        ? fusedDecks.map(deck => ({ ...deck, playerName: owner }))
+        : []
       
       // Data validation
       try {
-        const validatedRegularDecks = DecksResponseSchema.parse(regularDecks)
-        const validatedFusedDecks = DecksResponseSchema.parse(fusedDecks)
+        const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
+        const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
         set({ 
           decks: validatedRegularDecks, 
           fusedDecks: validatedFusedDecks,
@@ -140,4 +148,3 @@ export const useDeckStore = create<DeckStore>((set) => ({
   },
   clearDecks: () => set({ decks: [], fusedDecks: [], error: null }),
 }))
-

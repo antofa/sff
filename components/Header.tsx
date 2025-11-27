@@ -41,8 +41,8 @@ export function Header() {
   return (
     <header className="w-full py-4 px-6 bg-slate-800/60 backdrop-blur-md border-b border-sf-primary/20">
       <Container size="xl">
-        <Group justify="space-between" align="center">
-          <Group gap="sm" align="center">
+        <Group justify="space-between" align="center" wrap="nowrap">
+          <Group gap="sm" align="center" wrap="nowrap">
             {!logoError ? (
               <Image
                 src={logoSrc}
@@ -69,7 +69,28 @@ export function Header() {
             )}
           </Group>
 
-          <Group gap="xs">
+          <Group gap="xs" wrap="nowrap">
+            <Button
+              component="a"
+              href="/"
+              variant="light"
+              size="sm"
+              className="bg-slate-700/40 text-white border border-sf-primary/30 hover:border-sf-primary/60"
+            >
+              Search by player
+            </Button>
+            <Button
+              component="a"
+              href="/all-decks"
+              variant="light"
+              size="sm"
+              className="bg-slate-700/40 text-white border border-sf-primary/30 hover:border-sf-primary/60"
+            >
+              All decks
+            </Button>
+          </Group>
+
+          <Group gap="xs" wrap="nowrap">
             <Button
               variant="subtle"
               color="gray"
