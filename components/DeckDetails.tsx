@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, ScrollArea, Divider, Image, Loader } from '@mantine/core'
-import { IconHandFinger, IconCalendar, IconExternalLink, IconWorld } from '@tabler/icons-react'
+import { IconCalendar, IconExternalLink, IconWorld } from '@tabler/icons-react'
 import type { Deck } from '@/store/deckStore'
 import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForgebornAlternativeUrl, type CardInfo } from '@/lib/api'
 
@@ -1853,11 +1853,16 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     const hasForgeborn = forgebornCards.length > 0
     const normalizedIds = new Set(normalizedCards.map(c => c.id).filter(Boolean))
     const forgebornIds = new Set(forgebornCards.map(c => c.id).filter(Boolean))
+    const solbindIds = new Set(solbindCards.map(c => c.id).filter(Boolean))
     if (opened && (hasCards || hasForgeborn)) {
       const deckChanged = lastDeckIdRef.current !== deck?.id
       const forgebornBecameAvailable = forgebornCards.length > 0 && lastForgebornCardsLengthRef.current === 0
       const selectedCardIsFromDeck = selectedCard 
-        ? (normalizedIds.has(selectedCard.id || '') || forgebornIds.has(selectedCard.id || ''))
+        ? (
+            normalizedIds.has(selectedCard.id || '') ||
+            forgebornIds.has(selectedCard.id || '') ||
+            solbindIds.has(selectedCard.id || '')
+          )
         : false
       
       // Update ref for forgeborn cards length
@@ -2209,6 +2214,22 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     // Otherwise use deck.cardSetNo
     return deck.cardSetNo || null
   }, [isB1Card])
+
+  const getDeckSetForDeck = useCallback((deckToCheck: Deck | null): string | null => {
+    if (!deckToCheck) return null
+    const cardsArr = (deckToCheck as any).cards
+    const normalizedForSet = Array.isArray(cardsArr)
+      ? cardsArr.map((card: any, index: number) => {
+          if (typeof card === 'string') return getCardInfo(card)
+          if (typeof card === 'object' && card !== null) {
+            const cardId = card.id || card.cardId || card.name || `card-${index}`
+            return getCardInfo(cardId, card)
+          }
+          return getCardInfo(`card-${index}`)
+        })
+      : []
+    return getDeckSet(deckToCheck, normalizedForSet)
+  }, [getDeckSet])
   
   // Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", etc.
   const formatSetName = useCallback((setNo: string | number | null | undefined): string | null => {
@@ -2409,7 +2430,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
               <Title order={3} className="text-white" style={{ flexShrink: 0 }}>
                 {deck.name || 'Untitled Deck'}
               </Title>
-              {formattedDeckSet && (
+              {/* Don't show faction/set badges for fused decks */}
+              {formattedDeckSet && deck.format !== 'Fused' && (
                 <Group gap={4} wrap="nowrap">
                   {deck.faction && (
                     <Image
@@ -2532,6 +2554,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             </Group>
             {(() => {
               const [sourceDeck1, sourceDeck2] = getFusedDeckSourceDecks
+              const sourceDeck1Set = formatSetName(getDeckSetForDeck(sourceDeck1))
+              const sourceDeck2Set = formatSetName(getDeckSetForDeck(sourceDeck2))
               
               if (sourceDeck1 || sourceDeck2) {
                 return (
@@ -2554,9 +2578,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                               >
                                 {sourceDeck1.name || 'Deck 1'}
                               </Text>
-                              {(sourceDeck1.cardSetNo || meta) && (
+                              {(sourceDeck1Set || meta) && (
                                 <Group gap={6} wrap="wrap">
-                                  {sourceDeck1.cardSetNo && (
+                                  {sourceDeck1Set && (
                                     <Group gap={6} wrap="nowrap">
                                       {sourceDeck1.faction && (
                                         <Image
@@ -2576,7 +2600,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                                         variant="light"
                                         size="xs"
                                       >
-                                        {formatSetName(sourceDeck1.cardSetNo)}
+                                        {sourceDeck1Set}
                                       </Badge>
                                     </Group>
                                   )}
@@ -2611,9 +2635,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                               >
                                 {sourceDeck2.name || 'Deck 2'}
                               </Text>
-                              {(sourceDeck2.cardSetNo || meta) && (
+                              {(sourceDeck2Set || meta) && (
                                 <Group gap={6} wrap="wrap">
-                                  {sourceDeck2.cardSetNo && (
+                                  {sourceDeck2Set && (
                                     <Group gap={6} wrap="nowrap">
                                       {sourceDeck2.faction && (
                                         <Image
@@ -2633,7 +2657,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                                         variant="light"
                                         size="xs"
                                       >
-                                        {formatSetName(sourceDeck2.cardSetNo)}
+                                        {sourceDeck2Set}
                                       </Badge>
                                     </Group>
                                   )}
@@ -2668,16 +2692,18 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         },
         body: {
           padding: '1.5rem',
+          maxHeight: '80vh',
+          overflowY: 'auto',
         },
         overlay: {
           transition: 'opacity 300ms ease-in-out, backdrop-filter 300ms ease-in-out',
         },
       }}
     >
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[70vh]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ alignItems: 'flex-start' }}>
         {/* Left column - card lists */}
-        <div className="lg:col-span-1 flex flex-col">
-          <ScrollArea className="flex-1" style={{ padding: 0 }}>
+        <div className="lg:col-span-1 flex flex-col h-full">
+          <ScrollArea className="flex-1" style={{ padding: 0, maxHeight: '70vh' }}>
             <Stack gap="md" align="flex-start" style={{ padding: 0, margin: 0 }}>
               {/* Forgeborn */}
               {forgebornCards.length > 0 && (
@@ -2808,26 +2834,29 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         </div>
 
         {/* Right column - detailed card information */}
-        <div className="lg:col-span-2 flex flex-col">
+        <div
+          className="lg:col-span-2 flex flex-col h-full"
+          style={{ position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: '70vh' }}
+        >
           {selectedCard ? (
-            <ScrollArea className="flex-1">
-              <Stack gap="lg">
-                {/* Card image */}
-                <Paper
-                  p="xl"
-                  className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
-                  style={{ 
-                    backgroundColor: 'rgba(30, 41, 59, 0.6)',
-                    minHeight: '400px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <div className="text-center w-full">
-                    {(() => {
-                      const cardImageData = cardImages[selectedCard.id]
-                      const currentImageUrl = cardImageData?.[selectedLevel]
+            <Stack gap="lg">
+              {/* Card image */}
+              <Paper
+                p="xl"
+                className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
+                style={{ 
+                  backgroundColor: 'rgba(30, 41, 59, 0.6)',
+                  minHeight: '400px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                }}
+              >
+                <div className="text-center w-full">
+                  {(() => {
+                    const cardImageData = cardImages[selectedCard.id]
+                    const currentImageUrl = cardImageData?.[selectedLevel]
                       // Check error for specific card-level combination
                       const levelErrorKey = `${selectedCard.id}-${selectedLevel}`
                       const hasError = imageErrors.has(levelErrorKey)
@@ -2974,160 +3003,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                       )
                     })()}
                   </div>
-                </Paper>
-
-                {/* Card information */}
-                <Paper
-                  p="md"
-                  className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
-                  style={{ backgroundColor: 'rgba(30, 41, 59, 0.6)' }}
-                >
-                  <Stack gap="md">
-                    <Group gap="xs">
-                      <Title order={4} className="text-white">
-                        {selectedCard.name}
-                      </Title>
-                      {(selectedCard.faction || deck.faction) && (
-                        <Badge
-                          color={getFactionColor(selectedCard.faction || deck.faction)}
-                          variant="light"
-                          size="lg"
-                          leftSection={<IconHandFinger size={14} />}
-                        >
-                          {selectedCard.faction || deck.faction}
-                        </Badge>
-                      )}
-                    </Group>
-
-                    {selectedCard.type && (
-                      <Text size="sm" className="text-gray-400">
-                        {(() => {
-                          const cardData = selectedCard as any
-                          const typeFromData = cardData.cardType || cardData.type || selectedCard.type
-                          const isForgeborn =
-                            forgebornCards.some(fb => {
-                              if (!fb.id || !selectedCard.id) return false
-                              if (fb.id === selectedCard.id) return true
-                              const fbBase = fb.id.replace(/\d+$/, '').toLowerCase()
-                              const cardBase = selectedCard.id.replace(/\d+$/, '').toLowerCase()
-                              return fbBase === cardBase
-                            }) ||
-                            (deck?.forgebornId &&
-                              (selectedCard.id === deck.forgebornId ||
-                               selectedCard.id?.includes(deck.forgebornId) ||
-                               deck.forgebornId.includes(selectedCard.id || ''))) ||
-                            (typeFromData && String(typeFromData).toLowerCase().includes('forgeborn'))
-                          
-                          const displayType = isForgeborn ? 'Forgeborn' : typeFromData
-                          
-                          return (
-                            <>
-                              Type: <span className="text-white">{displayType || 'Unknown'}</span>
-                            </>
-                          )
-                        })()}
-                      </Text>
-                    )}
-
-                    {/* Forgeborn Abilities */}
-                    {deck.forgeborn && 
-                     (selectedCard.id === deck.forgebornId || 
-                      selectedCard.id?.includes(deck.forgebornId || '') ||
-                      deck.forgebornId?.includes(selectedCard.id)) && 
-                     deck.forgeborn.levels && (
-                      <div>
-                        <Text size="sm" className="text-gray-400 mb-2 font-semibold uppercase">
-                          Abilities
-                        </Text>
-                        <Stack gap="xs">
-                          {Object.entries(deck.forgeborn.levels)
-                            .sort(([levelA], [levelB]) => Number(levelA) - Number(levelB))
-                            .map(([level, ability]: [string, any]) => (
-                              <Paper
-                                key={level}
-                                p="sm"
-                                className="backdrop-blur-md border border-sf-primary/20 rounded"
-                                style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)' }}
-                              >
-                                <Group gap="xs" align="flex-start">
-                                  <Badge
-                                    color="blue"
-                                    variant="filled"
-                                    size="sm"
-                                    style={{ minWidth: '40px', justifyContent: 'center' }}
-                                  >
-                                    {level}
-                                  </Badge>
-                                  <div className="flex-1">
-                                    {ability.name && (
-                                      <Text size="sm" className="text-white font-semibold mb-1">
-                                        {ability.name}
-                                      </Text>
-                                    )}
-                                    {ability.text && (
-                                      <Text 
-                                        size="xs" 
-                                        className="text-gray-300"
-                                        dangerouslySetInnerHTML={{ __html: processHtmlContent(String(ability.text)) }}
-                                      />
-                                    )}
-                                    {ability.abilityNo && (
-                                      <Text size="xs" className="text-gray-500 mt-1">
-                                        Ability #{ability.abilityNo}
-                                      </Text>
-                                    )}
-                                  </div>
-                                </Group>
-                              </Paper>
-                            ))}
-                        </Stack>
-                      </div>
-                    )}
-
-                    {selectedCard.id && (
-                      <Text size="xs" className="text-gray-500">
-                        ID: {selectedCard.id}
-                      </Text>
-                    )}
-
-                    {/* Additional card information */}
-                    {Object.entries(selectedCard)
-                      .filter(([key]) => !['id', 'name', 'type', 'faction', 'imageUrl', 'rarity', 'cardType'].includes(key))
-                      .map(([key, value]) => {
-                        if (value === null || value === undefined || value === '') return null
-                        if (typeof value === 'object') return null // Skip objects
-                        
-                        const stringValue = String(value)
-                        const hasHtml = /<[^>]+>/.test(stringValue)
-                        
-                        // Format key: don't add space for short uppercase abbreviations (SK, PK, etc.)
-                        const formattedKey = key.length <= 2 && key === key.toUpperCase()
-                          ? key
-                          : key.replace(/([A-Z])/g, ' $1').trim()
-                        
-                        // Process HTML content if present
-                        const processedValue = hasHtml ? processHtmlContent(stringValue) : stringValue
-                        
-                        return (
-                          <div key={key}>
-                            <Text size="sm" className="text-gray-400 capitalize">
-                              {formattedKey}:{' '}
-                              {hasHtml ? (
-                                <span 
-                                  className="text-white" 
-                                  dangerouslySetInnerHTML={{ __html: processedValue }}
-                                />
-                              ) : (
-                                <span className="text-white">{processedValue}</span>
-                              )}
-                            </Text>
-                          </div>
-                        )
-                      })}
-                  </Stack>
-                </Paper>
-              </Stack>
-            </ScrollArea>
+              </Paper>
+            </Stack>
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <Text size="lg" className="text-gray-400">
