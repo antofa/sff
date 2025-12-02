@@ -152,9 +152,13 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const normalizedDiscord = typeof discordUsername === 'string'
+      ? discordUsername.trim()
+      : undefined
     
     const { data, errors } = await saveDecks(decks, playerName, {
-      discordUsername,
+      discordUsername: normalizedDiscord,
       isNft,
       price,
       isForSale,

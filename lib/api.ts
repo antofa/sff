@@ -25,7 +25,7 @@ export interface ApiDeck {
  * Normalize deck data from API
  * Data format matches response from /main/deck/app
  */
-function normalizeDeck(deck: any): ApiDeck {
+export function normalizeDeck(deck: any): ApiDeck {
   if (!deck || typeof deck !== 'object') {
     throw new Error('Invalid deck data format')
   }
@@ -133,7 +133,7 @@ function normalizeDeck(deck: any): ApiDeck {
 /**
  * Fetch detailed deck information with full card data
  */
-async function fetchDeckDetails(deckId: string): Promise<any> {
+export async function fetchDeckDetails(deckId: string): Promise<any> {
   try {
     const url = `${API_BASE_URL}/deck/${deckId}?inclCards=true&inclUsers=true`
     const response = await fetch(url, {

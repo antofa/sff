@@ -14,6 +14,11 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnon
 // Create Supabase client (anon by default; API routes can override with service key)
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
 
+const normalizeDiscord = (value?: string | null) => {
+  if (!value) return null
+  return value.trim().toLowerCase()
+}
+
 /**
  * Convert a Deck from the store/API to a PlayerDeckInsert for database
  */
@@ -27,29 +32,29 @@ export function deckToInsert(
     isForSale?: boolean
   }
 ): PlayerDeckInsert {
+  const trimmedName = playerName.trim()
+  const normalizedName = trimmedName.toLowerCase()
+
   return {
     deck_id: deck.id,
     deck_name: deck.name,
-    player_name: playerName,
-    discord_username: options?.discordUsername ?? null,
+    player_name: normalizedName,
+    display_name: trimmedName || playerName,
+    discord_username: normalizeDiscord(options?.discordUsername) ?? null,
     format: deck.format ?? null,
     faction: deck.faction ?? null,
     forgeborn_id: deck.forgebornId ?? null,
-    forgeborn: deck.forgeborn ?? null,
     deck_rank: deck.deckRank ?? null,
     digital: typeof deck.digital === 'boolean' ? deck.digital : (deck.digital === 1),
     card_set_no: deck.cardSetNo ?? null,
     card_set_id: deck.cardSetId ?? null,
     deck_score: (deck as Record<string, unknown>).deckScore as number ?? null,
     elo: (deck as Record<string, unknown>).elo as number ?? null,
-    tags: deck.tags ?? null,
-    cards: deck.cards ?? null,
     is_nft: options?.isNft ?? false,
     price: options?.price ?? null,
     is_for_sale: options?.isForSale ?? false,
     is_fused: Boolean(deck.fusedDeckIds && deck.fusedDeckIds.length > 0),
     fused_deck_ids: deck.fusedDeckIds ?? null,
-    my_decks: deck.myDecks ?? null,
     deck_created_at: deck.created ?? null,
   }
 }
@@ -139,7 +144,8 @@ export async function getPlayerDecks(playerName: string): Promise<{
     .from('player_decks')
     .select('*')
     .eq('player_name', playerName.toLowerCase())
-    .order('updated_at', { ascending: false })
+    .order('deck_created_at', { ascending: false })
+    .order('created_at', { ascending: false })
   
   if (error) {
     console.error('[Supabase] Error fetching player decks:', error)
@@ -208,7 +214,9 @@ export async function getDecksForSale(options?: {
     query = query.lte('price', options.maxPrice)
   }
   
-  query = query.order('updated_at', { ascending: false })
+  query = query
+    .order('deck_created_at', { ascending: false })
+    .order('created_at', { ascending: false })
   
   if (options?.limit) {
     query = query.limit(options.limit)
@@ -346,7 +354,9 @@ export async function searchDecks(criteria: {
     query = query.ilike('deck_name', `%${criteria.searchQuery}%`)
   }
   
-  query = query.order('updated_at', { ascending: false })
+  query = query
+    .order('deck_created_at', { ascending: false })
+    .order('created_at', { ascending: false })
   
   if (criteria.limit) {
     query = query.limit(criteria.limit)

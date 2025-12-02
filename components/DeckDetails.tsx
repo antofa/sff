@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, ScrollArea, Divider, Image, Loader } from '@mantine/core'
-import { IconCalendar, IconExternalLink, IconWorld } from '@tabler/icons-react'
+import { notifications } from '@mantine/notifications'
+import { IconCalendar, IconCopy, IconExternalLink, IconWorld } from '@tabler/icons-react'
 import type { Deck } from '@/store/deckStore'
 import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForgebornAlternativeUrl, type CardInfo } from '@/lib/api'
 
@@ -206,6 +207,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const [cardImages, setCardImages] = useState<Record<string, Record<number, string>>>({}) // cardId -> level -> imageUrl
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set())
   const [fullDeckData, setFullDeckData] = useState<Deck | null>(null) // Full deck data with forgeborn.solbindCards
+  const [copied, setCopied] = useState(false)
   const levelManuallyChangedRef = useRef<boolean>(false)
   const lastSelectedCardIdRef = useRef<string | null>(null)
   const handleSelectCard = useCallback((card: CardInfo) => {
@@ -2370,6 +2372,49 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     return formatSetName(deckSet)
   }, [deckSet, formatSetName])
 
+  const copyDeckLink = useCallback(() => {
+    if (!deck?.id) return
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const url = origin ? `${origin}/deck/${deck.id}` : `/deck/${deck.id}`
+    const showCopied = () => {
+      setCopied(true)
+      notifications.show({
+        title: 'Copied',
+        message: 'Deck link copied to clipboard',
+        color: 'teal',
+      })
+    }
+
+    const fallbackCopy = () => {
+      try {
+        const textarea = document.createElement('textarea')
+        textarea.value = url
+        textarea.style.position = 'fixed'
+        textarea.style.left = '-9999px'
+        document.body.appendChild(textarea)
+        textarea.focus()
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+        showCopied()
+      } catch (err) {
+        console.error('[DeckDetails] Copy fallback failed:', err)
+      }
+    }
+
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => showCopied()).catch(() => fallbackCopy())
+    } else {
+      fallbackCopy()
+    }
+  }, [deck?.id])
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 1800)
+    return () => clearTimeout(timer)
+  }, [copied])
+
   // Early return AFTER all hooks
   if (!deck) return null
 
@@ -2427,9 +2472,45 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
               </Button>
             )}
             <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-              <Title order={3} className="text-white" style={{ flexShrink: 0 }}>
-                {deck.name || 'Untitled Deck'}
-              </Title>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  copyDeckLink()
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'none',
+                  border: 'none',
+                  padding: '4px 0',
+                  cursor: 'pointer',
+                  color: 'inherit',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '6px',
+                    borderRadius: '50%',
+                    backgroundColor: copied ? 'rgba(20, 184, 166, 0.18)' : 'rgba(148, 163, 184, 0.08)',
+                    transition: 'background-color 150ms ease, transform 120ms ease, color 150ms ease',
+                    color: copied ? '#14b8a6' : '#cbd5e1',
+                  }}
+                >
+                  <IconCopy size={16} />
+                </div>
+                <Title
+                  order={3}
+                  className="text-white"
+                  style={{ flexShrink: 0, margin: 0, textDecoration: copied ? 'underline' : 'none' }}
+                >
+                  {deck.name || 'Untitled Deck'}
+                </Title>
+              </button>
               {/* Don't show faction/set badges for fused decks */}
               {formattedDeckSet && deck.format !== 'Fused' && (
                 <Group gap={4} wrap="nowrap">
@@ -2464,6 +2545,15 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                 size="sm"
               >
                 {deck.deckRank}
+              </Badge>
+            )}
+            {deck.playerName && (
+              <Badge
+                color="violet"
+                variant="light"
+                size="sm"
+              >
+                Owner: {deck.playerName}
               </Badge>
             )}
             {deck.format && (
@@ -2526,12 +2616,12 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     leftSection={<IconWorld size={14} />}
                     onClick={(e) => e.stopPropagation()}
                     style={{ flexShrink: 0 }}
-                  >
-                    SFF
-                  </Button>
-                </Group>
-              )
-            })()}
+                >
+                  SFF
+                </Button>
+              </Group>
+            )
+          })()}
             <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
               {(deck as any).deckScore !== undefined && (deck as any).deckScore !== null && (
                 <Badge

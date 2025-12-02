@@ -15,6 +15,7 @@ import {
   Title,
 } from '@mantine/core'
 import { IconSearch } from '@tabler/icons-react'
+import { useSearchParams } from 'next/navigation'
 import { BackgroundElements } from '@/components/BackgroundElements'
 import { Header } from '@/components/Header'
 import { DeckList } from '@/components/DeckList'
@@ -46,11 +47,13 @@ const factions = ['Alloyin', 'Uterra', 'Tempys', 'Nekrium']
 const formats = ['Fused', 'Sole', 'Reconstructed', 'Standard'] // formats are free text, keep a small helper list
 
 export default function AllDecksPage() {
+  const searchParams = useSearchParams()
+  const initialPlayer = searchParams.get('player') ?? ''
   const [decks, setDecks] = useState<SavedDeck[]>([])
   const [count, setCount] = useState<number>(0)
   const [loading, setLoading] = useState<boolean>(false)
   const [search, setSearch] = useState<string>('')
-  const [player, setPlayer] = useState<string>('')
+  const [player, setPlayer] = useState<string>(initialPlayer)
   const [faction, setFaction] = useState<string | null>(null)
   const [format, setFormat] = useState<string | null>(null)
   const [onlyForSale, setOnlyForSale] = useState<boolean>(false)
@@ -85,6 +88,11 @@ export default function AllDecksPage() {
       setLoading(false)
     }
   }, [search, player, faction, format, onlyForSale, onlyNft])
+
+  useEffect(() => {
+    const playerFromUrl = searchParams.get('player') ?? ''
+    setPlayer(prev => (prev === playerFromUrl ? prev : playerFromUrl))
+  }, [searchParams])
 
   useEffect(() => {
     fetchDecks()

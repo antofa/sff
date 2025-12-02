@@ -18,7 +18,6 @@ export type Database = {
         Row: {
           card_set_id: string | null
           card_set_no: string | null
-          cards: Json | null
           created_at: string | null
           deck_created_at: string | null
           deck_id: string
@@ -27,9 +26,9 @@ export type Database = {
           deck_score: number | null
           digital: boolean | null
           discord_username: string | null
+          display_name: string | null
           elo: number | null
           faction: string | null
-          forgeborn: Json | null
           forgeborn_id: string | null
           format: string | null
           fused_deck_ids: string[] | null
@@ -37,16 +36,13 @@ export type Database = {
           is_for_sale: boolean | null
           is_fused: boolean | null
           is_nft: boolean | null
-          my_decks: Json | null
           player_name: string
           price: number | null
-          tags: Json | null
           updated_at: string | null
         }
         Insert: {
           card_set_id?: string | null
           card_set_no?: string | null
-          cards?: Json | null
           created_at?: string | null
           deck_created_at?: string | null
           deck_id: string
@@ -55,9 +51,9 @@ export type Database = {
           deck_score?: number | null
           digital?: boolean | null
           discord_username?: string | null
+          display_name?: string | null
           elo?: number | null
           faction?: string | null
-          forgeborn?: Json | null
           forgeborn_id?: string | null
           format?: string | null
           fused_deck_ids?: string[] | null
@@ -65,16 +61,13 @@ export type Database = {
           is_for_sale?: boolean | null
           is_fused?: boolean | null
           is_nft?: boolean | null
-          my_decks?: Json | null
           player_name: string
           price?: number | null
-          tags?: Json | null
           updated_at?: string | null
         }
         Update: {
           card_set_id?: string | null
           card_set_no?: string | null
-          cards?: Json | null
           created_at?: string | null
           deck_created_at?: string | null
           deck_id?: string
@@ -83,9 +76,9 @@ export type Database = {
           deck_score?: number | null
           digital?: boolean | null
           discord_username?: string | null
+          display_name?: string | null
           elo?: number | null
           faction?: string | null
-          forgeborn?: Json | null
           forgeborn_id?: string | null
           format?: string | null
           fused_deck_ids?: string[] | null
@@ -93,14 +86,36 @@ export type Database = {
           is_for_sale?: boolean | null
           is_fused?: boolean | null
           is_nft?: boolean | null
-          my_decks?: Json | null
           player_name?: string
           price?: number | null
-          tags?: Json | null
           updated_at?: string | null
         }
         Relationships: []
       }
+    }
+    user_profiles: {
+      Row: {
+        user_id: string
+        game_nick: string | null
+        discord_nick: string | null
+        friend_code: string | null
+        updated_at: string | null
+      }
+      Insert: {
+        user_id: string
+        game_nick?: string | null
+        discord_nick?: string | null
+        friend_code?: string | null
+        updated_at?: string | null
+      }
+      Update: {
+        user_id?: string
+        game_nick?: string | null
+        discord_nick?: string | null
+        friend_code?: string | null
+        updated_at?: string | null
+      }
+      Relationships: []
     }
     Views: {
       [_ in never]: never
@@ -121,31 +136,9 @@ export type Database = {
 export type PlayerDeckRow = Database['public']['Tables']['player_decks']['Row']
 export type PlayerDeckInsert = Database['public']['Tables']['player_decks']['Insert']
 export type PlayerDeckUpdate = Database['public']['Tables']['player_decks']['Update']
+export type UserProfileRow = Database['public']['Tables']['user_profiles']['Row']
+export type UserProfileInsert = Database['public']['Tables']['user_profiles']['Insert']
+export type UserProfileUpdate = Database['public']['Tables']['user_profiles']['Update']
 
 // Extended type for API responses with parsed JSON fields
-export interface PlayerDeck extends Omit<PlayerDeckRow, 'cards' | 'forgeborn' | 'tags' | 'my_decks'> {
-  cards: Array<{
-    id: string
-    name: string
-    cardType?: string
-    faction?: string
-    rarity?: string
-    [key: string]: unknown
-  }> | null
-  forgeborn: {
-    id: string
-    name?: string
-    title?: string
-    abilities?: unknown[]
-    [key: string]: unknown
-  } | null
-  tags: Record<string, string> | null
-  my_decks: Array<{
-    id: string
-    name: string
-    faction?: string
-    forgeborn?: unknown
-    [key: string]: unknown
-  }> | null
-}
-
+export type PlayerDeck = PlayerDeckRow
