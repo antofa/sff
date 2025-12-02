@@ -2549,9 +2549,12 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             )}
             {deck.playerName && (
               <Badge
+                component="a"
+                href={`/player/${encodeURIComponent((deck as any).playerName || '')}`}
                 color="violet"
                 variant="light"
                 size="sm"
+                style={{ textDecoration: 'none' }}
               >
                 Owner: {deck.playerName}
               </Badge>
@@ -2767,13 +2770,16 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           </Group>
         </Group>
       }
-      size="85vw"
+      size="95vw"
       centered
       styles={{
         content: {
           backgroundColor: 'rgba(30, 41, 59, 0.98)',
           border: '1px solid rgba(74, 144, 226, 0.3)',
-          maxWidth: '1200px',
+          maxWidth: '1500px',
+          width: 'min(1500px, calc(100vw - 64px))',
+          minWidth: 'min(1100px, calc(100vw - 64px))',
+          minHeight: '80vh',
           transition: 'transform 300ms ease-in-out, opacity 300ms ease-in-out',
         },
         header: {
@@ -2783,6 +2789,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         body: {
           padding: '1.5rem',
           maxHeight: '80vh',
+          minHeight: '70vh',
           overflowY: 'auto',
         },
         overlay: {

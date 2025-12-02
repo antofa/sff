@@ -9,12 +9,14 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.
 const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey)
 
 type PlayerRow = Database['public']['Tables']['player_decks']['Row']
-type UserProfileRow = Database['public']['Tables']['user_profiles']['Row']
+type PlayerProfileRow = Database['public']['Tables']['player_profiles']['Row']
 
 type PlayerSummary = {
+  user_id: number
   player_name: string
   display_name: string | null
-  discord_username: string | null
+  discord_name: string | null
+  discord_username?: string | null
   deck_count: number
   last_seen: string | null
   latest_deck_id: string | null
@@ -40,14 +42,14 @@ export async function GET(request: NextRequest) {
     const hasFilters = Boolean(player || discord || deckId)
     const effectiveLimit = hasFilters ? limit : undefined
 
-    // 1) Получаем пользователей из user_profiles, чтобы показывать их даже без колод
+    // 1) Fetch players from player_profiles to show them even without decks
     const profileFilters: string[] = []
-    if (player) profileFilters.push(`game_nick.ilike.%${player}%`)
-    if (discord) profileFilters.push(`discord_nick.ilike.%${discord}%`)
+    if (player) profileFilters.push(`player_name.ilike.%${player}%`)
+    if (discord) profileFilters.push(`discord_name.ilike.%${discord}%`)
 
     let profileQuery = supabase
-      .from('user_profiles')
-      .select('game_nick, discord_nick, updated_at')
+      .from('player_profiles')
+      .select('player_name, discord_name, display_name, updated_at')
       .order('updated_at', { ascending: false })
 
     if (effectiveLimit) {
@@ -63,50 +65,58 @@ export async function GET(request: NextRequest) {
       console.error('[API] /api/players user_profiles query error:', profileQueryError)
     }
 
-    const profileNicks = (profileRows as UserProfileRow[] | null | undefined)?.reduce<string[]>((acc, row) => {
-      if (row?.game_nick) acc.push(row.game_nick.trim())
-      return acc
-    }, []) ?? []
+    const profileNicks =
+      (profileRows as PlayerProfileRow[] | null | undefined)?.reduce<string[]>((acc, row) => {
+        if (row?.player_name) acc.push(row.player_name.trim())
+        return acc
+      }, []) ?? []
 
-    // 2) Собираем фильтры для player_decks (используем совпадения из профилей при поиске по Discord)
+    // 2) Build filters for player_decks (use profile matches when searching by Discord)
     let matchedPlayersFromProfiles: string[] = []
 
-    // Если ищем по Discord, добавляем совпадения из user_profiles (discord_nick -> game_nick)
+    // When searching by Discord, add matches from player_profiles (discord_name -> player_name)
     if (discord) {
       matchedPlayersFromProfiles = profileNicks.filter(Boolean).map((v) => v.toLowerCase())
     }
 
-    const escapeValue = (value: string) => `"${value.replace(/"/g, '""')}"`
+    const matchedProfileIds = (profileRows as PlayerProfileRow[] | null | undefined)
+      ?.map((row) => row.user_id)
+      .filter((id): id is number => typeof id === 'number') ?? []
 
-    let query = supabase
+    // Fetch decks: if filters present, restrict by matched profile ids; otherwise full with limit
+    let deckQuery = supabase
       .from('player_decks')
-      .select(
-        'player_name, display_name, discord_username, deck_id, deck_name, updated_at, created_at, deck_created_at, is_fused, format, fused_deck_ids',
-        { count: 'exact' }
-      )
-      .order('deck_created_at', { ascending: false })
-      .order('created_at', { ascending: false })
+      .select('user_id, deck_id, updated_at', { count: 'exact' })
+      .order('updated_at', { ascending: false })
 
-    const filters: string[] = []
-    if (player) filters.push(`player_name.ilike.%${player}%`)
-    if (discord) {
-      filters.push(`discord_username.ilike.%${discord}%`)
-      if (matchedPlayersFromProfiles.length > 0) {
-        const inList = matchedPlayersFromProfiles.map(escapeValue).join(',')
-        filters.push(`player_name.in.(${inList})`)
-      }
+    if (deckId) {
+      deckQuery = deckQuery.ilike('deck_id', `%${deckId}%`)
     }
-    if (deckId) filters.push(`deck_id.ilike.%${deckId}%`)
 
-    if (filters.length > 0) {
-      query = query.or(filters.join(','))
+    if (hasFilters) {
+      if (matchedProfileIds.length === 0) {
+        const fromProfilesOnly =
+          (profileRows as PlayerProfileRow[] | null | undefined)?.map((row) => ({
+            user_id: row.user_id,
+            player_name: row.player_name ? row.player_name.toLowerCase() : 'unknown',
+            display_name: row.display_name ?? row.player_name ?? 'Unknown',
+            discord_name: row.discord_name ?? null,
+            discord_username: row.discord_name ?? null,
+            deck_count: 0,
+            last_seen: row.updated_at ?? null,
+            latest_deck_id: null,
+            latest_deck_name: null,
+          })) ?? []
+        return NextResponse.json({ players: fromProfilesOnly, count: fromProfilesOnly.length })
+      }
+      deckQuery = deckQuery.in('user_id', matchedProfileIds)
     }
 
     if (effectiveLimit) {
-      query = query.limit(effectiveLimit)
+      deckQuery = deckQuery.limit(effectiveLimit)
     }
 
-    const { data, error } = await query
+    const { data, error } = await deckQuery
 
     if (error) {
       console.error('[API] /api/players supabase error:', error)
@@ -117,31 +127,63 @@ export async function GET(request: NextRequest) {
     }
 
     if (!data || data.length === 0) {
-      // Если колод нет, но есть профили, возвращаем хотя бы их
-      const fromProfilesOnly = (profileRows as UserProfileRow[] | null | undefined)?.map((row) => ({
-        player_name: row.game_nick ? row.game_nick.toLowerCase() : 'unknown',
-        display_name: row.game_nick ?? 'Unknown',
-        discord_username: row.discord_nick ?? null,
-        deck_count: 0,
-        last_seen: row.updated_at ?? null,
-        latest_deck_id: null,
-        latest_deck_name: null,
-      })) ?? []
+      // If no decks but profiles exist, return profiles only
+      const fromProfilesOnly =
+        (profileRows as PlayerProfileRow[] | null | undefined)?.map((row) => ({
+          user_id: row.user_id,
+          player_name: row.player_name ? row.player_name.toLowerCase() : 'unknown',
+          display_name: row.display_name ?? row.player_name ?? 'Unknown',
+          discord_name: row.discord_name ?? null,
+          discord_username: row.discord_name ?? null,
+          deck_count: 0,
+          last_seen: row.updated_at ?? null,
+          latest_deck_id: null,
+          latest_deck_name: null,
+        })) ?? []
       return NextResponse.json({ players: fromProfilesOnly, count: fromProfilesOnly.length })
     }
 
     const playersMap = new Map<string, PlayerSummary>()
 
-    // Сначала добавим профили (deck_count = 0), чтобы они были в выдаче даже без колод
+    // Fetch profiles by user_id from found decks
+    const userIds = Array.from(
+      new Set(
+        (data ?? [])
+          .map((row) => row.user_id)
+          .filter((id): id is number => typeof id === 'number' && !Number.isNaN(id))
+      )
+    )
+
+    const profileMap = new Map<number, PlayerProfileRow>()
+    if (userIds.length > 0) {
+      const { data: profilesById, error: profilesByIdError } = await supabase
+        .from('player_profiles')
+        .select('user_id, player_name, display_name, discord_name')
+        .in('user_id', userIds)
+
+      if (!profilesByIdError && profilesById) {
+        (profilesById as PlayerProfileRow[]).forEach((p) => {
+          if (typeof p.user_id === 'number') {
+            profileMap.set(p.user_id, p)
+          }
+        })
+      } else if (profilesByIdError) {
+        console.error('[API] /api/players profile by id lookup error:', profilesByIdError)
+      }
+    }
+
+    // Add profiles first (deck_count = 0) so they appear even without decks
     if (profileRows && Array.isArray(profileRows)) {
-      (profileRows as UserProfileRow[]).forEach((profile) => {
-        if (!profile.game_nick) return
-        const key = profile.game_nick.toLowerCase()
+      ;(profileRows as PlayerProfileRow[]).forEach((profile) => {
+        if (!profile.player_name) return
+        const key = profile.player_name.toLowerCase()
         if (!playersMap.has(key)) {
           playersMap.set(key, {
+            user_id: profile.user_id,
             player_name: key,
-            display_name: profile.game_nick,
-            discord_username: profile.discord_nick ?? null,
+            display_name: profile.display_name ?? profile.player_name,
+            discord_name: profile.discord_name ?? null,
+            discord_username: profile.discord_name ?? null,
             deck_count: 0,
             last_seen: profile.updated_at ?? null,
             latest_deck_id: null,
@@ -154,49 +196,50 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Теперь обрабатываем данные колод и накладываем поверх профилей
+    // Process deck data and overlay on profiles
     data.forEach((row) => {
-      if (!row.player_name) return
-      const key = row.player_name.toLowerCase()
-      const displayName = row.display_name || row.player_name
+      const profile = row.user_id ? profileMap.get(row.user_id) : undefined
+      if (!profile?.player_name) return
+      const key = profile.player_name.toLowerCase()
+      const displayName = profile.display_name || profile.player_name || null
+      const playerNameLower = key
+      const discordFromProfile = profile.discord_name
       const tsString = normalizeTimestamp(row)
       const ts = tsString ? Date.parse(tsString) : Number.NaN
       const deckIdStr = row.deck_id ? String(row.deck_id) : ''
       const deckIdLower = deckIdStr.toLowerCase()
-      const isFusedId = deckIdLower.startsWith('fused_') || deckIdLower.startsWith('deck_fused')
-      const isFusedName = typeof row.deck_name === 'string' && row.deck_name.toLowerCase().includes('fused')
+      const isFused = deckIdLower.startsWith('fused_') || deckIdLower.startsWith('deck_fused')
 
-      const isFused =
-        row.is_fused === true ||
-        isFusedId ||
-        isFusedName ||
-        (typeof row.format === 'string' && row.format.toLowerCase() === 'fused') ||
-        (Array.isArray(row.fused_deck_ids) && row.fused_deck_ids.length > 0)
-
-      const existing = playersMap.get(key)
+      const existing = playersMap.get(playerNameLower)
 
       if (!existing) {
-        playersMap.set(key, {
-          player_name: row.player_name,
+        playersMap.set(playerNameLower, {
+          user_id: row.user_id!,
+          player_name: profile?.player_name || row.deck_id,
           display_name: displayName,
-          discord_username: row.discord_username,
+          discord_name: discordFromProfile || null,
+          discord_username: discordFromProfile || null,
           deck_count: 1,
           last_seen: tsString,
           latest_deck_id: isFused ? (row.deck_id ?? null) : null,
-          latest_deck_name: isFused ? (row.deck_name ?? null) : null,
+          latest_deck_name: null,
           latest_fused_id: isFused ? (row.deck_id ?? null) : null,
-          latest_fused_name: isFused ? (row.deck_name ?? null) : null,
+          latest_fused_name: null,
           latest_fused_ts: isFused && !Number.isNaN(ts) ? ts : undefined,
         })
         return
       }
 
       existing.deck_count += 1
+      if (!existing.user_id && row.user_id) {
+        existing.user_id = row.user_id
+      }
       if (!existing.display_name && displayName) {
         existing.display_name = displayName
       }
-      if (!existing.discord_username && row.discord_username) {
-        existing.discord_username = row.discord_username
+      if (!existing.discord_name && discordFromProfile) {
+        existing.discord_name = discordFromProfile
+        existing.discord_username = discordFromProfile
       }
 
       const existingTs = existing.last_seen ? Date.parse(existing.last_seen) : Number.NaN
@@ -204,53 +247,52 @@ export async function GET(request: NextRequest) {
         existing.last_seen = tsString
       }
 
-      // Fused предпочтение: храним последнюю fused по времени
+      // Fused preference: keep the latest fused by timestamp
       if (isFused) {
         const fusedTs = !Number.isNaN(ts) ? ts : -Infinity
         if (existing.latest_fused_ts === undefined || fusedTs > (existing.latest_fused_ts ?? -Infinity)) {
           existing.latest_fused_ts = fusedTs
           existing.latest_fused_id = row.deck_id ?? existing.latest_fused_id ?? null
-          existing.latest_fused_name = row.deck_name ?? existing.latest_fused_name ?? null
           existing.latest_deck_id = existing.latest_fused_id
-          existing.latest_deck_name = existing.latest_fused_name
+          existing.latest_deck_name = existing.latest_fused_name ?? null
         }
       } else {
-        // Если fused ещё не было, временно используем обычную
+        // If no fused yet, temporarily use regular deck
         if (!existing.latest_fused_id) {
           existing.latest_deck_id = row.deck_id ?? existing.latest_deck_id
-          existing.latest_deck_name = row.deck_name ?? existing.latest_deck_name
+          existing.latest_deck_name = existing.latest_deck_name ?? null
         }
       }
     })
 
-    // Подтягиваем discord_nick из user_profiles для тех, у кого discord_username ещё не сохранён в player_decks
+    // Fill discord_name from player_profiles for those missing discord_name in player_decks
     const withoutDiscord = Array.from(playersMap.values())
-      .filter((p) => !p.discord_username)
+      .filter((p) => !p.discord_name)
       .map((p) => p.player_name)
 
     if (withoutDiscord.length > 0) {
       const { data: profiles, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('game_nick, discord_nick')
-        .in('game_nick', withoutDiscord)
+        .from('player_profiles')
+        .select('player_name, discord_name, display_name')
+        .in('player_name', withoutDiscord)
 
       if (!profilesError && profiles) {
-        (profiles as UserProfileRow[]).forEach((profile) => {
-          const nick = profile.game_nick?.toLowerCase()
+        (profiles as PlayerProfileRow[]).forEach((profile) => {
+          const nick = profile.player_name?.toLowerCase()
           if (!nick) return
           const existing = playersMap.get(nick)
-          if (existing && !existing.discord_username && profile.discord_nick) {
-            existing.discord_username = profile.discord_nick
+          if (existing && !existing.discord_name && profile.discord_name) {
+            existing.discord_name = profile.discord_name
           }
         })
       } else if (profilesError) {
-        console.error('[API] /api/players user_profiles fill error:', profilesError)
+        console.error('[API] /api/players player_profiles fill error:', profilesError)
       }
     }
 
-    // Если fused не найден в Supabase, попробуем взять из внешнего API для таких игроков
+    // If fused deck is not in Supabase, try fetching from external API for those players
     const playersNeedingFused = Array.from(playersMap.values()).filter(
-      (p) => !p.latest_fused_id // нет fused в Supabase
+      (p) => !p.latest_fused_id // no fused deck in Supabase
     )
 
     if (playersNeedingFused.length > 0) {
@@ -258,7 +300,7 @@ export async function GET(request: NextRequest) {
         try {
           const fusedDecks = await fetchFusedDecksFromAPI(player.player_name)
           if (Array.isArray(fusedDecks) && fusedDecks.length > 0) {
-            // Отсортируем по updatedAt/created
+            // Sort by updatedAt/created
             const pickTs = (d: any) => {
               const tsRaw = d.updatedAt || d.UpdatedAt || d.created || d.createdAt || d.CreatedAt
               const ts = tsRaw ? Date.parse(tsRaw) : Number.NaN
@@ -286,7 +328,9 @@ export async function GET(request: NextRequest) {
 
     const players = Array.from(playersMap.values()).map((p) => ({
       ...p,
-      // Сохраняем оба значения; latest_deck_* оставляем как итоговое, но отдаём и latest_fused_* для UI
+      discord_name: p.discord_name || p.discord_username || null,
+      discord_username: p.discord_name || p.discord_username || null,
+      // Keep both values; latest_deck_* is the final, but also return latest_fused_* for UI
       latest_deck_id: p.latest_fused_id ?? p.latest_deck_id,
       latest_deck_name: p.latest_fused_name ?? p.latest_deck_name,
       latest_fused_id: p.latest_fused_id ?? null,

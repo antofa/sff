@@ -30,6 +30,7 @@ export function deckToInsert(
     isNft?: boolean
     price?: number
     isForSale?: boolean
+    userId?: number
   }
 ): PlayerDeckInsert {
   const trimmedName = playerName.trim()
@@ -56,6 +57,7 @@ export function deckToInsert(
     is_fused: Boolean(deck.fusedDeckIds && deck.fusedDeckIds.length > 0),
     fused_deck_ids: deck.fusedDeckIds ?? null,
     deck_created_at: deck.created ?? null,
+    user_id: options?.userId ?? 0,
   }
 }
 
@@ -71,6 +73,7 @@ export async function saveDeck(
     isNft?: boolean
     price?: number
     isForSale?: boolean
+    userId?: number
   }
 ): Promise<{ data: PlayerDeck | null; error: Error | null }> {
   const insertData = deckToInsert(deck, playerName, options)
@@ -103,6 +106,7 @@ export async function saveDecks(
     isNft?: boolean
     price?: number
     isForSale?: boolean
+    userId?: number
   }
 ): Promise<{ data: PlayerDeck[]; errors: Error[] }> {
   const results: PlayerDeck[] = []

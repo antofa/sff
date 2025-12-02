@@ -459,7 +459,7 @@ export function getCardImageUrls(cardId: string, isForgeborn: boolean = false): 
 }
 
 /**
- * Получить информацию о карте по её ID
+ * Fetch card info by ID
  */
 export interface CardInfo {
   id: string

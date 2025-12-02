@@ -114,13 +114,13 @@ export default function Home() {
       
       let userMessage = 'Failed to load decks. Please check your internet connection and try again.'
       
-      if (errorMessage.includes('cannot be empty') || errorMessage.includes('не может быть пустым')) {
+      if (errorMessage.includes('cannot be empty')) {
         userMessage = 'Please enter a player nickname'
-      } else if (errorMessage.includes('timeout') || errorMessage.includes('время ожидания')) {
+      } else if (errorMessage.includes('timeout')) {
         userMessage = 'Request timeout. Please try again.'
-      } else if (errorMessage.includes('network') || errorMessage.includes('сеть')) {
+      } else if (errorMessage.includes('network')) {
         userMessage = 'Network error. Please check your internet connection.'
-      } else if (errorMessage.includes('404') || errorMessage.includes('not found') || errorMessage.includes('не найден')) {
+      } else if (errorMessage.includes('404') || errorMessage.includes('not found')) {
         userMessage = 'Player not found. Please check the nickname.'
       }
       
@@ -132,12 +132,12 @@ export default function Home() {
     }
   }
 
-  // If вкладка была свернута и загрузка застыла, повторно дергаем поиск при возврате фокуса
+  // If tab was inactive and loading froze, re-trigger search on visibility change
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && loading && lastSearchRef.current) {
         fetchDecks(lastSearchRef.current).catch(() => {
-          /* ошибки уже логируются внутри fetchDecks */
+          /* errors already logged inside fetchDecks */
         })
       }
     }

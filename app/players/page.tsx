@@ -23,7 +23,7 @@ import type { Deck } from '@/store/deckStore'
 type PlayerSummary = {
   player_name: string
   display_name: string | null
-  discord_username: string | null
+  discord_name: string | null
   deck_count: number
   last_seen: string | null
   latest_deck_id: string | null
@@ -84,11 +84,11 @@ export default function PlayersPage() {
         }
       } catch (error) {
         console.error('[Players] Fetch error:', error)
-        notifications.show({
-          title: 'Ошибка',
-          message: error instanceof Error ? error.message : 'Не удалось загрузить игроков',
-          color: 'red',
-        })
+          notifications.show({
+            title: 'Error',
+            message: error instanceof Error ? error.message : 'Failed to load players',
+            color: 'red',
+          })
       } finally {
         setLoading(false)
       }
@@ -98,7 +98,7 @@ export default function PlayersPage() {
 
   useEffect(() => {
     fetchPlayers({ silent: true }).catch(() => {
-      /* ошибки уже показаны выше */
+      /* errors are already handled above */
     })
   }, [fetchPlayers])
 
@@ -112,7 +112,7 @@ export default function PlayersPage() {
     const incomingPlayer = options?.playerName?.trim() || null
     const modalPlayerNormalized = modalPlayer?.toLowerCase() ?? null
 
-    // Если открываем колоду другого игрока, сбрасываем кешированные данные
+    // If opening a deck for another player, reset cached data
     if (incomingPlayer && modalPlayerNormalized && incomingPlayer.toLowerCase() !== modalPlayerNormalized) {
       setPlayerDecks([])
       setPlayerFusedDecks([])
@@ -169,8 +169,8 @@ export default function PlayersPage() {
     } catch (error) {
       console.error('[Players] Failed to load deck:', error)
       notifications.show({
-        title: 'Ошибка',
-        message: error instanceof Error ? error.message : 'Не удалось загрузить колоду',
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to load deck',
         color: 'red',
       })
       setDeckModalOpen(false)
@@ -292,7 +292,7 @@ export default function PlayersPage() {
               <Stack gap="md">
                 {players.map((item) => (
                   <Paper
-                    key={`${item.player_name}-${item.discord_username ?? 'no-discord'}`}
+                    key={`${item.player_name}-${item.discord_name ?? 'no-discord'}`}
                       p="md"
                       className="bg-slate-800/60 backdrop-blur-md border border-sf-primary/30 rounded-lg"
                     >
@@ -301,11 +301,16 @@ export default function PlayersPage() {
                           <div className="space-y-1">
                             <Group gap="sm">
                               <Title order={4} className="text-white">
-                                {item.display_name || item.player_name}
+                                <a
+                                  href={`/player/${encodeURIComponent(item.player_name)}`}
+                                  className="text-white hover:text-sf-secondary transition-colors"
+                                >
+                                  {item.display_name || item.player_name}
+                                </a>
                               </Title>
-                              {item.discord_username && (
+                              {item.discord_name && (
                                 <Badge color="violet" leftSection={<IconBrandDiscord size={14} />}>
-                                  {item.discord_username}
+                                  {item.discord_name}
                                 </Badge>
                               )}
                               <Badge color="blue" variant="light">
@@ -314,7 +319,7 @@ export default function PlayersPage() {
                             </Group>
                             <Group gap="sm">
                               <Text size="sm" className="text-gray-300">
-                                Last seen: {formatDate(item.last_seen)}
+                                Last updated: {formatDate(item.last_seen)}
                               </Text>
                             </Group>
                             {(item.latest_fused_name || item.latest_deck_name) && (

@@ -39,6 +39,7 @@ export type Database = {
           player_name: string
           price: number | null
           updated_at: string | null
+          user_id: number
         }
         Insert: {
           card_set_id?: string | null
@@ -64,6 +65,7 @@ export type Database = {
           player_name: string
           price?: number | null
           updated_at?: string | null
+          user_id: number
         }
         Update: {
           card_set_id?: string | null
@@ -89,29 +91,36 @@ export type Database = {
           player_name?: string
           price?: number | null
           updated_at?: string | null
+          user_id?: number
         }
         Relationships: []
       }
     }
-    user_profiles: {
+    player_profiles: {
       Row: {
-        user_id: string
-        game_nick: string | null
-        discord_nick: string | null
+        user_id: number
+        discord_id: number
+        player_name: string | null
+        discord_name: string | null
+        display_name: string | null
         friend_code: string | null
         updated_at: string | null
       }
       Insert: {
-        user_id: string
-        game_nick?: string | null
-        discord_nick?: string | null
+        user_id?: number
+        discord_id: number
+        player_name?: string | null
+        discord_name?: string | null
+        display_name?: string | null
         friend_code?: string | null
         updated_at?: string | null
       }
       Update: {
-        user_id?: string
-        game_nick?: string | null
-        discord_nick?: string | null
+        user_id?: number
+        discord_id?: number
+        player_name?: string | null
+        discord_name?: string | null
+        display_name?: string | null
         friend_code?: string | null
         updated_at?: string | null
       }
@@ -136,9 +145,9 @@ export type Database = {
 export type PlayerDeckRow = Database['public']['Tables']['player_decks']['Row']
 export type PlayerDeckInsert = Database['public']['Tables']['player_decks']['Insert']
 export type PlayerDeckUpdate = Database['public']['Tables']['player_decks']['Update']
-export type UserProfileRow = Database['public']['Tables']['user_profiles']['Row']
-export type UserProfileInsert = Database['public']['Tables']['user_profiles']['Insert']
-export type UserProfileUpdate = Database['public']['Tables']['user_profiles']['Update']
+export type PlayerProfileRow = Database['public']['Tables']['player_profiles']['Row']
+export type PlayerProfileInsert = Database['public']['Tables']['player_profiles']['Insert']
+export type PlayerProfileUpdate = Database['public']['Tables']['player_profiles']['Update']
 
 // Extended type for API responses with parsed JSON fields
 export type PlayerDeck = PlayerDeckRow

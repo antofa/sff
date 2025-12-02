@@ -56,7 +56,6 @@ export default function AllDecksPage() {
   const [player, setPlayer] = useState<string>(initialPlayer)
   const [faction, setFaction] = useState<string | null>(null)
   const [format, setFormat] = useState<string | null>(null)
-  const [onlyForSale, setOnlyForSale] = useState<boolean>(false)
   const [onlyNft, setOnlyNft] = useState<boolean>(false)
 
   const fetchDecks = useCallback(async () => {
@@ -70,7 +69,6 @@ export default function AllDecksPage() {
       if (player.trim()) params.set('player', player.trim())
       if (faction) params.set('faction', faction)
       if (format) params.set('format', format)
-      if (onlyForSale) params.set('forSale', 'true')
       if (onlyNft) params.set('isNft', 'true')
 
       const res = await fetch(`/api/saved-decks?${params.toString()}`)
@@ -87,7 +85,7 @@ export default function AllDecksPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, player, faction, format, onlyForSale, onlyNft])
+  }, [search, player, faction, format, onlyNft])
 
   useEffect(() => {
     const playerFromUrl = searchParams.get('player') ?? ''
@@ -107,7 +105,6 @@ export default function AllDecksPage() {
     setPlayer('')
     setFaction(null)
     setFormat(null)
-    setOnlyForSale(false)
     setOnlyNft(false)
     // fetch happens via useEffect when deps change
   }
@@ -149,7 +146,7 @@ export default function AllDecksPage() {
         <Stack gap="xl">
           <div>
             <Title order={2} className="text-white">All Saved Decks</Title>
-            <Text className="text-gray-400">Browse decks saved from player searches in Supabase.</Text>
+            <Text className="text-gray-400">Browse decks saved from player searches.</Text>
           </div>
 
           <Paper
@@ -202,13 +199,6 @@ export default function AllDecksPage() {
                   classNames={{ input: 'bg-slate-700/40 text-white' }}
                 />
                 <Stack gap={8}>
-                  <Switch
-                    label="For sale"
-                    checked={onlyForSale}
-                    onChange={(e) => {
-                      setOnlyForSale(e.currentTarget.checked)
-                    }}
-                  />
                   <Switch
                     label="NFT only"
                     checked={onlyNft}

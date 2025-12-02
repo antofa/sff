@@ -9,14 +9,16 @@ const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey)
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user?.discordId) {
+  const discordIdRaw = session?.user?.discordId
+  const discordId = discordIdRaw ? Number(discordIdRaw) : NaN
+  if (!discordIdRaw || Number.isNaN(discordId)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { data, error } = await supabase
-    .from('user_profiles')
+    .from('player_profiles')
     .select('*')
-    .eq('user_id', session.user.discordId)
+    .eq('discord_id', discordId)
     .single()
 
   if (error && error.code !== 'PGRST116') {
@@ -28,7 +30,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const session = await auth()
-  if (!session?.user?.discordId) {
+  const discordIdRaw = session?.user?.discordId
+  const discordId = discordIdRaw ? Number(discordIdRaw) : NaN
+  if (!discordIdRaw || Number.isNaN(discordId)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -38,11 +42,12 @@ export async function POST(request: Request) {
   const discordNick = session.user.username || session.user.name || null
 
   const { data, error } = await supabase
-    .from('user_profiles')
+    .from('player_profiles')
     .upsert({
-      user_id: session.user.discordId,
-      game_nick: gameNick || null,
-      discord_nick: discordNick,
+      discord_id: discordId,
+      player_name: gameNick || null,
+      discord_name: discordNick,
+      display_name: gameNick || discordNick,
       friend_code: friendCode || null,
       updated_at: new Date().toISOString(),
     })

@@ -7,8 +7,8 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey)
 
-const mapSupabaseRowToDeck = (row: PlayerDeckRow) => {
-  const ownerDisplay = (row as any).display_name as string | undefined
+const mapSupabaseRowToDeck = (row: PlayerDeckRow, profile?: { player_name?: string | null; display_name?: string | null; discord_name?: string | null }) => {
+  const ownerDisplay = profile?.display_name || profile?.player_name || undefined
   return {
     id: row.deck_id,
     name: row.deck_name,
@@ -43,7 +43,7 @@ export async function GET(
   }
 
   try {
-    // Поддержка разных форматов id: Deck_..., Deck_Fused_..., Fused_...
+    // Support multiple id formats: Deck_..., Deck_Fused_..., Fused_...
     const candidates = Array.from(
       new Set(
         [
@@ -55,7 +55,7 @@ export async function GET(
       )
     )
 
-    // 1) Пытаемся найти в Supabase (player_decks) для каждого кандидата
+    // 1) Try Supabase (player_decks) for each candidate
     for (const candidate of candidates) {
       const { data, error } = await supabase
         .from('player_decks')
@@ -70,8 +70,25 @@ export async function GET(
       }
 
       if (data && data.length > 0) {
-        const supabaseDeck = mapSupabaseRowToDeck(data[0] as PlayerDeckRow)
-        const needsHydration = true // Мы больше не храним карты/tags/forgeborn в БД, всегда тянем из внешнего API
+        const row = data[0] as PlayerDeckRow
+        let profile: { player_name?: string | null; display_name?: string | null; discord_name?: string | null } | undefined
+        if (row.user_id) {
+          try {
+            const { data: profileRow, error: profileError } = await supabase
+              .from('player_profiles')
+              .select('player_name, display_name, discord_name')
+              .eq('user_id', row.user_id)
+              .single()
+            if (!profileError && profileRow) {
+              profile = profileRow as any
+            }
+          } catch (profileErr) {
+            console.warn('[API] /api/deck profile lookup failed:', profileErr)
+          }
+        }
+
+        const supabaseDeck = mapSupabaseRowToDeck(row, profile)
+        const needsHydration = true // We no longer store cards/tags/forgeborn in DB; always hydrate from external API
 
         if (needsHydration) {
           try {
@@ -110,7 +127,7 @@ export async function GET(
       }
     }
 
-    // 2) Пытаемся как обычную колоду для каждого кандидата через внешний API
+    // 2) Try as regular deck for each candidate via external API
     for (const candidate of candidates) {
       const raw = await fetchDeckDetails(candidate)
       if (raw) {
@@ -136,7 +153,7 @@ export async function GET(
       }
     }
 
-    // 3) Фолбэк для fused колод
+    // 3) Fallback for fused decks
     const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
     for (const candidate of candidates) {
       const fusedRes = await fetch(`${API_BASE_URL}/fuseddeck/${candidate}?inclCards=true&inclUsers=true`, {

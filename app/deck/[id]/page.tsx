@@ -89,13 +89,13 @@ export default function DeckPage() {
               className="bg-slate-800/60 backdrop-blur-md border border-red-500/40 rounded-lg"
             >
               <Stack gap="xs">
-                <Text className="text-red-300">Не удалось загрузить колоду: {error}</Text>
+                <Text className="text-red-300">Failed to load deck: {error}</Text>
                 <Group gap="sm">
                   <Button size="sm" onClick={() => router.refresh()}>
-                    Повторить
+                    Retry
                   </Button>
                   <Button size="sm" variant="light" onClick={handleClose}>
-                    Назад
+                    Back
                   </Button>
                 </Group>
               </Stack>

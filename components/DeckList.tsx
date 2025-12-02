@@ -70,7 +70,6 @@ function getExpiryTimestamp(deck: Deck): number | null {
     deckAny?.expire_at ??
     deckAny?.expireDate ??
     deckAny?.expire_date ??
-    deckAny?.created ??
     null
   if (!expireRaw) return null
   const ts = new Date(expireRaw).getTime()
@@ -2204,20 +2203,6 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     }
   }, [filteredHalfDecks.length, filteredFusedDecks.length]) // Only depend on length to avoid unnecessary runs
 
-  if (decks.length === 0) {
-    return (
-      <Paper
-        p="xl"
-        className="w-full max-w-4xl backdrop-blur-md border border-sf-primary/30 rounded-xl"
-        style={{ backgroundColor: 'rgba(30, 41, 59, 0.6)' }}
-      >
-        <Text size="lg" className="text-center text-gray-400">
-          No decks found
-        </Text>
-      </Paper>
-    )
-  }
-
   return (
     <>
       <div className="w-full max-w-6xl space-y-4">
@@ -3154,19 +3139,18 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                     // Determine border color based on expiry date
                     let borderColor = 'rgba(74, 144, 226, 0.6)' // Default: brighter blue for normal decks
                     let hoverBorderColor = 'rgba(74, 144, 226, 0.9)' // Default hover - even brighter
-                    
-                    if (deck.created) {
-                      const expiryDate = new Date(deck.created).getTime()
-                      const currentTimeUTC = new Date().getTime()
-                      
-                      if (expiryDate < currentTimeUTC) {
+
+                    const expiryTs = getExpiryTimestamp(deck)
+                    if (expiryTs !== null) {
+                      const currentTimeUTC = Date.now()
+                      if (expiryTs < currentTimeUTC) {
                         // Expired deck - black border
-                        borderColor = 'rgba(0, 0, 0, 1)' // Black
-                        hoverBorderColor = 'rgba(0, 0, 0, 1)' // Black on hover too
+                        borderColor = 'rgba(0, 0, 0, 1)'
+                        hoverBorderColor = 'rgba(0, 0, 0, 1)'
                       } else {
                         // Has expiry date but not expired yet - red border
-                        borderColor = 'rgba(220, 38, 38, 0.8)' // Red
-                        hoverBorderColor = 'rgba(220, 38, 38, 1)' // Red on hover
+                        borderColor = 'rgba(220, 38, 38, 0.8)'
+                        hoverBorderColor = 'rgba(220, 38, 38, 1)'
                       }
                     }
                     
@@ -3194,7 +3178,14 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
               <Stack gap="sm">
                 {(deck as any).playerName && (
                   <Text size="sm" className="text-gray-300" fw={600}>
-                    Owner: {(deck as any).playerName}
+                    Owner:{' '}
+                    <a
+                      href={`/player/${encodeURIComponent((deck as any).playerName || '')}`}
+                      className="text-sf-secondary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {(deck as any).playerName}
+                    </a>
                     {deck.created && (
                       <span className="text-gray-400">
                         {' '}

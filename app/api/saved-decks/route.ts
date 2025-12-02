@@ -156,12 +156,59 @@ export async function POST(request: NextRequest) {
     const normalizedDiscord = typeof discordUsername === 'string'
       ? discordUsername.trim()
       : undefined
+
+    // Ensure user profile exists for this playerName
+    const normalizedPlayer = playerName.trim()
+    let userId: number | null = null
+    try {
+      // Try to find existing profile by player_name (case-insensitive)
+      const { data: existingProfiles, error: profileLookupError } = await supabaseServer
+        .from('player_profiles')
+        .select('user_id, player_name')
+        .ilike('player_name', normalizedPlayer)
+        .limit(1)
+
+      if (profileLookupError) {
+        console.error('[API] /api/saved-decks profile lookup error:', profileLookupError)
+      }
+
+      if (existingProfiles && existingProfiles.length > 0) {
+        userId = existingProfiles[0].user_id
+      } else {
+        // Create new profile
+        const { data: inserted, error: insertError } = await supabaseServer
+          .from('player_profiles')
+          .insert({
+            player_name: normalizedPlayer,
+            display_name: normalizedPlayer,
+            discord_name: normalizedDiscord ?? null,
+          })
+          .select('user_id')
+          .single()
+
+        if (insertError) {
+          console.error('[API] /api/saved-decks profile insert error:', insertError)
+        } else {
+          userId = inserted?.user_id ?? null
+        }
+      }
+    } catch (profileError) {
+      console.error('[API] /api/saved-decks profile ensure error:', profileError)
+    }
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Failed to ensure user profile for this player' },
+        { status: 500 }
+      )
+    }
     
     const { data, errors } = await saveDecks(decks, playerName, {
       discordUsername: normalizedDiscord,
       isNft,
       price,
       isForSale,
+      userId,
     })
     
     if (errors.length > 0) {

@@ -67,7 +67,7 @@ export function Header() {
       const res = await fetch('/api/profile')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to load profile')
-      const apiNick = json.profile?.game_nick || ''
+      const apiNick = json.profile?.player_name || ''
       const apiFriend = json.profile?.friend_code || ''
       setCurrentGameNick(apiNick)
       setGameNick(apiNick)
