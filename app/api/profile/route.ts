@@ -10,8 +10,9 @@ const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey)
 export async function GET() {
   const session = await auth()
   const discordIdRaw = session?.user?.discordId
-  const discordId = discordIdRaw ? Number(discordIdRaw) : NaN
-  if (!discordIdRaw || Number.isNaN(discordId)) {
+  const discordId = discordIdRaw ? String(discordIdRaw) : ''
+  const discordName = session?.user?.username || session?.user?.name || null
+  if (!discordId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -25,14 +26,31 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Fallback: try lookup by discord_name if nothing found (handles legacy rows where discord_id was truncated)
+  if (!data && discordName) {
+    const { data: legacyProfile, error: legacyError } = await supabase
+      .from('player_profiles')
+      .select('*')
+      .eq('discord_name', discordName)
+      .single()
+
+    if (legacyError && legacyError.code !== 'PGRST116') {
+      return NextResponse.json({ error: legacyError.message }, { status: 500 })
+    }
+
+    if (legacyProfile) {
+      return NextResponse.json({ profile: legacyProfile })
+    }
+  }
+
   return NextResponse.json({ profile: data ?? null })
 }
 
 export async function POST(request: Request) {
   const session = await auth()
   const discordIdRaw = session?.user?.discordId
-  const discordId = discordIdRaw ? Number(discordIdRaw) : NaN
-  if (!discordIdRaw || Number.isNaN(discordId)) {
+  const discordId = discordIdRaw ? String(discordIdRaw) : ''
+  if (!discordId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

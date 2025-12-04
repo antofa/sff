@@ -4,14 +4,12 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { Container, Title, TextInput, Button, Paper, Loader, Stack } from '@mantine/core'
 import { IconSearch } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
-import { useSession } from 'next-auth/react'
 import { useDeckStore } from '@/store/deckStore'
 import { DeckList } from '@/components/DeckList'
 import { Header } from '@/components/Header'
 import { BackgroundElements } from '@/components/BackgroundElements'
 
 export default function Home() {
-  const { data: session } = useSession()
   const [playerName, setPlayerName] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
@@ -65,35 +63,7 @@ export default function Home() {
     try {
       await fetchDecks(playerName.trim())
       const { decks: loadedDecks, fusedDecks: loadedFusedDecks } = useDeckStore.getState()
-      
-      // Fire-and-forget save to Supabase for global browsing
-      if ((loadedDecks.length > 0 || loadedFusedDecks.length > 0) && playerName.trim()) {
-        const nowIso = new Date().toISOString()
-        const filtered = [...loadedDecks, ...loadedFusedDecks].filter((deck: any) => {
-          const setNo = (deck?.cardSetNo ?? deck?.card_set_no ?? '').toString().trim()
-          const expireRaw = deck?.expireAt ?? deck?.expire_at ?? deck?.expireDate ?? deck?.expire_date ?? deck?.created
-          const expireTime = expireRaw ? new Date(expireRaw).getTime() : null
-          const isExpired = expireTime !== null ? expireTime < Date.now() : false
-          return setNo !== '99' && !isExpired
-        }).map(deck => ({
-          ...deck,
-          created: nowIso,
-        }))
-        if (filtered.length > 0) {
-        fetch('/api/saved-decks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            decks: filtered,
-            playerName: playerName.trim(),
-            discordUsername: session?.user?.username ?? session?.user?.name ?? null,
-          }),
-        }).catch(err => {
-          console.error('[Page] Failed to save decks to Supabase:', err)
-        })
-        }
-      }
-      
+
       if (loadedDecks.length > 0 || loadedFusedDecks.length > 0) {
         const totalDecks = loadedDecks.length + loadedFusedDecks.length
         notifications.show({

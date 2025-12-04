@@ -3,6 +3,7 @@
 import { use, useEffect, useMemo, useState } from 'react'
 import {
   Accordion,
+  ActionIcon,
   Badge,
   Button,
   Container,
@@ -19,6 +20,9 @@ import {
 import { IconArrowLeft, IconBrandDiscord, IconCheck, IconCircleDashed, IconTrophy, IconWorld } from '@tabler/icons-react'
 import { BackgroundElements } from '@/components/BackgroundElements'
 import { Header } from '@/components/Header'
+import { DeckList } from '@/components/DeckList'
+import { useDeckStore } from '@/store/deckStore'
+import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 
 type PlayerProfile = {
   displayName?: string
@@ -169,6 +173,9 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
   } | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
+  const { decks, fusedDecks, loading: decksLoading, error: decksError, fetchDecks, clearDecks } = useDeckStore()
+  const [hasFetchedDecks, setHasFetchedDecks] = useState(false)
+  const [deckSectionCollapsed, setDeckSectionCollapsed] = useState(true)
 
   useEffect(() => {
     const load = async () => {
@@ -215,10 +222,36 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
     })
   }, [username])
 
+  useEffect(() => {
+    if (!username) return
+    let active = true
+
+    setHasFetchedDecks(false)
+    clearDecks()
+    fetchDecks(username)
+      .catch((err) => {
+        console.error('[PlayerProfile] Failed to load decks:', err)
+      })
+      .finally(() => {
+        if (active) {
+          setHasFetchedDecks(true)
+        }
+      })
+
+    return () => {
+      active = false
+      clearDecks()
+    }
+  }, [username, fetchDecks, clearDecks])
+
   const factionStats = useMemo(() => (profile ? getFactionAmounts(profile) : []), [profile])
   const rarityStats = useMemo(() => (profile ? getRarityBands(profile) : []), [profile])
   const totalPoints = useMemo(() => (profile ? getTotalPoints(profile) : 0), [profile])
   const achievementEntries = useMemo(() => (profile ? flattenAchievements(profile) : []), [profile])
+  const hasDeckResults = useMemo(
+    () => (decks?.length ?? 0) > 0 || (fusedDecks?.length ?? 0) > 0,
+    [decks, fusedDecks]
+  )
 
   const keyValueBadges = (obj?: Record<string, number | string | null | undefined>) => {
     if (!obj || Object.keys(obj).length === 0) {
@@ -252,112 +285,164 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
       <BackgroundElements />
       <Header />
       <Container size="xl" className="relative z-10 py-12">
-        <Stack gap="xl">
-          <Group justify="space-between">
-            <div>
-              <Title order={2} className="text-white">
-                Player Profile
-              </Title>
-              <Text className="text-gray-400">
-                Live snapshot pulled from SolForge Fusion API for <strong>{displayName}</strong>
-              </Text>
-            </div>
-            <Group gap="sm">
-              <Button
-                variant="light"
-                leftSection={<IconArrowLeft size={16} />}
-                component="a"
-                href="/"
-              >
-                Back to search
-              </Button>
-              <Button
-                variant="subtle"
-                leftSection={<IconWorld size={16} />}
-                component="a"
-                href={`https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/user/${encodeURIComponent(username)}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open API
-              </Button>
+        <div className="w-full max-w-6xl mx-auto">
+          <Stack gap="xl">
+            <Group justify="space-between">
+              <div>
+                <Title order={2} className="text-white">
+                  Player Profile
+                </Title>
+                <Text className="text-gray-400">
+                  Live snapshot pulled from SolForge Fusion API for <strong>{displayName}</strong>
+                </Text>
+              </div>
+              <Group gap="sm">
+                <Button
+                  variant="light"
+                  leftSection={<IconArrowLeft size={16} />}
+                  component="a"
+                  href="/"
+                >
+                  Back to search
+                </Button>
+                <Button
+                  variant="subtle"
+                  leftSection={<IconWorld size={16} />}
+                  component="a"
+                  href={`https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/user/${encodeURIComponent(username)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open API
+                </Button>
+              </Group>
             </Group>
-          </Group>
 
-          {loading && (
-            <Group justify="center" py="xl">
-              <Loader size="lg" />
-            </Group>
-          )}
+            {loading && (
+              <Group justify="center" py="xl">
+                <Loader size="lg" />
+              </Group>
+            )}
 
-          {error && !loading && (
-            <Paper p="md" className="bg-slate-800/70 border border-red-500/40 rounded-lg">
-              <Text className="text-red-300">Failed to load profile: {error}</Text>
-            </Paper>
-          )}
+            {error && !loading && (
+              <Paper p="md" className="bg-slate-800/70 border border-red-500/40 rounded-lg">
+                <Text className="text-red-300">Failed to load profile: {error}</Text>
+              </Paper>
+            )}
 
-          {profile && !loading && (
-            <Stack gap="lg">
+            {profile && !loading && (
+              <Stack gap="lg">
+                <Paper
+                  p="lg"
+                  className="bg-gradient-to-r from-sf-primary/80 to-sf-secondary/60 border border-sf-primary/40 rounded-xl shadow-xl"
+                >
+                  <Group justify="space-between" align="flex-start">
+                    <Stack gap={6}>
+                      <Group gap="sm" wrap="wrap">
+                        <Title order={2} className="text-white" style={{ marginBottom: 0 }}>
+                          {displayName} ({usernameLabel})
+                        </Title>
+                        {discordLabel && (
+                          <Badge
+                            color="violet"
+                            variant="filled"
+                            leftSection={<IconBrandDiscord size={14} />}
+                            styles={{ root: { backgroundColor: '#6b5bff' } }}
+                          >
+                            {discordLabel}
+                          </Badge>
+                        )}
+                        {profile.isActive ? (
+                          <Badge color="green" leftSection={<IconCheck size={14} />}>
+                            Active
+                          </Badge>
+                        ) : (
+                          <Badge color="gray" leftSection={<IconCircleDashed size={14} />}>
+                            Inactive
+                          </Badge>
+                        )}
+                      </Group>
+                      <Text className="text-gray-200" size="sm">
+                        Elo and progression overview for this player.
+                      </Text>
+                      <Group gap="sm">
+                        <Badge color="violet" variant="filled">
+                          ELO: {formatNumber(profile.elo)}
+                        </Badge>
+                        <Badge color="blue" variant="filled">
+                          XP: {formatNumber(profile.xp)}
+                        </Badge>
+                        <Badge color="yellow" variant="light">
+                          Gold: {formatNumber(profile.gold)}
+                        </Badge>
+                        <Badge color="orange" variant="light">
+                          Embers: {formatNumber(profile.embers)}
+                        </Badge>
+                        <Badge color="grape" leftSection={<IconTrophy size={14} />}>
+                          Points: {formatNumber(totalPoints)}
+                        </Badge>
+                      </Group>
+                    </Stack>
+                    <Stack gap={6} align="flex-end">
+                      <Text className="text-white" fw={700}>
+                        Earned rewards
+                      </Text>
+                      <Text className="text-gray-200" size="sm">
+                        {profile.earnedRewards?.length ?? 0} unlocked
+                      </Text>
+                    </Stack>
+                  </Group>
+                </Paper>
+
               <Paper
                 p="lg"
-                className="bg-gradient-to-r from-sf-primary/80 to-sf-secondary/60 border border-sf-primary/40 rounded-xl shadow-xl"
+                className="bg-slate-800/70 border border-sf-primary/30 rounded-lg"
               >
-                <Group justify="space-between" align="flex-start">
-                  <Stack gap={6}>
-                    <Group gap="sm" wrap="wrap">
-                      <Title order={2} className="text-white" style={{ marginBottom: 0 }}>
-                        {displayName} ({usernameLabel})
+                <Stack gap="md">
+                  <Group justify="space-between" align="center">
+                    <div>
+                      <Title order={4} className="text-white" style={{ marginBottom: 0 }}>
+                        Decks (auto-loaded)
                       </Title>
-                      {discordLabel && (
-                        <Badge
-                          color="violet"
-                          variant="filled"
-                          leftSection={<IconBrandDiscord size={14} />}
-                          styles={{ root: { backgroundColor: '#6b5bff' } }}
-                        >
-                          {discordLabel}
-                        </Badge>
+                    </div>
+                    <ActionIcon
+                      variant="light"
+                      color="gray"
+                      size="lg"
+                      onClick={() => setDeckSectionCollapsed((prev) => !prev)}
+                      aria-label={deckSectionCollapsed ? 'Expand decks section' : 'Collapse decks section'}
+                    >
+                      {deckSectionCollapsed ? <IconChevronDown size={16} /> : <IconChevronUp size={16} />}
+                    </ActionIcon>
+                  </Group>
+
+                  {!deckSectionCollapsed && (
+                    <>
+                      {decksError && (
+                        <Paper p="md" className="bg-slate-800/70 border border-red-500/40 rounded-lg">
+                          <Text className="text-red-300">
+                            Failed to load decks: {decksError}
+                          </Text>
+                        </Paper>
                       )}
-                      {profile.isActive ? (
-                        <Badge color="green" leftSection={<IconCheck size={14} />}>
-                          Active
-                        </Badge>
-                      ) : (
-                        <Badge color="gray" leftSection={<IconCircleDashed size={14} />}>
-                          Inactive
-                        </Badge>
+                      {decksLoading && (
+                        <Group justify="center" py="md">
+                          <Loader />
+                        </Group>
                       )}
-                    </Group>
-                    <Text className="text-gray-200" size="sm">
-                      Elo and progression overview for this player.
-                    </Text>
-                    <Group gap="sm">
-                      <Badge color="violet" variant="filled">
-                        ELO: {formatNumber(profile.elo)}
-                      </Badge>
-                      <Badge color="blue" variant="filled">
-                        XP: {formatNumber(profile.xp)}
-                      </Badge>
-                      <Badge color="yellow" variant="light">
-                        Gold: {formatNumber(profile.gold)}
-                      </Badge>
-                      <Badge color="orange" variant="light">
-                        Embers: {formatNumber(profile.embers)}
-                      </Badge>
-                      <Badge color="grape" leftSection={<IconTrophy size={14} />}>
-                        Points: {formatNumber(totalPoints)}
-                      </Badge>
-                    </Group>
-                  </Stack>
-                  <Stack gap={6} align="flex-end">
-                    <Text className="text-white" fw={700}>
-                      Earned rewards
-                    </Text>
-                    <Text className="text-gray-200" size="sm">
-                      {profile.earnedRewards?.length ?? 0} unlocked
-                    </Text>
-                  </Stack>
-                </Group>
+                      {!decksLoading && hasDeckResults && (
+                        <div className="flex justify-center">
+                          <DeckList decks={decks} fusedDecks={fusedDecks} />
+                        </div>
+                      )}
+                      {!decksLoading && !hasDeckResults && hasFetchedDecks && !decksError && (
+                        <Paper p="md" className="bg-slate-800/70 border border-sf-primary/30 rounded-lg">
+                          <Text className="text-gray-300">No decks found for this player yet.</Text>
+                        </Paper>
+                      )}
+                    </>
+                  )}
+                </Stack>
               </Paper>
 
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
@@ -738,6 +823,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
             </Stack>
           )}
         </Stack>
+        </div>
       </Container>
     </main>
   )

@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 import { z } from 'zod'
 
+const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour client-side cache
+
+type DeckCacheEntry = {
+  decks: Deck[]
+  fusedDecks: Deck[]
+  expiresAt: number
+}
+
 // Function to convert digital to number | boolean
 const preprocessDigital = (val: unknown): number | boolean | undefined => {
   if (val === undefined || val === null) return undefined
@@ -66,20 +74,43 @@ interface DeckStore {
   fusedDecks: Deck[]
   loading: boolean
   error: string | null
+  playerCache: Record<string, DeckCacheEntry>
   fetchDecks: (playerName: string) => Promise<void>
   clearDecks: () => void
 }
 
-export const useDeckStore = create<DeckStore>((set) => ({
+export const useDeckStore = create<DeckStore>((set, get) => ({
   decks: [],
   fusedDecks: [],
   loading: false,
   error: null,
+  playerCache: {},
   fetchDecks: async (playerName: string) => {
+    const normalizedName = playerName.trim()
+    if (!normalizedName) {
+      set({ loading: false, error: 'Player nickname is required', decks: [], fusedDecks: [] })
+      return
+    }
+
     set({ loading: true, error: null })
+    const normalizedPlayer = playerName.trim().toLowerCase()
+    const now = Date.now()
+
+    // Serve from client-side cache if valid
+    const cached = get().playerCache[normalizedPlayer]
+    if (cached && cached.expiresAt > now) {
+      set({
+        decks: cached.decks,
+        fusedDecks: cached.fusedDecks,
+        loading: false,
+        error: null,
+      })
+      return
+    }
+
     try {
       // Fetch both regular and fused decks
-      const response = await fetch(`/api/decks?player=${encodeURIComponent(playerName)}`)
+      const response = await fetch(`/api/decks?player=${encodeURIComponent(normalizedName)}`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -114,22 +145,40 @@ export const useDeckStore = create<DeckStore>((set) => ({
       try {
         const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
         const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
-        set({ 
-          decks: validatedRegularDecks, 
+        set((state) => ({
+          decks: validatedRegularDecks,
           fusedDecks: validatedFusedDecks,
-          loading: false 
-        })
+          loading: false,
+          playerCache: {
+            ...state.playerCache,
+            [normalizedPlayer]: {
+              decks: validatedRegularDecks,
+              fusedDecks: validatedFusedDecks,
+              expiresAt: now + CACHE_TTL_MS,
+            },
+          },
+        }))
       } catch (validationError) {
         console.error('[Store] Data validation error:', validationError)
         // If validation fails but data exists, still use it
         if ((Array.isArray(regularDecks) && regularDecks.length > 0) || 
             (Array.isArray(fusedDecks) && fusedDecks.length > 0)) {
           console.warn('[Store] Using unvalidated data')
-          set({ 
-            decks: Array.isArray(regularDecks) ? regularDecks : [], 
-            fusedDecks: Array.isArray(fusedDecks) ? fusedDecks : [],
-            loading: false 
-          })
+          const fallbackRegular = Array.isArray(regularDecks) ? regularDecks : []
+          const fallbackFused = Array.isArray(fusedDecks) ? fusedDecks : []
+          set((state) => ({
+            decks: fallbackRegular,
+            fusedDecks: fallbackFused,
+            loading: false,
+            playerCache: {
+              ...state.playerCache,
+              [normalizedPlayer]: {
+                decks: fallbackRegular,
+                fusedDecks: fallbackFused,
+                expiresAt: now + CACHE_TTL_MS,
+              },
+            },
+          }))
         } else {
           throw new Error('Invalid data format from server')
         }

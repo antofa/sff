@@ -7,6 +7,25 @@
 
 // Base URL for SolForge Fusion API (from Apps Script)
 const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
+const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
+
+type CacheEntry<T> = { expiresAt: number; data: T }
+const regularDeckCache = new Map<string, CacheEntry<ApiDeck[]>>()
+const fusedDeckCache = new Map<string, CacheEntry<ApiDeck[]>>()
+
+const getCached = (cache: Map<string, CacheEntry<ApiDeck[]>>, key: string) => {
+  const entry = cache.get(key)
+  if (!entry) return null
+  if (entry.expiresAt < Date.now()) {
+    cache.delete(key)
+    return null
+  }
+  return entry.data
+}
+
+const setCached = (cache: Map<string, CacheEntry<ApiDeck[]>>, key: string, data: ApiDeck[]) => {
+  cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, data })
+}
 
 export interface ApiDeck {
   id: string
@@ -331,7 +350,8 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
     console.log(`[API] Successfully normalized ${validDecks.length} out of ${allDecks.length} decks`)
     console.log(`[API] Decks with tags: ${decksWithTags.length}`)
     console.log(`[API] Decks with full card data (cardList): ${decksWithCardList.length}`)
-    
+
+    // Caching for regular decks happens in getPlayerDecks; keep this function pure
     return validDecks
   } catch (error) {
     console.error(`[API] Error fetching decks:`, error)
@@ -557,6 +577,13 @@ export function getCardInfo(cardId: string, cardData?: any): CardInfo {
  * @returns array of fused deck data
  */
 export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
+  const cacheKey = playerName.trim().toLowerCase()
+  const cached = getCached(fusedDeckCache, cacheKey)
+  if (cached) {
+    console.log(`[API] Returning fused decks from cache for ${playerName} (${cached.length})`)
+    return cached
+  }
+
   const encodedName = encodeURIComponent(playerName.toLowerCase())
   const pageSize = 200
   const url = `${API_BASE_URL}/fuseddeck/app?pageSize=${pageSize}&username=${encodedName}`
@@ -728,6 +755,12 @@ export async function getPlayerDecks(playerName: string): Promise<ApiDeck[]> {
   }
 
   const trimmedName = playerName.trim()
+  const cacheKey = trimmedName.toLowerCase()
+  const cached = getCached(regularDeckCache, cacheKey)
+  if (cached) {
+    console.log(`[API] Returning regular decks from cache for ${trimmedName} (${cached.length})`)
+    return cached
+  }
 
   console.log(`[API] ===== Starting deck search for player: ${trimmedName} =====`)
 
@@ -737,9 +770,11 @@ export async function getPlayerDecks(playerName: string): Promise<ApiDeck[]> {
     
     if (decks.length > 0) {
       console.log(`[API] ===== SUCCESS: Found ${decks.length} decks =====`)
+      setCached(regularDeckCache, cacheKey, decks)
       return decks
     } else {
       console.log(`[API] ===== No decks found for player: ${trimmedName} =====`)
+      setCached(regularDeckCache, cacheKey, [])
       return []
     }
   } catch (error) {
