@@ -179,6 +179,7 @@ export async function POST(request: NextRequest) {
         const { data: inserted, error: insertError } = await supabaseServer
           .from('player_profiles')
           .insert({
+            discord_id: '',
             player_name: normalizedPlayer,
             display_name: normalizedPlayer,
             discord_name: normalizedDiscord ?? null,

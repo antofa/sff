@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   const gameNick = typeof body.gameNick === 'string' ? body.gameNick.trim() : ''
   const friendCode = typeof body.friendCode === 'string' ? body.friendCode.trim() : ''
-  const discordNick = session.user.username || session.user.name || null
+  const discordNick = session?.user?.username || session?.user?.name || null
 
   const { data, error } = await supabase
     .from('player_profiles')

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, ScrollArea, Divider, Image, Loader } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconCalendar, IconCopy, IconExternalLink, IconWorld } from '@tabler/icons-react'
@@ -307,7 +307,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     const elo = (sourceDeck as any).elo
     const expireDateLabel = formatSourceDeckExpireDate(sourceDeck)
 
-    const badges: JSX.Element[] = []
+    const badges: React.ReactElement[] = []
 
     if (deckScore !== undefined && deckScore !== null) {
       badges.push(
@@ -2547,7 +2547,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                 {deck.deckRank}
               </Badge>
             )}
-            {deck.playerName && (
+            {(deck as any).playerName && (
               <Badge
                 component="a"
                 href={`/player/${encodeURIComponent((deck as any).playerName || '')}`}
@@ -2556,7 +2556,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                 size="sm"
                 style={{ textDecoration: 'none' }}
               >
-                Owner: {deck.playerName}
+                Owner: {(deck as any).playerName as string}
               </Badge>
             )}
             {deck.format && (

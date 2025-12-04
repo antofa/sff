@@ -95,36 +95,36 @@ export type Database = {
         }
         Relationships: []
       }
-    }
-    player_profiles: {
-      Row: {
-        user_id: number
-        discord_id: number
-        player_name: string | null
-        discord_name: string | null
-        display_name: string | null
-        friend_code: string | null
-        updated_at: string | null
+      player_profiles: {
+        Row: {
+          user_id: number
+          discord_id: string
+          player_name: string | null
+          discord_name: string | null
+          display_name: string | null
+          friend_code: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          user_id?: number
+          discord_id: string
+          player_name?: string | null
+          discord_name?: string | null
+          display_name?: string | null
+          friend_code?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          user_id?: number
+          discord_id?: string
+          player_name?: string | null
+          discord_name?: string | null
+          display_name?: string | null
+          friend_code?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
-      Insert: {
-        user_id?: number
-        discord_id: number
-        player_name?: string | null
-        discord_name?: string | null
-        display_name?: string | null
-        friend_code?: string | null
-        updated_at?: string | null
-      }
-      Update: {
-        user_id?: number
-        discord_id?: number
-        player_name?: string | null
-        discord_name?: string | null
-        display_name?: string | null
-        friend_code?: string | null
-        updated_at?: string | null
-      }
-      Relationships: []
     }
     Views: {
       [_ in never]: never

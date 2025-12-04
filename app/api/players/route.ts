@@ -27,7 +27,7 @@ type PlayerSummary = {
   latest_fused_ts?: number
 }
 
-const normalizeTimestamp = (row: PlayerRow): string | null => {
+const normalizeTimestamp = (row: Partial<PlayerRow>): string | null => {
   return row.deck_created_at || row.created_at || row.updated_at || null
 }
 
@@ -314,9 +314,9 @@ export async function GET(request: NextRequest) {
             const entry = playersMap.get(player.player_name.toLowerCase())
             if (entry && latest?.id) {
               entry.latest_fused_id = latest.id
-              entry.latest_fused_name = latest.name || latest.deck_name || 'Fused deck'
+              entry.latest_fused_name = latest.name || (latest as any).deck_name || 'Fused deck'
               entry.latest_deck_id = entry.latest_fused_id
-              entry.latest_deck_name = entry.latest_fused_name
+              entry.latest_deck_name = entry.latest_fused_name ?? null
               entry.last_seen = entry.last_seen || (latest._ts !== -Infinity ? new Date(latest._ts).toISOString() : null)
             }
           }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Button,
   Container,
@@ -20,6 +20,8 @@ import { BackgroundElements } from '@/components/BackgroundElements'
 import { Header } from '@/components/Header'
 import { DeckList } from '@/components/DeckList'
 import type { Deck } from '@/store/deckStore'
+
+export const dynamic = 'force-dynamic'
 
 type SavedDeck = {
   id?: string
@@ -47,7 +49,7 @@ type SavedDeck = {
 const factions = ['Alloyin', 'Uterra', 'Tempys', 'Nekrium']
 const formats = ['Fused', 'Sole', 'Reconstructed', 'Standard'] // formats are free text, keep a small helper list
 
-export default function AllDecksPage() {
+function AllDecksContent() {
   const searchParams = useSearchParams()
   const initialPlayer = searchParams.get('player') ?? ''
   const [decks, setDecks] = useState<SavedDeck[]>([])
@@ -230,5 +232,25 @@ export default function AllDecksPage() {
         </Stack>
       </Container>
     </main>
+  )
+}
+
+export default function AllDecksPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen relative overflow-hidden">
+          <BackgroundElements />
+          <Header />
+          <Container size="xl" className="relative z-10 py-12">
+            <Group justify="center">
+              <Loader />
+            </Group>
+          </Container>
+        </main>
+      }
+    >
+      <AllDecksContent />
+    </Suspense>
   )
 }
