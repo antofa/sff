@@ -30,6 +30,7 @@ type SavedDeck = {
   format?: string | null
   deck_rank?: string | null
   card_set_no?: string | null
+  card_set_id?: string | null
   deck_score?: number | null
   elo?: number | null
   is_fused?: boolean | null
