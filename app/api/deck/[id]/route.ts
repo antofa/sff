@@ -102,15 +102,18 @@ export async function GET(
                 raw.username ||
                 raw.userName ||
                 raw.owner ||
+                raw?.myUser?.username ||
                 raw?.users?.[0]?.username ||
                 raw?.users?.[0]?.user?.username ||
                 raw?.Users?.[0]?.UserName ||
                 undefined
+              const username = raw?.myUser?.username || raw?.username || raw?.userName || owner
 
               const hydratedDeck = {
                 ...supabaseDeck,
                 ...normalized,
                 playerName: owner || supabaseDeck.playerName,
+                username: username || supabaseDeck.playerName,
                 is_for_sale: supabaseDeck.is_for_sale,
                 is_nft: supabaseDeck.is_nft,
                 price: supabaseDeck.price,
@@ -139,12 +142,17 @@ export async function GET(
             raw.username ||
             raw.userName ||
             raw.owner ||
+            raw?.myUser?.username ||
             raw?.users?.[0]?.username ||
             raw?.users?.[0]?.user?.username ||
             raw?.Users?.[0]?.UserName ||
             undefined
+          const username = raw?.myUser?.username || raw?.username || raw?.userName || owner
           if (owner && !(deck as any).playerName) {
             ;(deck as any).playerName = owner
+          }
+          if (username && !(deck as any).username) {
+            ;(deck as any).username = username
           }
           return NextResponse.json({ deck })
         } catch (e) {
@@ -173,10 +181,12 @@ export async function GET(
         fusedRaw.username ||
         fusedRaw.userName ||
         fusedRaw.owner ||
+        fusedRaw?.myUser?.username ||
         fusedRaw?.users?.[0]?.username ||
         fusedRaw?.users?.[0]?.user?.username ||
         fusedRaw?.Users?.[0]?.UserName ||
         undefined
+      const username = fusedRaw?.myUser?.username || fusedRaw?.username || fusedRaw?.userName || owner
 
       // Try to build full cards list from source decks if fused cards are empty
       const sourceDecks: any[] =
@@ -227,6 +237,7 @@ export async function GET(
         elo: fusedRaw.elo || null,
         digital: fusedRaw.digital ?? null,
         playerName: owner,
+        username: username,
       }
 
       return NextResponse.json({ deck: fusedDeck })

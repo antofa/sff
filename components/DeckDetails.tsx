@@ -2693,18 +2693,23 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                 {deck.deckRank}
               </Badge>
             )}
-            {(deck as any).playerName && (
-              <Badge
-                component="a"
-                href={`/player/${encodeURIComponent((deck as any).playerName || '')}`}
-                color="violet"
-                variant="light"
-                size="sm"
-                style={{ textDecoration: 'none' }}
-              >
-                Owner: {(deck as any).playerName as string}
-              </Badge>
-            )}
+            {(() => {
+              const d = deck as any
+              const ownerName = d.username || null
+              if (!ownerName) return null
+              return (
+                <Badge
+                  component="a"
+                  href={`/player/${encodeURIComponent(ownerName || '')}`}
+                  color="violet"
+                  variant="light"
+                  size="sm"
+                  style={{ textDecoration: 'none' }}
+                >
+                  Owner: {ownerName as string}
+                </Badge>
+              )
+            })()}
             {deck.format && (
                 <Badge
                   color="gray"
