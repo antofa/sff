@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPlayerDecks, fetchFusedDecksFromAPI } from '@/lib/api'
+import { logWithTimestamp } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,17 +15,17 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    console.log(`[API Route] Requesting decks for player: ${playerName}, type: ${type || 'all'}`)
+    logWithTimestamp(`[API Route] Requesting decks for player: ${playerName}, type: ${type || 'all'}`)
 
     if (type === 'fused') {
       // Fetch only fused decks
       const fusedDecks = await fetchFusedDecksFromAPI(playerName)
-      console.log(`[API Route] Received ${fusedDecks.length} fused decks for player: ${playerName}`)
+      logWithTimestamp(`[API Route] Received ${fusedDecks.length} fused decks for player: ${playerName}`)
       return NextResponse.json(fusedDecks)
     } else if (type === 'regular') {
       // Fetch only regular decks
       const decks = await getPlayerDecks(playerName)
-      console.log(`[API Route] Received ${decks.length} regular decks for player: ${playerName}`)
+      logWithTimestamp(`[API Route] Received ${decks.length} regular decks for player: ${playerName}`)
       return NextResponse.json(decks)
     } else {
       // Fetch both regular and fused decks
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
         fetchFusedDecksFromAPI(playerName)
       ])
       
-      console.log(`[API Route] Received ${regularDecks.length} regular and ${fusedDecks.length} fused decks for player: ${playerName}`)
+      logWithTimestamp(`[API Route] Received ${regularDecks.length} regular and ${fusedDecks.length} fused decks for player: ${playerName}`)
       
       return NextResponse.json({
         regular: regularDecks,
@@ -65,4 +66,3 @@ export async function GET(request: NextRequest) {
     )
   }
 }
-

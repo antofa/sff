@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { logWithTimestamp } from './logger'
 
 const ERROR_LOG_DIR = path.join(process.cwd(), 'logs')
 const ERROR_LOG_FILE = path.join(ERROR_LOG_DIR, 'nextjs-errors.log')
@@ -27,13 +28,13 @@ export function logErrorToFileServer(error: Error | string, context?: Record<str
     
     const logLine = JSON.stringify(logEntry, null, 2) + '\n' + '---\n'
     
-    console.log('[Error Logger Server] Writing error to file:', ERROR_LOG_FILE)
-    console.log('[Error Logger Server] Error message:', errorMessage)
+    logWithTimestamp('[Error Logger Server] Writing error to file:', ERROR_LOG_FILE)
+    logWithTimestamp('[Error Logger Server] Error message:', errorMessage)
     
     // Append to log file
     fs.appendFileSync(ERROR_LOG_FILE, logLine, 'utf-8')
     
-    console.log('[Error Logger Server] Error written to file successfully')
+    logWithTimestamp('[Error Logger Server] Error written to file successfully')
     
     // Also log to console in development
     if (process.env.NODE_ENV === 'development') {
@@ -48,4 +49,3 @@ export function logErrorToFileServer(error: Error | string, context?: Record<str
     console.error('[Error Logger] Original error:', error)
   }
 }
-

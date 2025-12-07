@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef, useLayoutEffect, useTransition } from 'react'
+import { useState, useMemo, useEffect, useRef, useLayoutEffect, useTransition, useCallback } from 'react'
 import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
 import { useDebouncedValue } from '@mantine/hooks'
@@ -836,7 +836,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
   }, [debouncedFilters])
   
   // Helper function to get two source decks from fused deck
-  const getFusedDeckSourceDecks = (fusedDeck: Deck, allDecks: Deck[]): [Deck | null, Deck | null] => {
+  const getFusedDeckSourceDecks = useCallback((fusedDeck: Deck, allDecks: Deck[]): [Deck | null, Deck | null] => {
     const fusedDeckAny = fusedDeck as any
     
     let deck1: Deck | null = null
@@ -873,11 +873,11 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     }
     
     return [deck1, deck2]
-  }
+  }, [])
   
   // Helper function to get expiry status for fused deck
   // Fused deck is expired if at least one of the two decks is expired
-  const getFusedDeckExpiryStatus = (fusedDeck: Deck, allDecks: Deck[]): {
+  const getFusedDeckExpiryStatus = useCallback((fusedDeck: Deck, allDecks: Deck[]): {
     isExpired: boolean
     isExpiring: boolean
     expireDate: string | null
@@ -935,7 +935,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
       minExpiredDate,
       minExpiringDate,
     }
-  }
+  }, [getFusedDeckSourceDecks])
   
   // Regular decks are "half decks" (Decks), and we have separate fusedDecks from API
   // No need to split by card count - use the decks as-is for "Decks" section
@@ -945,8 +945,8 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
   // - 'active': show decks without dates + expiring decks (default)
   // - 'expiring': show only expiring decks (with future expiry date)
   // - 'expired': show only expired decks
-  const currentTimeUTC = new Date().getTime()
   const halfDecks = useMemo(() => {
+    const now = Date.now()
     return decks.filter(deck => {
       const expiry = getExpiryTimestamp(deck)
       if (expiry === null) {
@@ -955,8 +955,8 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
         if (debouncedFilters.expiryFilter === 'expiring') return false
         return true
       }
-      const isExpired = expiry < currentTimeUTC
-      const isExpiring = expiry >= currentTimeUTC
+      const isExpired = expiry < now
+      const isExpiring = expiry >= now
       switch (debouncedFilters.expiryFilter) {
         case 'all':
           return true
@@ -974,8 +974,6 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
   
   // Filter fused decks based on expiry status
   const filteredFusedDecksByExpiry = useMemo(() => {
-    const currentTimeUTC = new Date().getTime()
-    
     return fusedDecks.filter(fusedDeck => {
       const expiryStatus = getFusedDeckExpiryStatus(fusedDeck, decks)
       
@@ -995,7 +993,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
           return true
       }
     })
-  }, [fusedDecks, decks, debouncedFilters.expiryFilter])
+  }, [fusedDecks, decks, debouncedFilters.expiryFilter, getFusedDeckExpiryStatus])
   
   // Calculate total decks count for display (respecting expiryFilter and viewMode)
   const totalDecksCount = useMemo(() => {
@@ -1051,14 +1049,14 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     }
     
     return regularDecksCount + fusedDecksCount
-  }, [decks, fusedDecks, viewMode, debouncedFilters.expiryFilter])
+  }, [decks, fusedDecks, viewMode, debouncedFilters.expiryFilter, getFusedDeckExpiryStatus])
   
   // Determine which decks to show based on view mode
   const showHalfDecks = viewMode === 'decks' || viewMode === 'both'
   const showFusedDecks = viewMode === 'fused' || viewMode === 'both'
   
   // Helper function to filter a deck array based on filter criteria
-  const filterDeckArray = (deckArray: Deck[]) => {
+  const filterDeckArray = useCallback((deckArray: Deck[]) => {
     if (!hasActiveFilters) return deckArray
     
     return deckArray.filter(deck => {
@@ -2039,10 +2037,10 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
       
       return true
     })
-  }
+  }, [debouncedFilters, hasActiveFilters])
   
   // Helper function to sort decks
-  const sortDecks = (deckArray: Deck[]): Deck[] => {
+  const sortDecks = useCallback((deckArray: Deck[]): Deck[] => {
     const sorted = [...deckArray]
     
     switch (debouncedFilters.sortBy) {
@@ -2099,19 +2097,19 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
       default:
         return sorted
     }
-  }
+  }, [debouncedFilters.sortBy])
   
   // Filter half decks based on filter criteria
   const filteredHalfDecks = useMemo(() => {
     const filtered = filterDeckArray(halfDecks)
     return sortDecks(filtered)
-  }, [halfDecks, debouncedFilters, hasActiveFilters, debouncedFilters.sortBy])
+  }, [halfDecks, filterDeckArray, sortDecks])
   
   // Filter fused decks based on filter criteria
   const filteredFusedDecks = useMemo(() => {
     const filtered = filterDeckArray(filteredFusedDecksByExpiry)
     return sortDecks(filtered)
-  }, [filteredFusedDecksByExpiry, debouncedFilters, hasActiveFilters, debouncedFilters.sortBy])
+  }, [filteredFusedDecksByExpiry, filterDeckArray, sortDecks])
   
   // Update content height and restore scroll position after filteredDecks changes
   useEffect(() => {

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logErrorToFileServer } from '@/lib/errorLogger.server'
+import { logWithTimestamp } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('[API Route] Received error log request')
+    logWithTimestamp('[API Route] Received error log request')
     const body = await request.json()
     const { error, context } = body
 
-    console.log('[API Route] Error data:', { 
+    logWithTimestamp('[API Route] Error data:', { 
       hasError: !!error, 
       errorMessage: error?.message,
       contextType: context?.type 
@@ -31,9 +32,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Log to file
-    console.log('[API Route] Logging error to file:', errorObj.message)
+    logWithTimestamp('[API Route] Logging error to file:', errorObj.message)
     logErrorToFileServer(errorObj, context)
-    console.log('[API Route] Error logged successfully')
+    logWithTimestamp('[API Route] Error logged successfully')
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -44,4 +45,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-

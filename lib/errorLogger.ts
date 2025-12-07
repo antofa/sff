@@ -1,3 +1,5 @@
+import { logWithTimestamp } from './logger'
+
 /**
  * Log error to file (server-side) or send to API (client-side)
  * This function works on both client and server
@@ -16,7 +18,7 @@ export function logErrorToFile(error: Error | string, context?: Record<string, a
 
   // Client-side: send to API route
   if (typeof window !== 'undefined') {
-    console.log('[Error Logger] Attempting to log error to API:', errorMessage)
+    logWithTimestamp('[Error Logger] Attempting to log error to API:', errorMessage)
     fetch('/api/log-error', {
       method: 'POST',
       headers: {
@@ -37,7 +39,7 @@ export function logErrorToFile(error: Error | string, context?: Record<string, a
         console.error('[Error Logger] API error response:', text)
         return
       }
-      console.log('[Error Logger] Error successfully logged to API')
+      logWithTimestamp('[Error Logger] Error successfully logged to API')
       return response.json()
     })
     .catch((fetchError) => {
@@ -72,4 +74,3 @@ export function logNextJsError(error: Error, context?: Record<string, any>) {
     ...context,
   })
 }
-

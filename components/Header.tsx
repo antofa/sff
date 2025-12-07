@@ -1,7 +1,7 @@
 'use client'
 
-import { Container, Group, Button, Text, Avatar, Menu, Loader } from '@mantine/core'
-import { IconSettings, IconBrandDiscord, IconLogout, IconUser } from '@tabler/icons-react'
+import { Container, Group, Button, Text, Avatar, Menu, Loader, Tooltip } from '@mantine/core'
+import { IconMail, IconBrandDiscord, IconLogout, IconUser } from '@tabler/icons-react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import Image from 'next/image'
 import { useState } from 'react'
@@ -111,14 +111,21 @@ export function Header() {
           </Group>
 
           <Group gap="xs" wrap="nowrap">
-            <Button
-              variant="subtle"
-              color="gray"
-              size="sm"
-              className="text-white hover:bg-sf-primary/20 transition-colors"
-            >
-              <IconSettings size={18} />
-            </Button>
+            <Tooltip label="Leave Feedback" position="bottom" withArrow>
+              <Button
+                component="a"
+                href="https://j5e8zoao.forms.app/sffd-feedback"
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="subtle"
+                color="gray"
+                size="sm"
+                className="text-white hover:bg-sf-primary/20 transition-colors"
+                aria-label="Leave Feedback form"
+              >
+                <IconMail size={18} />
+              </Button>
+            </Tooltip>
 
             {status === 'loading' ? (
               <Loader size="sm" color="blue" />

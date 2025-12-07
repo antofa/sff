@@ -3,10 +3,11 @@
 import { useEffect } from 'react'
 import { setupErrorHandling } from '@/lib/errorHandler'
 import { logErrorToFile } from '@/lib/errorLogger'
+import { logWithTimestamp } from '@/lib/logger'
 
 export function ErrorHandler() {
   useEffect(() => {
-    console.log('[ErrorHandler] Component mounted, setting up error handling')
+    logWithTimestamp('[ErrorHandler] Component mounted, setting up error handling')
     setupErrorHandling()
     
     // Also intercept Next.js dev overlay errors
@@ -45,7 +46,7 @@ export function ErrorHandler() {
           const errorMatch = errorString.match(/Error:\s*(.+?)(?:\n|$)/)
           if (errorMatch) {
             const errorMessage = errorMatch[1]
-            console.log('[ErrorHandler] Intercepted console error:', errorMessage)
+            logWithTimestamp('[ErrorHandler] Intercepted console error:', errorMessage)
             logErrorToFile(new Error(errorMessage), {
               type: 'console-error',
               originalArgs: args.map(arg => String(arg)),
@@ -56,7 +57,7 @@ export function ErrorHandler() {
       
       // Also listen for Next.js runtime errors
       if ((window as any).__NEXT_DATA__) {
-        console.log('[ErrorHandler] Next.js data available')
+        logWithTimestamp('[ErrorHandler] Next.js data available')
       }
       
       // Listen for React errors that might not be caught by ErrorBoundary
@@ -92,4 +93,3 @@ export function ErrorHandler() {
 
   return null
 }
-

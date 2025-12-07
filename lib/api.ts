@@ -4,6 +4,7 @@
  * Implemented based on Apps Script code from Google Sheets
  * API endpoint: https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/app
  */
+import { logWithTimestamp } from './logger'
 
 // Base URL for SolForge Fusion API (from Apps Script)
 const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
@@ -182,8 +183,8 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
   const encodedName = encodeURIComponent(playerName.toLowerCase())
   const url = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true`
   
-  console.log(`[API] Requesting decks for player: ${playerName}`)
-  console.log(`[API] URL: ${url}`)
+  logWithTimestamp(`[API] Requesting decks for player: ${playerName}`)
+  logWithTimestamp(`[API] URL: ${url}`)
 
   let allDecks: any[] = []
   let lastPK = ""
@@ -219,7 +220,7 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
 
     if (!response.ok) {
       if (response.status === 404) {
-        console.log(`[API] Player not found: ${playerName}`)
+        logWithTimestamp(`[API] Player not found: ${playerName}`)
         return []
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -228,23 +229,23 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
     let pageData: any
     try {
       const responseText = await response.text()
-      console.log(`[API] Response received, length: ${responseText.length} characters`)
+      logWithTimestamp(`[API] Response received, length: ${responseText.length} characters`)
       pageData = JSON.parse(responseText)
     } catch (parseError) {
       console.error(`[API] JSON parsing error:`, parseError)
       throw new Error('Invalid API response format')
     }
     
-    console.log(`[API] Response structure:`, Object.keys(pageData))
+    logWithTimestamp(`[API] Response structure:`, Object.keys(pageData))
     
     // Extract decks from response
     if (pageData.Items && Array.isArray(pageData.Items)) {
       allDecks = allDecks.concat(pageData.Items)
-      console.log(`[API] Page ${pageCount + 1}: received ${pageData.Items.length} decks`)
+      logWithTimestamp(`[API] Page ${pageCount + 1}: received ${pageData.Items.length} decks`)
     } else {
       console.warn(`[API] Response does not contain Items or Items is not an array`)
-      console.log(`[API] Type of Items:`, typeof pageData.Items)
-      console.log(`[API] First 500 characters of response:`, JSON.stringify(pageData).substring(0, 500))
+      logWithTimestamp(`[API] Type of Items:`, typeof pageData.Items)
+      logWithTimestamp(`[API] First 500 characters of response:`, JSON.stringify(pageData).substring(0, 500))
     }
 
     // Pagination: if LastEvaluatedKey exists, get next pages
@@ -256,7 +257,7 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
       lastPK = pageData.LastEvaluatedKey.PK
       const nextUrl = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true&exclusiveStartKeyPK=${encodeURIComponent(pageData.LastEvaluatedKey.PK)}&exclusiveStartKeySK=${encodeURIComponent(pageData.LastEvaluatedKey.SK)}`
       
-      console.log(`[API] Requesting next page: ${pageCount + 2}`)
+      logWithTimestamp(`[API] Requesting next page: ${pageCount + 2}`)
       
       try {
         response = await fetch(nextUrl, {
@@ -274,7 +275,7 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
       }
 
       if (!response.ok) {
-        console.log(`[API] Error fetching page ${pageCount + 2}: ${response.status}`)
+        logWithTimestamp(`[API] Error fetching page ${pageCount + 2}: ${response.status}`)
         break
       }
 
@@ -290,17 +291,17 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
 
       if (pageData.Items && Array.isArray(pageData.Items)) {
         allDecks = allDecks.concat(pageData.Items)
-        console.log(`[API] Page ${pageCount + 1}: received ${pageData.Items.length} decks`)
+        logWithTimestamp(`[API] Page ${pageCount + 1}: received ${pageData.Items.length} decks`)
       } else {
         console.warn(`[API] Page ${pageCount + 1}: response does not contain Items`)
         break
       }
     }
 
-    console.log(`[API] Total ${allDecks.length} decks received over ${pageCount + 1} page(s)`)
+    logWithTimestamp(`[API] Total ${allDecks.length} decks received over ${pageCount + 1} page(s)`)
     
     if (allDecks.length === 0) {
-      console.log(`[API] No decks found for player: ${playerName}`)
+      logWithTimestamp(`[API] No decks found for player: ${playerName}`)
       return []
     }
     
@@ -313,7 +314,7 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
           
           // If deck doesn't have cardList, try to fetch detailed info
           if (!deck.cardList && deck.id) {
-            console.log(`[API] Fetching detailed info for deck ${deck.id}`)
+            logWithTimestamp(`[API] Fetching detailed info for deck ${deck.id}`)
             const details = await fetchDeckDetails(deck.id)
             if (details && details.cardList) {
               deckData = { ...deck, cardList: details.cardList }
@@ -327,7 +328,7 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
               ? Object.keys(normalized.tags).length
               : 0
             if (tagCount > 0) {
-              console.log(`[API] Deck "${normalized.name}" has ${tagCount} tag(s)`)
+              logWithTimestamp(`[API] Deck "${normalized.name}" has ${tagCount} tag(s)`)
             }
           }
           return normalized
@@ -347,9 +348,9 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
       }
       return false
     })
-    console.log(`[API] Successfully normalized ${validDecks.length} out of ${allDecks.length} decks`)
-    console.log(`[API] Decks with tags: ${decksWithTags.length}`)
-    console.log(`[API] Decks with full card data (cardList): ${decksWithCardList.length}`)
+    logWithTimestamp(`[API] Successfully normalized ${validDecks.length} out of ${allDecks.length} decks`)
+    logWithTimestamp(`[API] Decks with tags: ${decksWithTags.length}`)
+    logWithTimestamp(`[API] Decks with full card data (cardList): ${decksWithCardList.length}`)
 
     // Caching for regular decks happens in getPlayerDecks; keep this function pure
     return validDecks
@@ -580,7 +581,7 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
   const cacheKey = playerName.trim().toLowerCase()
   const cached = getCached(fusedDeckCache, cacheKey)
   if (cached) {
-    console.log(`[API] Returning fused decks from cache for ${playerName} (${cached.length})`)
+    logWithTimestamp(`[API] Returning fused decks from cache for ${playerName} (${cached.length})`)
     return cached
   }
 
@@ -588,8 +589,8 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
   const pageSize = 200
   const url = `${API_BASE_URL}/fuseddeck/app?pageSize=${pageSize}&username=${encodedName}`
   
-  console.log(`[API] Requesting fused decks for player: ${playerName}`)
-  console.log(`[API] URL: ${url}`)
+  logWithTimestamp(`[API] Requesting fused decks for player: ${playerName}`)
+  logWithTimestamp(`[API] URL: ${url}`)
 
   try {
     const response = await fetch(url, {
@@ -604,20 +605,20 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
 
     if (!response.ok) {
       if (response.status === 404) {
-        console.log(`[API] Fused decks not found for player: ${playerName}`)
+        logWithTimestamp(`[API] Fused decks not found for player: ${playerName}`)
         return []
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`)
     }
 
     const responseText = await response.text()
-    console.log(`[API] Fused decks response received, length: ${responseText.length} characters`)
+    logWithTimestamp(`[API] Fused decks response received, length: ${responseText.length} characters`)
     const pageData = JSON.parse(responseText)
     
     // Extract fused decks from response
     const fusedDecks: any[] = []
     if (pageData.Items && Array.isArray(pageData.Items)) {
-      console.log(`[API] Received ${pageData.Items.length} fused decks`)
+      logWithTimestamp(`[API] Received ${pageData.Items.length} fused decks`)
       
       // Normalize each fused deck
       for (const fusedDeck of pageData.Items) {
@@ -628,7 +629,7 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
           const deck2 = fusedDeck.myDecks[1]
           
           // Log to check data structure
-          console.log(`[API] Fused deck ${fusedDeck.id || fusedDeck.name}:`, {
+          logWithTimestamp(`[API] Fused deck ${fusedDeck.id || fusedDeck.name}:`, {
             hasMyDecks: !!fusedDeck.myDecks,
             myDecksLength: fusedDeck.myDecks?.length,
             deck1Id: deck1?.id,
@@ -724,7 +725,7 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
       }
       
       // Log to verify data preservation
-      console.log(`[API] Normalized fused deck ${normalizedWithFusedData.id}:`, {
+      logWithTimestamp(`[API] Normalized fused deck ${normalizedWithFusedData.id}:`, {
         hasMyDecks: !!normalizedWithFusedData.myDecks,
         myDecksLength: Array.isArray(normalizedWithFusedData.myDecks) ? normalizedWithFusedData.myDecks.length : 0,
         hasFusedDeckIds: !!normalizedWithFusedData.fusedDeckIds,
@@ -758,22 +759,22 @@ export async function getPlayerDecks(playerName: string): Promise<ApiDeck[]> {
   const cacheKey = trimmedName.toLowerCase()
   const cached = getCached(regularDeckCache, cacheKey)
   if (cached) {
-    console.log(`[API] Returning regular decks from cache for ${trimmedName} (${cached.length})`)
+    logWithTimestamp(`[API] Returning regular decks from cache for ${trimmedName} (${cached.length})`)
     return cached
   }
 
-  console.log(`[API] ===== Starting deck search for player: ${trimmedName} =====`)
+  logWithTimestamp(`[API] ===== Starting deck search for player: ${trimmedName} =====`)
 
   try {
     // Use real API endpoint from Apps Script
     const decks = await fetchDecksFromAPI(trimmedName)
     
     if (decks.length > 0) {
-      console.log(`[API] ===== SUCCESS: Found ${decks.length} decks =====`)
+      logWithTimestamp(`[API] ===== SUCCESS: Found ${decks.length} decks =====`)
       setCached(regularDeckCache, cacheKey, decks)
       return decks
     } else {
-      console.log(`[API] ===== No decks found for player: ${trimmedName} =====`)
+      logWithTimestamp(`[API] ===== No decks found for player: ${trimmedName} =====`)
       setCached(regularDeckCache, cacheKey, [])
       return []
     }

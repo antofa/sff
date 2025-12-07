@@ -4,8 +4,10 @@ import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from '
 import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, ScrollArea, Divider, Image, Loader } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconCalendar, IconCopy, IconExternalLink, IconWorld } from '@tabler/icons-react'
+import NextImage from 'next/image'
 import type { Deck } from '@/store/deckStore'
 import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForgebornAlternativeUrl, type CardInfo } from '@/lib/api'
+import { logWithTimestamp } from '@/lib/logger'
 
 // Fetch full deck details directly from API (faster than going through API route)
 async function fetchDeckDetails(deckId: string): Promise<any> {
@@ -95,6 +97,90 @@ function getFactionBadgeColor(faction?: string): string {
     case 'Nekrium': return '#a855f7'
     default: return '#6b7280'
   }
+}
+
+// Helper function to load a single image (stable, outside component to avoid TDZ)
+async function loadSingleImage(cardId: string, level: number, isForgeborn: boolean): Promise<string | null> {
+  return new Promise((resolve) => {
+    const imageUrl = getCardImageUrl(cardId, level, isForgeborn)
+    const img = new window.Image()
+    const isSet99 = /^s99/i.test(cardId)
+    
+    const tryAlternativeUrl = (): void => {
+      if (isSet99 && !isForgeborn) {
+        const baseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
+        let cleanId = cardId.replace(/[^a-z0-9\-_]/gi, '').toLowerCase()
+        const cardLevel = Math.max(1, Math.min(3, level))
+        const alternativeUrl = `${baseUrl}/${cleanId}_${cardLevel}.jpg`
+        
+        const altImg = new window.Image()
+        const altTimeout = setTimeout(() => {
+          resolve(null)
+        }, 5000)
+        
+        altImg.onload = () => {
+          clearTimeout(altTimeout)
+          resolve(alternativeUrl)
+        }
+        altImg.onerror = () => {
+          clearTimeout(altTimeout)
+          const encodedId = encodeURIComponent(cardId)
+          const encodedUrl = `${baseUrl}/${encodedId}_${cardLevel}.jpg`
+          const encodedImg = new window.Image()
+          const encodedTimeout = setTimeout(() => {
+            resolve(null)
+          }, 5000)
+          
+          encodedImg.onload = () => {
+            clearTimeout(encodedTimeout)
+            resolve(encodedUrl)
+          }
+          encodedImg.onerror = () => {
+            clearTimeout(encodedTimeout)
+            resolve(null)
+          }
+          encodedImg.src = encodedUrl
+        }
+        altImg.src = alternativeUrl
+        return
+      }
+      
+      if (isForgeborn && cardId.includes('-')) {
+        const alternativeUrl = getForgebornAlternativeUrl(cardId)
+        const altImg = new window.Image()
+        const altTimeout = setTimeout(() => {
+          resolve(null)
+        }, 5000)
+        
+        altImg.onload = () => {
+          clearTimeout(altTimeout)
+          resolve(alternativeUrl)
+        }
+        altImg.onerror = () => {
+          clearTimeout(altTimeout)
+          resolve(null)
+        }
+        
+        altImg.src = alternativeUrl
+      } else {
+        resolve(null)
+      }
+    }
+    
+    const timeout = setTimeout(() => {
+      tryAlternativeUrl()
+    }, isForgeborn ? 10000 : 5000)
+    
+    img.onload = () => {
+      clearTimeout(timeout)
+      resolve(imageUrl)
+    }
+    img.onerror = () => {
+      clearTimeout(timeout)
+      tryAlternativeUrl()
+    }
+    img.src = imageUrl
+  })
 }
 
 // Memoized CardListItem component - defined outside to prevent recreation on each render
@@ -205,11 +291,50 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const [selectedCard, setSelectedCard] = useState<CardInfo | null>(null)
   const [selectedLevel, setSelectedLevel] = useState<number>(1) // Current card level (1, 2, or 3)
   const [cardImages, setCardImages] = useState<Record<string, Record<number, string>>>({}) // cardId -> level -> imageUrl
+  const [loadingLevels, setLoadingLevels] = useState<Record<string, Record<number, boolean>>>({}) // cardId -> level -> loading
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set())
+  const [imageLoadStatus, setImageLoadStatus] = useState<Record<string, boolean>>({})
   const [fullDeckData, setFullDeckData] = useState<Deck | null>(null) // Full deck data with forgeborn.solbindCards
   const [copied, setCopied] = useState(false)
   const levelManuallyChangedRef = useRef<boolean>(false)
   const lastSelectedCardIdRef = useRef<string | null>(null)
+  const cardImagesRef = useRef<Record<string, Record<number, string>>>({})
+  const loadingInFlightRef = useRef<Set<string>>(new Set())
+  const imageRequestCacheRef = useRef<Map<string, Promise<string | null>>>(new Map())
+
+  useEffect(() => {
+    cardImagesRef.current = cardImages
+  }, [cardImages])
+
+  const makeLoadingKey = useCallback((cardId: string, level: number) => `${cardId}-${level}`, [])
+  const isInFlight = useCallback((cardId: string, level: number) => loadingInFlightRef.current.has(makeLoadingKey(cardId, level)), [makeLoadingKey])
+  const startInFlight = useCallback((cardId: string, level: number) => {
+    loadingInFlightRef.current.add(makeLoadingKey(cardId, level))
+  }, [makeLoadingKey])
+  const finishInFlight = useCallback((cardId: string, level: number) => {
+    loadingInFlightRef.current.delete(makeLoadingKey(cardId, level))
+  }, [makeLoadingKey])
+
+  const loadImageOnce = useCallback((cardId: string, level: number, isForgeborn: boolean) => {
+    const key = `${cardId}-${level}-${isForgeborn ? 'f' : 'r'}`
+    const existing = imageRequestCacheRef.current.get(key)
+    if (existing) return existing
+
+    const promise = loadSingleImage(cardId, level, isForgeborn)
+      .then((url) => {
+        if (!url) {
+          imageRequestCacheRef.current.delete(key)
+        }
+        return url
+      })
+      .catch((error) => {
+        imageRequestCacheRef.current.delete(key)
+        throw error
+      })
+
+    imageRequestCacheRef.current.set(key, promise)
+    return promise
+  }, [])
   const handleSelectCard = useCallback((card: CardInfo) => {
     levelManuallyChangedRef.current = false
     lastSelectedCardIdRef.current = card.id || null
@@ -384,12 +509,12 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       // Use existing deck data
       setFullDeckData(deck)
       if (process.env.NODE_ENV === 'development') {
-        console.log('[DeckDetails] ✅ Deck already has forgeborn.solbindCards:', deckAny.forgeborn.solbindCards.length)
+        logWithTimestamp('[DeckDetails] ✅ Deck already has forgeborn.solbindCards:', deckAny.forgeborn.solbindCards.length)
       }
     } else {
       // Fetch full deck details to get forgeborn.solbindCards
       if (process.env.NODE_ENV === 'development') {
-        console.log('[DeckDetails] 🔄 Fetching full deck data for:', deck.id)
+        logWithTimestamp('[DeckDetails] 🔄 Fetching full deck data for:', deck.id)
       }
       
       fetchDeckDetails(deck.id).then((fullData) => {
@@ -404,7 +529,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           setFullDeckData(updatedDeck)
           
           if (process.env.NODE_ENV === 'development') {
-            console.log('[DeckDetails] ✅ Loaded full deck data:', {
+            logWithTimestamp('[DeckDetails] ✅ Loaded full deck data:', {
               deckId: deck.id,
               hasForgeborn: !!fullData.forgeborn,
               solbindCardsCount: fullData.forgeborn?.solbindCards?.length || 0,
@@ -426,7 +551,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         setFullDeckData(deck)
       })
     }
-  }, [deck?.id, opened, fullDeckData])
+  }, [deck, opened, fullDeckData])
 
   // Log fused deck source decks data to server
   useEffect(() => {
@@ -503,11 +628,35 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     
     // Debug logging disabled for performance
     // if (process.env.NODE_ENV === 'development' && cards.length > 0) {
-    //   console.log('[DeckDetails] Card types:', cards.map(c => ({ id: c.id, name: c.name, type: c.type })))
+    //   logWithTimestamp('[DeckDetails] Card types:', cards.map(c => ({ id: c.id, name: c.name, type: c.type })))
     // }
     
     return cards
-  }, [deck?.id, deck?.cards, (deck as any)?.cardList, fullDeckData])
+  }, [deck, fullDeckData])
+
+  const markLevelsLoading = useCallback((cardId: string, levels: number[]) => {
+    setLoadingLevels(prev => {
+      const next = { ...prev }
+      const entry = { ...(next[cardId] || {}) }
+      levels.forEach(level => {
+        if (entry[level] === undefined) {
+          entry[level] = true
+        }
+      })
+      next[cardId] = entry
+      return next
+    })
+  }, [])
+
+  const markLevelDone = useCallback((cardId: string, level: number) => {
+    setLoadingLevels(prev => {
+      const next = { ...prev }
+      const entry = { ...(next[cardId] || {}) }
+      entry[level] = false
+      next[cardId] = entry
+      return next
+    })
+  }, [])
 
   // First, extract all solbind card IDs to avoid circular dependency
   // Use a stable string representation for dependencies
@@ -556,7 +705,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     })
     
     if (process.env.NODE_ENV === 'development' && ids.size > 0) {
-      // console.log(`[DeckDetails] Solbind card IDs:`, Array.from(ids))
+      // logWithTimestamp(`[DeckDetails] Solbind card IDs:`, Array.from(ids))
     }
     
     return ids
@@ -566,94 +715,6 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const solbindCardIdsKey = useMemo(() => {
     return Array.from(solbindCardIdsSet).sort().join(',')
   }, [solbindCardIdsSet])
-
-  // Helper function to load a single image
-  const loadSingleImage = async (cardId: string, level: number, isForgeborn: boolean): Promise<string | null> => {
-    return new Promise((resolve) => {
-      const imageUrl = getCardImageUrl(cardId, level, isForgeborn)
-      const img = new window.Image()
-      const isSet99 = /^s99/i.test(cardId)
-      
-      const tryAlternativeUrl = (): void => {
-        // For set 99 cards, try alternative paths
-        if (isSet99 && !isForgeborn) {
-          const baseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
-          // Try non-resized path for set 99
-          let cleanId = cardId.replace(/[^a-z0-9\-_]/gi, '').toLowerCase()
-          const cardLevel = Math.max(1, Math.min(3, level))
-          const alternativeUrl = `${baseUrl}/${cleanId}_${cardLevel}.jpg`
-          
-          const altImg = new window.Image()
-          const altTimeout = setTimeout(() => {
-            resolve(null)
-          }, 5000)
-          
-          altImg.onload = () => {
-            clearTimeout(altTimeout)
-            resolve(alternativeUrl)
-          }
-          altImg.onerror = () => {
-            clearTimeout(altTimeout)
-            // Try with URL-encoded original ID for set 99
-            const encodedId = encodeURIComponent(cardId)
-            const encodedUrl = `${baseUrl}/${encodedId}_${cardLevel}.jpg`
-            const encodedImg = new window.Image()
-            const encodedTimeout = setTimeout(() => {
-              resolve(null)
-            }, 5000)
-            
-            encodedImg.onload = () => {
-              clearTimeout(encodedTimeout)
-              resolve(encodedUrl)
-            }
-            encodedImg.onerror = () => {
-              clearTimeout(encodedTimeout)
-              resolve(null)
-            }
-            encodedImg.src = encodedUrl
-          }
-          altImg.src = alternativeUrl
-          return
-        }
-        
-        // If original URL failed and this is forgeborn with dash, try alternative with space
-        if (isForgeborn && cardId.includes('-')) {
-          const alternativeUrl = getForgebornAlternativeUrl(cardId)
-          const altImg = new window.Image()
-          const altTimeout = setTimeout(() => {
-            resolve(null)
-          }, 5000)
-          
-          altImg.onload = () => {
-            clearTimeout(altTimeout)
-            resolve(alternativeUrl)
-          }
-          altImg.onerror = () => {
-            clearTimeout(altTimeout)
-            resolve(null)
-          }
-          
-          altImg.src = alternativeUrl
-        } else {
-          resolve(null)
-        }
-      }
-      
-      const timeout = setTimeout(() => {
-        tryAlternativeUrl()
-      }, isForgeborn ? 10000 : 5000)
-      
-      img.onload = () => {
-        clearTimeout(timeout)
-        resolve(imageUrl)
-      }
-      img.onerror = () => {
-        clearTimeout(timeout)
-        tryAlternativeUrl()
-      }
-      img.src = imageUrl
-    })
-  }
 
   // Helper function to load images in parallel with a concurrency limit
   const loadImagesInParallel = async (
@@ -670,7 +731,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         const taskIndex = currentIndex++
         const task = tasks[taskIndex]
         
-        const promise = loadSingleImage(task.cardId, task.level, task.isForgeborn)
+        const promise = loadImageOnce(task.cardId, task.level, task.isForgeborn)
           .then((imageUrl) => {
             if (!checkCanceled()) {
               updateCallback(task.cardId, task.level, imageUrl)
@@ -722,27 +783,42 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                          selectedCard.type?.toLowerCase().includes('forgeborn') ||
                          cardData.cardType?.toLowerCase().includes('forgeborn')
       
-      // Check if already loaded
-      if (cardImages[selectedCard.id] && Object.keys(cardImages[selectedCard.id]).length > 0) {
+      const existingImages = cardImages[selectedCard.id] || {}
+      const levelsToLoad = isForgeborn
+        ? [1].filter(level => !existingImages[level] && !isInFlight(selectedCard.id, level))
+        : [1, 2, 3].filter(level => !existingImages[level] && !isInFlight(selectedCard.id, level))
+      
+      if (levelsToLoad.length === 0) {
         return
       }
+      
+      markLevelsLoading(selectedCard.id, levelsToLoad)
       
       try {
         if (isForgeborn) {
           // Load single forgeborn image
-          const imageUrl = await loadSingleImage(selectedCard.id, 1, true)
-          if (!isCanceled && imageUrl) {
-            setCardImages(prev => ({
-              ...prev,
-              [selectedCard.id]: { 1: imageUrl, 2: imageUrl, 3: imageUrl }
-            }))
+          startInFlight(selectedCard.id, 1)
+          const imageUrl = await loadImageOnce(selectedCard.id, 1, true)
+          if (!isCanceled) {
+            if (imageUrl) {
+              setCardImages(prev => ({
+                ...prev,
+                [selectedCard.id]: { ...prev[selectedCard.id], 1: imageUrl, 2: imageUrl, 3: imageUrl }
+              }))
+            }
+            markLevelDone(selectedCard.id, 1)
+            markLevelDone(selectedCard.id, 2)
+            markLevelDone(selectedCard.id, 3)
           }
+          finishInFlight(selectedCard.id, 1)
         } else {
-          // Load all 3 levels in parallel
+          // Load missing levels in parallel
+          levelsToLoad.forEach(level => startInFlight(selectedCard.id, level))
+
           const [level1, level2, level3] = await Promise.all([
-            loadSingleImage(selectedCard.id, 1, false),
-            loadSingleImage(selectedCard.id, 2, false),
-            loadSingleImage(selectedCard.id, 3, false),
+            levelsToLoad.includes(1) ? loadImageOnce(selectedCard.id, 1, false) : Promise.resolve(null),
+            levelsToLoad.includes(2) ? loadImageOnce(selectedCard.id, 2, false) : Promise.resolve(null),
+            levelsToLoad.includes(3) ? loadImageOnce(selectedCard.id, 3, false) : Promise.resolve(null),
           ])
           
           if (!isCanceled) {
@@ -754,14 +830,24 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             if (Object.keys(newImages).length > 0) {
               setCardImages(prev => ({
                 ...prev,
-                [selectedCard.id]: newImages
+                [selectedCard.id]: { ...prev[selectedCard.id], ...newImages }
               }))
             }
+            if (levelsToLoad.includes(1)) markLevelDone(selectedCard.id, 1)
+            if (levelsToLoad.includes(2)) markLevelDone(selectedCard.id, 2)
+            if (levelsToLoad.includes(3)) markLevelDone(selectedCard.id, 3)
           }
+          levelsToLoad.forEach(level => finishInFlight(selectedCard.id, level))
         }
       } catch (error) {
         if (!isCanceled) {
           setImageErrors(prev => new Set(prev).add(selectedCard.id))
+        }
+      } finally {
+        if (isForgeborn) {
+          finishInFlight(selectedCard.id, 1)
+        } else {
+          levelsToLoad.forEach(level => finishInFlight(selectedCard.id, level))
         }
       }
     }
@@ -771,7 +857,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     return () => {
       isCanceled = true
     }
-  }, [selectedCard?.id, opened, deck?.forgebornId])
+  }, [opened, selectedCard, deck?.forgebornId, cardImages, markLevelsLoading, markLevelDone, isInFlight, startInFlight, finishInFlight, loadImageOnce])
 
   // Background preload all card images (delayed to not block UI)
   useEffect(() => {
@@ -779,69 +865,84 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     
     let isCanceled = false
     
-    // Delay background loading to let UI render first
-    const timeoutId = setTimeout(async () => {
-      if (isCanceled) return
-      
-      // Load all cards in background with low priority
+    const loadAllLevelOnesAndSolbind = async () => {
       for (const card of normalizedCards) {
         if (isCanceled) break
-        
-        // Skip if already loaded
-        if (cardImages[card.id] && Object.keys(cardImages[card.id]).length > 0) {
-          continue
-        }
-        
+
         const cardData = card as any
         const isForgeborn = deck?.forgebornId === card.id || 
                            card.id === deck?.forgebornId ||
                            card.type?.toLowerCase().includes('forgeborn') ||
                            cardData.cardType?.toLowerCase().includes('forgeborn')
-        
-        try {
-          if (isForgeborn) {
-            const imageUrl = await loadSingleImage(card.id, 1, true)
+        const isSolbind = solbindCardIdsSet.has(card.id) ||
+                          cardData.rarity === 'Solbind' || cardData.rarity === 'solbind' ||
+                          card.type?.toLowerCase() === 'solbind' ||
+                          cardData.cardType?.toLowerCase() === 'solbind'
+
+        if (isForgeborn) {
+          continue
+        }
+
+        if (isSolbind) {
+          const levelsToLoad = [1, 2, 3].filter(level => !(cardImagesRef.current[card.id]?.[level]) && !isInFlight(card.id, level))
+          if (levelsToLoad.length === 0) continue
+
+          markLevelsLoading(card.id, levelsToLoad)
+          levelsToLoad.forEach(level => startInFlight(card.id, level))
+          try {
+            for (const level of levelsToLoad) {
+              if (isCanceled) break
+              const imageUrl = await loadImageOnce(card.id, level, false)
+              if (!isCanceled && imageUrl) {
+                setCardImages(prev => ({
+                  ...prev,
+                  [card.id]: { ...prev[card.id], [level]: imageUrl }
+                }))
+              }
+              if (!isCanceled) {
+                markLevelDone(card.id, level)
+              }
+            }
+          } catch {
+            // ignore background errors
+          } finally {
+            levelsToLoad.forEach(level => finishInFlight(card.id, level))
+          }
+        } else {
+          const hasLevel1 = !!cardImagesRef.current[card.id]?.[1]
+          if (hasLevel1 || isInFlight(card.id, 1)) continue
+          markLevelsLoading(card.id, [1])
+          startInFlight(card.id, 1)
+          try {
+            const imageUrl = await loadImageOnce(card.id, 1, false)
             if (!isCanceled && imageUrl) {
               setCardImages(prev => ({
                 ...prev,
-                [card.id]: { 1: imageUrl, 2: imageUrl, 3: imageUrl }
+                [card.id]: { ...prev[card.id], 1: imageUrl }
               }))
             }
-          } else {
-            // Load levels sequentially to reduce parallel load
-            // Collect levels locally so we update state once and don't drop earlier loads
-            const loadedLevels: Record<number, string> = {}
-            for (const level of [1, 2, 3]) {
-              if (isCanceled) break
-              const imageUrl = await loadSingleImage(card.id, level, false)
-              if (!isCanceled && imageUrl) {
-                loadedLevels[level] = imageUrl
-              }
+          } catch {
+            // ignore background errors
+          } finally {
+            if (!isCanceled) {
+              markLevelDone(card.id, 1)
             }
-
-            if (!isCanceled && Object.keys(loadedLevels).length > 0) {
-              setCardImages(prev => ({
-                ...prev,
-                [card.id]: { ...prev[card.id], ...loadedLevels }
-              }))
-            }
+            finishInFlight(card.id, 1)
           }
-        } catch {
-          // Silently ignore background loading errors
         }
-        
-        // Small delay between cards to not overwhelm the browser
+
         if (!isCanceled) {
-          await new Promise(resolve => setTimeout(resolve, 50))
+          await new Promise(resolve => setTimeout(resolve, 25))
         }
       }
-    }, 300) // Start background loading 300ms after modal opens
+    }
+
+    loadAllLevelOnesAndSolbind()
     
     return () => {
       isCanceled = true
-      clearTimeout(timeoutId)
     }
-  }, [opened, normalizedCards.length, deck?.id])
+  }, [opened, normalizedCards, deck?.forgebornId, markLevelsLoading, markLevelDone, solbindCardIdsSet, isInFlight, startInFlight, finishInFlight, loadImageOnce])
 
   // DISABLED: Old preload all images - too slow
   // Load card images in specific order: Forgeborn -> Creatures/Spells Level 1 -> Level 2 -> Level 3 -> Solbind
@@ -858,7 +959,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       // Only updates if modal is still open
       const updateImageState = (cardId: string, level: number, imageUrl: string) => {
         if (!isModalOpen) {
-          console.log(`[DeckDetails] ⏹️ Skipping image update for ${cardId} - modal closed`)
+          logWithTimestamp(`[DeckDetails] ⏹️ Skipping image update for ${cardId} - modal closed`)
           return
         }
         setCardImages(prev => {
@@ -873,7 +974,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       
       // Check if modal is still open before starting
       if (!isModalOpen) {
-        console.log(`[DeckDetails] ⏹️ Modal closed before image loading started`)
+        logWithTimestamp(`[DeckDetails] ⏹️ Modal closed before image loading started`)
         return
       }
 
@@ -1091,12 +1192,12 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           if (firstForgeborn) {
             addForgebornIfNotExists(firstForgeborn, firstForgebornId)
             if (isForgebornInList(firstForgebornId, forgebornCardsList)) {
-              console.log(`[DeckDetails] 🔥 Found first forgeborn for fused deck: ${firstForgeborn.id} (${firstForgeborn.name})`)
+              logWithTimestamp(`[DeckDetails] 🔥 Found first forgeborn for fused deck: ${firstForgeborn.id} (${firstForgeborn.name})`)
             } else {
-              console.log(`[DeckDetails] ℹ️ First forgeborn ${firstForgeborn.id} already in list, skipping`)
+              logWithTimestamp(`[DeckDetails] ℹ️ First forgeborn ${firstForgeborn.id} already in list, skipping`)
             }
           } else {
-            console.log(`[DeckDetails] ⚠️ First forgeborn not found for fused deck with ID: ${firstForgebornId}`)
+            logWithTimestamp(`[DeckDetails] ⚠️ First forgeborn not found for fused deck with ID: ${firstForgebornId}`)
           }
         }
       }
@@ -1282,7 +1383,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                 const secondForgeborn = getCardInfo(solbindCard.id, solbindCard)
                 addForgebornIfNotExists(secondForgeborn, solbindCard.id)
                 if (process.env.NODE_ENV === 'development') {
-                  console.log(`[DeckDetails] ✅ Added second forgeborn to image loading list: ${secondForgeborn.name} (${secondForgeborn.id})`)
+                  logWithTimestamp(`[DeckDetails] ✅ Added second forgeborn to image loading list: ${secondForgeborn.name} (${secondForgeborn.id})`)
                 }
               }
             } else {
@@ -1310,33 +1411,33 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         }
       })
 
-      console.log(`[DeckDetails] 📋 Image loading order: Forgeborn(${forgebornCardsList.length}) -> Creatures(${creatureCardsList.length})/Spells(${spellCardsList.length}) L1 -> L2 -> L3 -> Solbind(${solbindCardsList.length})`)
+      logWithTimestamp(`[DeckDetails] 📋 Image loading order: Forgeborn(${forgebornCardsList.length}) -> Creatures(${creatureCardsList.length})/Spells(${spellCardsList.length}) L1 -> L2 -> L3 -> Solbind(${solbindCardsList.length})`)
 
       // 1. Load Forgeborn first
       for (const card of forgebornCardsList) {
         if (!isModalOpen) {
-          console.log(`[DeckDetails] ⏹️ Stopping Forgeborn loading - modal closed`)
+          logWithTimestamp(`[DeckDetails] ⏹️ Stopping Forgeborn loading - modal closed`)
           break
         }
         
         if (cardImages[card.id] && Object.keys(cardImages[card.id]).length > 0) {
-          console.log(`[DeckDetails] Skipping Forgeborn ${card.id} - already loaded`)
+          logWithTimestamp(`[DeckDetails] Skipping Forgeborn ${card.id} - already loaded`)
           continue
         }
 
-        console.log(`[DeckDetails] 🔥 [1/5] Loading Forgeborn: ${card.id} (${card.name})`)
+        logWithTimestamp(`[DeckDetails] 🔥 [1/5] Loading Forgeborn: ${card.id} (${card.name})`)
         const imageUrl = await loadSingleImage(card.id, 1, true)
         
         if (process.env.NODE_ENV === 'development') {
           if (imageUrl) {
-            console.log(`[DeckDetails] ✅ Forgeborn image loaded: ${card.name} (${card.id}) -> ${imageUrl}`)
+            logWithTimestamp(`[DeckDetails] ✅ Forgeborn image loaded: ${card.name} (${card.id}) -> ${imageUrl}`)
           } else {
             console.warn(`[DeckDetails] ⚠️ Forgeborn image failed to load: ${card.name} (${card.id})`)
           }
         }
         
         if (!isModalOpen) {
-          console.log(`[DeckDetails] ⏹️ Stopping after Forgeborn load - modal closed`)
+          logWithTimestamp(`[DeckDetails] ⏹️ Stopping after Forgeborn load - modal closed`)
           break
         }
         
@@ -1345,7 +1446,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           updateImageState(card.id, 1, imageUrl)
           updateImageState(card.id, 2, imageUrl)
           updateImageState(card.id, 3, imageUrl)
-          console.log(`[DeckDetails] ✅ Forgeborn loaded: ${card.id}`)
+          logWithTimestamp(`[DeckDetails] ✅ Forgeborn loaded: ${card.id}`)
         } else {
           errors.add(card.id)
           console.warn(`[DeckDetails] ⚠️ Forgeborn failed: ${card.id}`)
@@ -1357,11 +1458,11 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       
       for (let level = 1; level <= 3; level++) {
         if (!isModalOpen) {
-          console.log(`[DeckDetails] ⏹️ Stopping Creatures/Spells loading at level ${level} - modal closed`)
+          logWithTimestamp(`[DeckDetails] ⏹️ Stopping Creatures/Spells loading at level ${level} - modal closed`)
           break
         }
         
-        console.log(`[DeckDetails] 📦 [${level + 1}/5] Loading all Creatures/Spells Level ${level} in parallel (10 threads)...`)
+        logWithTimestamp(`[DeckDetails] 📦 [${level + 1}/5] Loading all Creatures/Spells Level ${level} in parallel (10 threads)...`)
         
         // Prepare tasks for this level (skip already loaded)
         const tasks = regularCards
@@ -1381,7 +1482,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
               if (imageUrl) {
                 updateImageState(cardId, level, imageUrl)
                 const task = tasks.find(t => t.cardId === cardId)
-                console.log(`[DeckDetails] ✅ Level ${level} loaded: ${cardId} (${task?.cardName || 'unknown'})`)
+                logWithTimestamp(`[DeckDetails] ✅ Level ${level} loaded: ${cardId} (${task?.cardName || 'unknown'})`)
               }
             },
             () => !isModalOpen
@@ -1391,18 +1492,18 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
       // 5. Load Solbind last
       if (!isModalOpen) {
-        console.log(`[DeckDetails] ⏹️ Skipping Solbind loading - modal closed`)
+        logWithTimestamp(`[DeckDetails] ⏹️ Skipping Solbind loading - modal closed`)
         return
       }
       
-      console.log(`[DeckDetails] 🔷 [5/5] Loading Solbind cards in parallel (10 threads)...`)
+      logWithTimestamp(`[DeckDetails] 🔷 [5/5] Loading Solbind cards in parallel (10 threads)...`)
       
       // Prepare tasks for Solbind cards (all levels for each card)
       const solbindTasks: Array<{ cardId: string; level: number; isForgeborn: boolean; cardName: string }> = []
       
       for (const card of solbindCardsList) {
         if (cardImages[card.id] && Object.keys(cardImages[card.id]).length > 0) {
-          console.log(`[DeckDetails] Skipping Solbind ${card.id} - already loaded`)
+          logWithTimestamp(`[DeckDetails] Skipping Solbind ${card.id} - already loaded`)
           continue
         }
         
@@ -1439,7 +1540,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         for (const card of solbindCardsList) {
           const loaded = loadedLevels.get(card.id)
           if (loaded && loaded.size > 0) {
-            console.log(`[DeckDetails] ✅ Solbind loaded: ${card.id} (${card.name}) - ${loaded.size} levels`)
+            logWithTimestamp(`[DeckDetails] ✅ Solbind loaded: ${card.id} (${card.name}) - ${loaded.size} levels`)
           } else if (!cardImages[card.id] || Object.keys(cardImages[card.id]).length === 0) {
             errors.add(card.id)
             console.warn(`[DeckDetails] ⚠️ Solbind failed: ${card.id}`)
@@ -1777,8 +1878,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     // Check forgeborn.solbindCards for second forgeborn (alternative forgeborn)
     if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object') {
       if (process.env.NODE_ENV === 'development') {
-        // console.log('[DeckDetails] Forgeborn object:', deckForUse.forgeborn)
-        // console.log('[DeckDetails] Forgeborn solbindCards:', deckForUse.forgeborn.solbindCards)
+        // logWithTimestamp('[DeckDetails] Forgeborn object:', deckForUse.forgeborn)
+        // logWithTimestamp('[DeckDetails] Forgeborn solbindCards:', deckForUse.forgeborn.solbindCards)
       }
       
       if (deckForUse.forgeborn.solbindCards && Array.isArray(deckForUse.forgeborn.solbindCards)) {
@@ -1795,7 +1896,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             
             if (process.env.NODE_ENV === 'development') {
               // Debug logging disabled for performance
-              // console.log(`[DeckDetails] Checking solbindCard...`)
+              // logWithTimestamp(`[DeckDetails] Checking solbindCard...`)
             }
             
             if (isForgebornCard && isNotSolbind) {
@@ -1804,7 +1905,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                 const secondForgeborn = getCardInfo(solbindCard.id, solbindCard)
                 addForgebornIfNotExists(secondForgeborn, solbindCard.id)
                 if (process.env.NODE_ENV === 'development') {
-                  console.log(`[DeckDetails] ✅ Added second forgeborn: ${secondForgeborn.name} (${secondForgeborn.id})`)
+                  logWithTimestamp(`[DeckDetails] ✅ Added second forgeborn: ${secondForgeborn.name} (${secondForgeborn.id})`)
                 }
               }
             }
@@ -1829,6 +1930,82 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     
     return []
   }, [normalizedCards, deck, fullDeckData, getFusedDeckSourceDecks])
+
+  const solbindCards: CardInfo[] = useMemo(() => {
+    const deckForUse = fullDeckData || deck
+    if (!deckForUse) return []
+    
+    // Extract Solbind cards from solbindCards arrays in other cards
+    const solbindCardObjects: CardInfo[] = []
+    
+    // First, check forgeborn.solbindCards (solbind cards attached to forgeborn)
+    if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.solbindCards && Array.isArray(deckForUse.forgeborn.solbindCards)) {
+      deckForUse.forgeborn.solbindCards.forEach((solbindCard: any) => {
+        if (solbindCard && solbindCard.id) {
+          // Only add if it's actually a Solbind card (rarity === 'Solbind')
+          // Second forgeborn (e.g., "Blighted Ironbeard") is not a Solbind card
+          const isSolbindCard = solbindCard.rarity === 'Solbind' || solbindCard.rarity === 'solbind'
+          if (isSolbindCard && !solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+            solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+            if (process.env.NODE_ENV === 'development') {
+              // logWithTimestamp(`[DeckDetails] ✅ Added Solbind card...`)
+            }
+          }
+        }
+      })
+    }
+    
+    // Second, find all cards that have solbindCards array and extract those cards
+    normalizedCards.forEach(card => {
+      const cardData = card as any
+      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+        cardData.solbindCards.forEach((solbindCard: any) => {
+          if (solbindCard && solbindCard.id) {
+            // Create CardInfo from solbind card data
+            if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+              solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+            }
+          }
+        })
+      }
+    })
+    
+    // Also check for cards in normalizedCards that are solbind cards
+    normalizedCards.forEach(card => {
+      if (forgebornCards.includes(card)) return
+      
+      const cardData = card as any
+      const cardId = card.id
+      
+      // Skip if this card has solbindCards (it's the parent, not the solbind itself)
+      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+        return
+      }
+      
+      // Check if this card is in any solbindCards array (already added above)
+      if (solbindCardIdsSet.has(cardId)) {
+        // Check if it's already in solbindCardObjects
+        if (!solbindCardObjects.some(sb => sb.id === cardId)) {
+          solbindCardObjects.push(card)
+        }
+        return
+      }
+      
+      // Check if rarity is Solbind and it's not a parent card
+      // Count ALL cards with Solbind rarity, not just specific names
+      if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+        if (!solbindCardObjects.some(sb => sb.id === cardId)) {
+          solbindCardObjects.push(card)
+        }
+      }
+    })
+    
+    if (process.env.NODE_ENV === 'development' && solbindCardObjects.length > 0) {
+      // logWithTimestamp(`[DeckDetails] Total Solbind cards found: ${solbindCardObjects.length}`)
+    }
+    
+    return solbindCardObjects
+  }, [normalizedCards, forgebornCards, solbindCardIdsSet, deck, fullDeckData])
 
   // Track last deck ID to detect deck changes
   const lastDeckIdRef = useRef<string | null>(null)
@@ -1888,7 +2065,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         }
       }
     }
-  }, [opened, normalizedCards.length, deck?.id, forgebornCards, selectedCard, handleSelectCard]) // Only depend on stable values
+  }, [opened, normalizedCards, deck?.id, forgebornCards, solbindCards, selectedCard, handleSelectCard]) // Only depend on stable values
 
   // Reset level when card changes (but preserve if user selected a different level)
   useEffect(() => {
@@ -1922,7 +2099,52 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       // If card didn't change but images loaded, don't reset level
       // (this prevents level from resetting when images finish loading)
     }
-  }, [selectedCard?.id]) // Only depend on card ID, not cardImages
+  }, [selectedCard, cardImages, solbindCardIdsSet]) // Only depend on card selection and loaded images
+
+  // Ensure the first Forgeborn image loads immediately when modal opens
+  useEffect(() => {
+    if (!opened || forgebornCards.length === 0) return
+    const firstForgeborn = forgebornCards[0]
+    if (!firstForgeborn?.id) return
+
+    const alreadyLoaded = cardImages[firstForgeborn.id]?.[1]
+    if (alreadyLoaded || isInFlight(firstForgeborn.id, 1)) return
+
+    let isCanceled = false
+    markLevelsLoading(firstForgeborn.id, [1, 2, 3])
+    startInFlight(firstForgeborn.id, 1)
+
+    loadImageOnce(firstForgeborn.id, 1, true)
+      .then((imageUrl) => {
+        if (isCanceled) return
+        if (imageUrl) {
+          setCardImages(prev => ({
+            ...prev,
+            [firstForgeborn.id]: { 1: imageUrl, 2: imageUrl, 3: imageUrl }
+          }))
+        }
+      })
+      .finally(() => {
+        if (!isCanceled) {
+          markLevelDone(firstForgeborn.id, 1)
+          markLevelDone(firstForgeborn.id, 2)
+          markLevelDone(firstForgeborn.id, 3)
+        }
+        finishInFlight(firstForgeborn.id, 1)
+      })
+
+    return () => {
+      isCanceled = true
+    }
+  }, [opened, forgebornCards, cardImages, markLevelsLoading, markLevelDone, isInFlight, startInFlight, finishInFlight, loadImageOnce])
+  
+  // If a load was canceled, ensure in-flight flags are cleared to allow retries
+  useEffect(() => {
+    const inFlightRef = loadingInFlightRef
+    return () => {
+      inFlightRef.current.clear()
+    }
+  }, [])
   
   // Auto-select first available level for Solbind cards when images load
   useEffect(() => {
@@ -1949,7 +2171,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     // If current level doesn't exist, switch to first available
     if (!currentLevelExists && !levelManuallyChangedRef.current) {
       if (process.env.NODE_ENV === 'development') {
-        // console.log(`[DeckDetails] Auto-selecting first available level...`)
+        // logWithTimestamp(`[DeckDetails] Auto-selecting first available level...`)
       }
       setSelectedLevel(firstAvailableLevel)
     }
@@ -2034,82 +2256,6 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       return lowerCardType.includes('spell') && !lowerCardType.includes('creature')
     })
   }, [normalizedCards, forgebornCards, solbindCardIdsSet, deck])
-
-  const solbindCards: CardInfo[] = useMemo(() => {
-    const deckForUse = fullDeckData || deck
-    if (!deckForUse) return []
-    
-    // Extract Solbind cards from solbindCards arrays in other cards
-    const solbindCardObjects: CardInfo[] = []
-    
-    // First, check forgeborn.solbindCards (solbind cards attached to forgeborn)
-    if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.solbindCards && Array.isArray(deckForUse.forgeborn.solbindCards)) {
-      deckForUse.forgeborn.solbindCards.forEach((solbindCard: any) => {
-        if (solbindCard && solbindCard.id) {
-          // Only add if it's actually a Solbind card (rarity === 'Solbind')
-          // Second forgeborn (e.g., "Blighted Ironbeard") is not a Solbind card
-          const isSolbindCard = solbindCard.rarity === 'Solbind' || solbindCard.rarity === 'solbind'
-          if (isSolbindCard && !solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-            solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-            if (process.env.NODE_ENV === 'development') {
-              // console.log(`[DeckDetails] ✅ Added Solbind card...`)
-            }
-          }
-        }
-      })
-    }
-    
-    // Second, find all cards that have solbindCards array and extract those cards
-    normalizedCards.forEach(card => {
-      const cardData = card as any
-      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-        cardData.solbindCards.forEach((solbindCard: any) => {
-          if (solbindCard && solbindCard.id) {
-            // Create CardInfo from solbind card data
-            if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-            solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-            }
-          }
-        })
-      }
-    })
-    
-    // Also check for cards in normalizedCards that are solbind cards
-    normalizedCards.forEach(card => {
-      if (forgebornCards.includes(card)) return
-      
-      const cardData = card as any
-      const cardId = card.id
-      
-      // Skip if this card has solbindCards (it's the parent, not the solbind itself)
-      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-        return
-      }
-      
-      // Check if this card is in any solbindCards array (already added above)
-      if (solbindCardIdsSet.has(cardId)) {
-        // Check if it's already in solbindCardObjects
-        if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-          solbindCardObjects.push(card)
-        }
-        return
-      }
-      
-      // Check if rarity is Solbind and it's not a parent card
-      // Count ALL cards with Solbind rarity, not just specific names
-      if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
-        if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-          solbindCardObjects.push(card)
-        }
-      }
-    })
-    
-    if (process.env.NODE_ENV === 'development' && solbindCardObjects.length > 0) {
-      // console.log(`[DeckDetails] Total Solbind cards found: ${solbindCardObjects.length}`)
-    }
-    
-    return solbindCardObjects
-  }, [normalizedCards, forgebornCards, solbindCardIdsSet, deck, fullDeckData])
 
   const creatureCards: CardInfo[] = useMemo(() => {
     if (!deck) return []
@@ -2954,115 +3100,104 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                   {(() => {
                     const cardImageData = cardImages[selectedCard.id]
                     const currentImageUrl = cardImageData?.[selectedLevel]
-                      // Check error for specific card-level combination
-                      const levelErrorKey = `${selectedCard.id}-${selectedLevel}`
-                      const hasError = imageErrors.has(levelErrorKey)
 
-                      // Check if this is a Forgeborn card
-                      const isForgeborn = deck?.forgebornId === selectedCard.id || 
-                                         selectedCard.id === deck?.forgebornId ||
-                                         (selectedCard.id && deck?.forgebornId && selectedCard.id.includes(deck.forgebornId)) ||
-                                         (deck?.forgebornId && selectedCard.id && deck.forgebornId.includes(selectedCard.id)) ||
-                                         selectedCard.type?.toLowerCase().includes('forgeborn') ||
-                                         (selectedCard as any).cardType?.toLowerCase().includes('forgeborn')
-                      
-                      // Check if this is a Solbind card (use same logic as in image loading)
-                      const selectedCardData = selectedCard as any
-                      const isSolbind = solbindCardIdsSet.has(selectedCard.id) ||
-                                       selectedCardData.rarity === 'Solbind' || selectedCardData.rarity === 'solbind' ||
-                                       selectedCard.type?.toLowerCase() === 'solbind' ||
-                                       selectedCardData.cardType?.toLowerCase() === 'solbind'
-                      
-                      // For Forgeborn, check if all three levels have the same URL (which means it's the 321 format)
-                      // Card levels are 1, 2, 3 (not 0-indexed), so we check levels 1, 2, 3
-                      const isForgebornImage = isForgeborn && cardImageData && 
-                                               cardImageData[1] && cardImageData[2] && cardImageData[3] &&
-                                               cardImageData[1] === cardImageData[2] && 
-                                               cardImageData[2] === cardImageData[3]
-                      
-                      // For Solbind, use selectedLevel (can be 1, 2, or 3)
-                      const effectiveLevel = selectedLevel
-                      const effectiveImageUrl = currentImageUrl
-                      
-                      // For creatures and spells, show image even if it hasn't loaded yet
-                      // (we'll show a placeholder while loading)
-                      const isCreatureOrSpell = !isForgeborn && !isSolbind
-                      
-                      // Check if card has images for all levels (1, 2, 3)
-                      // If not, disable mouse scrolling (usually Solbind cards)
-                      const availableLevels = cardImageData ? Object.keys(cardImageData).map(Number).sort() : []
-                      const hasAllLevels = availableLevels.length === 3 && availableLevels.includes(1) && availableLevels.includes(2) && availableLevels.includes(3)
-                      const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
-                      
-                      return (cardImageData && effectiveImageUrl && !hasError) || (isCreatureOrSpell && !hasError) ? (
-                      <div className="relative w-full h-full flex flex-col items-center justify-center gap-4">
-                        {effectiveImageUrl ? (
-                          <img
-                            src={effectiveImageUrl}
-                            alt={isForgeborn ? selectedCard.name : isSolbind ? selectedCard.name : `${selectedCard.name} Level ${effectiveLevel}`}
-                            className="max-w-full max-h-full object-contain"
-                            loading="lazy"
-                            decoding="async"
-                            style={{
-                              maxWidth: isForgeborn ? '400px' : '300px',
-                              maxHeight: isForgeborn ? '600px' : '450px',
-                              transform: isForgeborn ? 'rotate(-90deg)' : 'none',
-                            }}
-                            onMouseMove={shouldEnableMouseScroll ? handleMouseMove : undefined}
-                            onMouseLeave={shouldEnableMouseScroll ? handleMouseLeave : undefined}
-                            onError={(e) => {
-                              setImageErrors(prev => new Set(prev).add(`${selectedCard.id}-${effectiveLevel}`))
-                            }}
-                          />
-                        ) : isCreatureOrSpell ? (
-                          // Show placeholder for creatures/spells while image is loading
-                          <div
-                            className="w-64 h-96 mx-auto rounded-lg border-2 flex flex-col items-center justify-center gap-2"
-                            style={{
-                              backgroundColor: 'rgba(74, 144, 226, 0.1)',
-                              borderColor: getFactionBadgeColor(selectedCard.faction || deck.faction),
-                            }}
-                          >
-                            <Loader size="md" color="rgba(74, 144, 226, 0.8)" />
-                            <Text size="sm" className="text-white text-center px-4">
-                              Loading {selectedCard.name} Level {effectiveLevel}...
-                            </Text>
-                          </div>
-                        ) : (
-                          // Fallback placeholder
-                          <div
-                            className="w-64 h-96 mx-auto rounded-lg border-2 flex items-center justify-center"
-                            style={{
-                              backgroundColor: 'rgba(74, 144, 226, 0.1)',
-                              borderColor: getFactionBadgeColor(selectedCard.faction || deck.faction),
-                            }}
-                          >
-                            <Text size="lg" className="text-white text-center px-4">
-                              {selectedCard.name}
-                            </Text>
-                          </div>
-                        )}
-                        {/* Level selector buttons - show for creatures and spells (always show all 3 levels) */}
-                        {/* For Solbind cards, only show levels that have images */}
+                    const levelErrorKey = `${selectedCard.id}-${selectedLevel}`
+                    const hasError = imageErrors.has(levelErrorKey)
+
+                    const isForgeborn = deck?.forgebornId === selectedCard.id || 
+                                       selectedCard.id === deck?.forgebornId ||
+                                       (selectedCard.id && deck?.forgebornId && selectedCard.id.includes(deck.forgebornId)) ||
+                                       (deck?.forgebornId && selectedCard.id && deck.forgebornId.includes(selectedCard.id)) ||
+                                       selectedCard.type?.toLowerCase().includes('forgeborn') ||
+                                       (selectedCard as any).cardType?.toLowerCase().includes('forgeborn')
+                    
+                    const selectedCardData = selectedCard as any
+                    const isSolbind = solbindCardIdsSet.has(selectedCard.id) ||
+                                     selectedCardData.rarity === 'Solbind' || selectedCardData.rarity === 'solbind' ||
+                                     selectedCard.type?.toLowerCase() === 'solbind' ||
+                                     selectedCardData.cardType?.toLowerCase() === 'solbind'
+                    
+                    const effectiveLevel = selectedLevel
+                    const effectiveImageUrl = currentImageUrl
+                    
+                    const availableLevels = cardImageData ? Object.keys(cardImageData).map(Number).sort() : []
+                    const hasAllLevels = availableLevels.length === 3 && availableLevels.includes(1) && availableLevels.includes(2) && availableLevels.includes(3)
+                    const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
+                    
+                    const imageWidth = isForgeborn ? 400 : 300
+                    const imageHeight = isForgeborn ? 600 : 450
+                    const aspectRatio = '2 / 3'
+
+                    const imageKey = effectiveImageUrl ? `${selectedCard.id}-${effectiveLevel}-${effectiveImageUrl}` : ''
+                    const isImageReady = !!(imageKey && imageLoadStatus[imageKey])
+
+                    return !hasError ? (
+                      <div className="relative w-full flex flex-col items-center justify-center gap-4">
+                        <div
+                          className="relative w-full flex items-center justify-center"
+                          style={{
+                            maxWidth: `${imageWidth}px`,
+                            aspectRatio,
+                          }}
+                        >
+                          {effectiveImageUrl && (
+                            <NextImage
+                              key={imageKey || selectedCard.id}
+                              src={effectiveImageUrl}
+                              alt={isForgeborn ? selectedCard.name : isSolbind ? selectedCard.name : `${selectedCard.name} Level ${effectiveLevel}`}
+                              fill
+                              unoptimized
+                              className="object-contain"
+                              sizes="(max-width: 1024px) 80vw, 400px"
+                              style={{
+                                transform: isForgeborn ? 'rotate(-90deg)' : 'none',
+                                opacity: isImageReady ? 1 : 0,
+                                transition: 'opacity 120ms ease',
+                              }}
+                              onMouseMove={shouldEnableMouseScroll ? handleMouseMove : undefined}
+                              onMouseLeave={shouldEnableMouseScroll ? handleMouseLeave : undefined}
+                              onLoad={() => {
+                                if (imageKey) {
+                                  setImageLoadStatus(prev => ({ ...prev, [imageKey]: true }))
+                                }
+                              }}
+                              onError={() => {
+                                setImageErrors(prev => new Set(prev).add(`${selectedCard.id}-${effectiveLevel}`))
+                                if (imageKey) {
+                                  setImageLoadStatus(prev => ({ ...prev, [imageKey]: false }))
+                                }
+                              }}
+                            />
+                          )}
+
+                          {(!effectiveImageUrl || !isImageReady) && (
+                            <div
+                              className="absolute inset-0 rounded-lg border-2 flex flex-col items-center justify-center gap-2"
+                              style={{
+                                backgroundColor: 'rgba(74, 144, 226, 0.1)',
+                                borderColor: getFactionBadgeColor(selectedCard.faction || deck.faction),
+                              }}
+                            >
+                              <Loader size="md" color="rgba(74, 144, 226, 0.8)" />
+                              <Text size="sm" className="text-white text-center px-4">
+                                Loading {selectedCard.name} Level {effectiveLevel}...
+                              </Text>
+                            </div>
+                          )}
+                        </div>
+
                         {!isForgeborn && (
                           <Group gap="xs" justify="center">
-                            {[1, 2, 3]
+                            {([1, 2, 3] as const)
                               .filter(level => {
-                                // For Solbind cards, only show levels that have images (no placeholder for missing levels)
-                                if (isSolbind) {
-                                  const hasImage = cardImages[selectedCard.id]?.[level]
-                                  return !!hasImage // Only show if image exists
-                                }
-                                // For creatures and spells, always show all 3 levels
-                                // Even if image hasn't loaded yet (will show loading state)
-                                return true
+                                if (!isSolbind) return true
+                                const hasImage = !!cardImages[selectedCard.id]?.[level]
+                                return hasImage
                               })
                               .map(level => {
-                                // For creatures and spells, always show all 3 levels
-                                // Even if image hasn't loaded yet
                                 const hasImage = cardImages[selectedCard.id]?.[level]
                                 const levelErrorKey = `${selectedCard.id}-${level}`
-                                const isLoading = !hasImage && !imageErrors.has(levelErrorKey)
+                                const isLoading = !hasImage && !imageErrors.has(levelErrorKey) && loadingLevels[selectedCard.id]?.[level] !== false
                                 
                                 return (
                                   <Button
@@ -3070,7 +3205,6 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                                     size="sm"
                                     variant={selectedLevel === level ? 'filled' : 'outline'}
                                     onClick={() => handleLevelChange(level)}
-                                    // Always enabled - allow user to select any level even if image hasn't loaded yet
                                     className={
                                       selectedLevel === level
                                         ? 'bg-sf-primary hover:bg-sf-primary/90'
@@ -3078,7 +3212,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                                     }
                                   >
                                     Level {level}
-                                    {!hasImage && !imageErrors.has(`${selectedCard.id}-${level}`) && ' (loading...)'}
+                                    {isLoading && ' (loading...)'}
                                   </Button>
                                 )
                               })}
@@ -3097,8 +3231,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                           {selectedCard.name}
                         </Text>
                       </div>
-                      )
-                    })()}
+                    )
+                  })()}
                   </div>
               </Paper>
             </Stack>

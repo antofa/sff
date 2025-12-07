@@ -1,4 +1,5 @@
 import { logErrorToFile } from './errorLogger'
+import { logWithTimestamp } from './logger'
 
 /**
  * Global error handler for Next.js
@@ -6,7 +7,7 @@ import { logErrorToFile } from './errorLogger'
  */
 export function setupErrorHandling() {
   if (typeof window !== 'undefined') {
-    console.log('[Error Handler] Setting up client-side error handling')
+    logWithTimestamp('[Error Handler] Setting up client-side error handling')
     
     // Client-side error handling
     window.addEventListener('error', (event) => {
@@ -41,7 +42,7 @@ export function setupErrorHandling() {
       })
     })
     
-    console.log('[Error Handler] Client-side error handlers registered')
+    logWithTimestamp('[Error Handler] Client-side error handlers registered')
   }
 
   if (typeof process !== 'undefined' && typeof window === 'undefined') {
@@ -66,4 +67,3 @@ export function setupErrorHandling() {
     })
   }
 }
-
