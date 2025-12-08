@@ -21,15 +21,28 @@ export async function GET(request: NextRequest) {
       // Fetch only fused decks
       const fusedDecks = await fetchFusedDecksFromAPI(playerName)
       logWithTimestamp(`[API Route] Received ${fusedDecks.length} fused decks for player: ${playerName}`)
-      return NextResponse.json(fusedDecks)
+      return NextResponse.json({
+        fused: fusedDecks,
+        meta: {
+          fusedCount: fusedDecks.length,
+          fusedPages: fusedDecks.length > 0 ? 1 : 0,
+        },
+      })
     } else if (type === 'regular') {
       // Fetch only regular decks
-      const decks = await getPlayerDecks(playerName)
+      const { decks, meta } = await getPlayerDecks(playerName)
       logWithTimestamp(`[API Route] Received ${decks.length} regular decks for player: ${playerName}`)
-      return NextResponse.json(decks)
+      return NextResponse.json({
+        regular: decks,
+        meta: {
+          regularCount: decks.length,
+          regularPages: meta.pages,
+          total: decks.length,
+        },
+      })
     } else {
       // Fetch both regular and fused decks
-      const [regularDecks, fusedDecks] = await Promise.all([
+      const [{ decks: regularDecks, meta }, fusedDecks] = await Promise.all([
         getPlayerDecks(playerName),
         fetchFusedDecksFromAPI(playerName)
       ])
@@ -39,7 +52,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         regular: regularDecks,
         fused: fusedDecks,
-        total: regularDecks.length + fusedDecks.length
+        total: regularDecks.length + fusedDecks.length,
+        meta: {
+          regularCount: regularDecks.length,
+          fusedCount: fusedDecks.length,
+          total: regularDecks.length + fusedDecks.length,
+          regularPages: meta.pages,
+          fusedPages: fusedDecks.length > 0 ? 1 : 0,
+        },
       })
     }
   } catch (error) {

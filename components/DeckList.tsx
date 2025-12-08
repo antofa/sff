@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useMemo, useEffect, useRef, useLayoutEffect, useTransition, useCallback } from 'react'
+import { pluralize } from '@/lib/pluralize'
 import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
-import { useDebouncedValue } from '@mantine/hooks'
+import { useDebouncedValue, useResizeObserver } from '@mantine/hooks'
+import { useVirtualizer, useWindowVirtualizer } from '@tanstack/react-virtual'
 import type { Deck } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo } from '@/lib/api'
@@ -67,13 +69,32 @@ function getExpiryTimestamp(deck: Deck): number | null {
   const deckAny = deck as any
   const expireRaw =
     deckAny?.expireAt ??
+    deckAny?.expire ??
     deckAny?.expire_at ??
     deckAny?.expireDate ??
     deckAny?.expire_date ??
+    deckAny?.pExpiry ??
     null
   if (!expireRaw) return null
   const ts = new Date(expireRaw).getTime()
   return Number.isNaN(ts) ? null : ts
+}
+
+// Helper to determine border colors based on expiry status
+function getBorderColors(deck: Deck, now: number) {
+  let borderColor = 'rgba(74, 144, 226, 0.6)'
+  let hoverBorderColor = 'rgba(74, 144, 226, 0.9)'
+  const expiryTs = getExpiryTimestamp(deck)
+  if (expiryTs !== null) {
+    if (expiryTs < now) {
+      borderColor = 'rgba(0, 0, 0, 1)'
+      hoverBorderColor = 'rgba(0, 0, 0, 1)'
+    } else {
+      borderColor = 'rgba(220, 38, 38, 0.8)'
+      hoverBorderColor = 'rgba(220, 38, 38, 1)'
+    }
+  }
+  return { borderColor, hoverBorderColor }
 }
 
 // Helper function to determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
@@ -118,10 +139,20 @@ function getDeckSet(deck: Deck): string | null {
 
 // Helper function to count cards as sum of creatures + spells + solbind (excluding Forgeborn)
 function countPlayableCards(deck: Deck): { total: number; creatures: number; spells: number; solbind: number } {
-  if (!deck.cards || !Array.isArray(deck.cards)) return { total: 0, creatures: 0, spells: 0, solbind: 0 }
+  // Support cards, cardList, or object map of cards
+  let rawCards: any[] = []
+  if (Array.isArray((deck as any).cardList)) {
+    rawCards = (deck as any).cardList
+  } else if (deck.cards && Array.isArray(deck.cards)) {
+    rawCards = deck.cards
+  } else if (deck.cards && typeof deck.cards === 'object') {
+    rawCards = Object.values(deck.cards)
+  }
+
+  if (!rawCards || rawCards.length === 0) return { total: 0, creatures: 0, spells: 0, solbind: 0 }
   
   // Normalize cards
-  const normalizedCards = deck.cards.map((card: any, index: number) => {
+  const normalizedCards = rawCards.map((card: any, index: number) => {
     if (typeof card === 'string') {
       return getCardInfo(card)
     } else if (typeof card === 'object' && card !== null) {
@@ -133,16 +164,32 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
   
   // Extract Solbind card IDs from solbindCards arrays (same logic as DeckDetails)
   const solbindCardIds = new Set<string>()
+  let solbindCount = 0
+
   normalizedCards.forEach(card => {
     const cardData = card as any
     if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-      cardData.solbindCards.forEach((solbindCard: any) => {
-        if (solbindCard && solbindCard.id) {
-          solbindCardIds.add(solbindCard.id)
+      solbindCount += cardData.solbindCards.length
+      cardData.solbindCards.forEach((solbindCard: any, sbIdx: number) => {
+        if (!solbindCard) return
+        const sbId = solbindCard.id || solbindCard.cardId || solbindCard.name || `solbind-${card.id || 'card'}-${sbIdx}`
+        if (sbId) {
+          solbindCardIds.add(sbId)
         }
       })
     }
   })
+  // Also add Solbind IDs from forgeborn.solbindCards if present
+  if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
+    solbindCount += (deck as any).forgeborn.solbindCards.length
+    ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any, sbIdx: number) => {
+      if (!solbindCard) return
+      const sbId = solbindCard.id || solbindCard.cardId || solbindCard.name || `solbind-forgeborn-${sbIdx}`
+      if (sbId) {
+        solbindCardIds.add(sbId)
+      }
+    })
+  }
   
   // Identify Forgeborn
   const forgebornId = deck.forgebornId
@@ -169,20 +216,32 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
   
   // Collect Solbind cards (same logic as DeckDetails)
   const solbindCardObjects: any[] = []
-  
+
   // First, extract Solbind cards from solbindCards arrays
   normalizedCards.forEach(card => {
     const cardData = card as any
     if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-      cardData.solbindCards.forEach((solbindCard: any) => {
-        if (solbindCard && solbindCard.id) {
-          if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-            solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-          }
+      cardData.solbindCards.forEach((solbindCard: any, sbIdx: number) => {
+        if (!solbindCard) return
+        const sbId = solbindCard.id || solbindCard.cardId || solbindCard.name || `solbind-${card.id || 'card'}-${sbIdx}`
+        if (!solbindCardObjects.some(sb => sb.id === sbId)) {
+          solbindCardObjects.push(getCardInfo(sbId, { ...solbindCard, id: sbId }))
         }
       })
     }
   })
+
+  // Also extract Solbind cards from forgeborn.solbindCards (if not already in normalizedCards)
+  if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
+    ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any, sbIdx: number) => {
+      if (!solbindCard) return
+      const sbId = solbindCard.id || solbindCard.cardId || solbindCard.name || `solbind-forgeborn-${sbIdx}`
+      if (!sbId) return
+      if (!solbindCardObjects.some(sb => sb.id === sbId)) {
+        solbindCardObjects.push(getCardInfo(sbId, { ...solbindCard, id: sbId }))
+      }
+    })
+  }
   
   // Also check for cards in normalizedCards that are solbind cards
   normalizedCards.forEach(card => {
@@ -212,7 +271,30 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
       }
     }
   })
-  
+  // If a Solbind parent has no embedded solbindCards (API omitted children), assume two child cards
+  const solbindFallbackIds = new Set<string>()
+  normalizedCards.forEach(card => {
+    const cardData = card as any
+    const rarity = (cardData.rarity || '').toString().toLowerCase()
+    const hasChildren = Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0
+    if (rarity.includes('solbind') && !hasChildren) {
+      const baseId = card.id || card.cardId || cardData.name || 'solbind-parent'
+      solbindFallbackIds.add(`${baseId}-sb1`)
+      solbindFallbackIds.add(`${baseId}-sb2`)
+    }
+  })
+  solbindFallbackIds.forEach(id => solbindCardIds.add(id))
+  solbindCount += solbindFallbackIds.size
+
+  // Deduplicate solbindCardObjects by id to avoid over-counting
+  const solbindUniqueMap = new Map<string, any>()
+  solbindCardObjects.forEach(sb => {
+    if (sb?.id && !solbindUniqueMap.has(sb.id)) {
+      solbindUniqueMap.set(sb.id, sb)
+    }
+  })
+  const solbindCardsUnique = Array.from(solbindUniqueMap.values())
+
   // Categorize remaining cards
   let creatures = 0
   let spells = 0
@@ -224,7 +306,7 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
     // Skip Solbind cards (already counted) - but NOT parent cards with solbindCards
     // Parent cards with solbindCards are regular cards (Spell or Creature)
     const cardData = card as any
-    const isSolbindCard = solbindCardObjects.some(sb => sb.id === card.id)
+    const isSolbindCard = solbindCardsUnique.some(sb => sb.id === card.id)
     
     // Only skip if it's a Solbind card AND not a parent card
     if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
@@ -247,9 +329,9 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
     
     // Check cardType from original data first, then normalized
     const originalCardType = originalCard && typeof originalCard === 'object'
-      ? (originalCard.cardType || originalCard.card_type || '')
+      ? (originalCard.cardType || (originalCard as any).card_type || (originalCard as any).type || '')
       : ''
-    const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+    const cardType = cardData.cardType || cardData.card_type || cardData.type || originalCardType || ''
     
     // Determine if spell based ONLY on cardType
     // If cardType is "Spell", it's a spell, otherwise it's a creature (default)
@@ -263,14 +345,896 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
     }
   })
   
-  const solbind = solbindCardObjects.length
-  
-  return { total: creatures + spells + solbind, creatures, spells, solbind }
+  let solbind = Math.max(solbindCardIds.size, solbindCardsUnique.length, solbindCount)
+  // Heuristic: if only one Solbind child is visible from partial data, assume a missing partner
+  if (solbind < 2 && solbindCardIds.size === 1 && solbindCount === 0) {
+    solbind = 2
+  }
+
+  // Total cards: base card list (includes parents) plus Solbind children
+  const total = normalizedCards.length + solbind
+
+  return { total, creatures, spells, solbind }
+}
+
+// Shared deck card renderers (used by virtualized rows)
+function RegularDeckCard({
+  deck,
+  handleDeckClick,
+}: {
+  deck: Deck
+  handleDeckClick: (deck: Deck) => void
+}) {
+  const [renderNow] = useState(() => Date.now())
+  const { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
+  const expiryTs = getExpiryTimestamp(deck)
+  const isExpired = expiryTs !== null && expiryTs < renderNow
+
+  return (
+    <Grid.Col key={deck.id} span={{ base: 12, sm: 6, md: 4 }}>
+      <Paper
+        data-deck-id={deck.id}
+        p="lg"
+        onClick={() => handleDeckClick(deck)}
+        className="h-full backdrop-blur-md border rounded-xl transition-all cursor-pointer hover:shadow-xl hover:shadow-sf-primary/20 hover:scale-[1.02]"
+        style={{
+          backgroundColor: 'rgba(30, 41, 59, 0.5)',
+          borderColor,
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(74, 144, 226, 0.1)',
+          minHeight: '200px',
+          transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = hoverBorderColor
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = borderColor
+        }}
+      >
+        <Stack gap="sm">
+          {(deck as any).playerName && (
+            <Group gap="xs" wrap="wrap">
+              <Badge
+                color="teal"
+                variant="light"
+                size="sm"
+                radius="sm"
+                component="a"
+                href={`/player/${encodeURIComponent((deck as any).playerName)}`}
+                style={{ textDecoration: 'none' }}
+              >
+                Owner: {(deck as any).playerName}
+              </Badge>
+              {expiryTs !== null && (
+                <Badge
+                  color={undefined}
+                  variant="filled"
+                  size="sm"
+                  radius="sm"
+                  style={
+                    isExpired
+                      ? {
+                          backgroundColor: '#000',
+                          color: '#fff',
+                          border: '1px solid #000',
+                        }
+                      : {
+                          backgroundColor: '#b32626',
+                          color: '#fff',
+                          border: '1px solid #b32626',
+                        }
+                  }
+                >
+                  Expire: {new Date(expiryTs).toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </Badge>
+              )}
+            </Group>
+          )}
+
+          <Title order={4} className="text-white flex-1" lineClamp={2}>
+            {deck.name || 'Untitled'}
+          </Title>
+
+          <Group gap={8}>
+            <Group gap={4}>
+              {deck.faction && (
+                <Image
+                  src={`/images/icons/${deck.faction.toLowerCase()}.png`}
+                  alt={deck.faction}
+                  h={20}
+                  w="auto"
+                  style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
+                />
+              )}
+              {(() => {
+                const deckSet = getDeckSet(deck)
+                const formattedSet = formatSetName(deckSet)
+                return formattedSet ? (
+                  <Badge color="indigo" variant="light" size="sm">
+                    {formattedSet}
+                  </Badge>
+                ) : null
+              })()}
+            </Group>
+            {deck.cards && Array.isArray(deck.cards) && (
+              <Badge color="blue" variant="light" size="sm" leftSection={<IconCards size={12} />}>
+                {countPlayableCards(deck).total} cards
+              </Badge>
+            )}
+            {deck.deckRank && deck.deckRank !== 'Unranked' && (
+              <Badge
+                color={
+                  deck.deckRank === 'Platinum'
+                    ? 'gray'
+                    : deck.deckRank === 'Gold'
+                      ? 'yellow'
+                      : deck.deckRank === 'Silver'
+                        ? 'gray'
+                        : deck.deckRank === 'Bronze'
+                          ? 'orange'
+                          : 'gray'
+                }
+                variant="light"
+                size="sm"
+              >
+                {deck.deckRank}
+              </Badge>
+            )}
+            {(deck as any).deckScore !== undefined && (deck as any).deckScore !== null && (
+              <Badge color="grape" variant="light" size="sm">
+                Score:{' '}
+                {typeof (deck as any).deckScore === 'number'
+                  ? Math.round((deck as any).deckScore * 100)
+                  : (deck as any).deckScore}
+              </Badge>
+            )}
+            {(deck as any).elo !== undefined && (deck as any).elo !== null && (
+              <Badge color="violet" variant="light" size="sm">
+                ELO:{' '}
+                {typeof (deck as any).elo === 'number' ? Math.round((deck as any).elo) : (deck as any).elo}
+              </Badge>
+            )}
+          </Group>
+
+          {deck.cards && Array.isArray(deck.cards) && (() => {
+            const counts = countPlayableCards(deck)
+            const rarityCounts = new Map<string, number>()
+            const normalizedCards = deck.cards.map((card: any, index: number) => {
+              if (typeof card === 'string') {
+                return getCardInfo(card)
+              } else if (typeof card === 'object' && card !== null) {
+                const cardId = card.id || card.cardId || card.name || `card-${index}`
+                return getCardInfo(cardId, card)
+              }
+              return getCardInfo(`card-${index}`)
+            })
+            const solbindCardIds = new Set<string>()
+            normalizedCards.forEach(card => {
+              const cardData = card as any
+              if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                cardData.solbindCards.forEach((solbindCard: any) => {
+                  if (solbindCard && solbindCard.id) {
+                    solbindCardIds.add(solbindCard.id)
+                  }
+                })
+              }
+            })
+            const forgebornId = deck.forgebornId
+            const forgebornCards: any[] = []
+            if (forgebornId) {
+              const forgeborn = normalizedCards.find(card =>
+                card.id === forgebornId ||
+                (card.id && forgebornId && card.id.includes(forgebornId)) ||
+                (forgebornId && card.id && forgebornId.includes(card.id))
+              )
+              if (forgeborn) {
+                forgebornCards.push(forgeborn)
+              }
+            }
+            if (forgebornCards.length === 0) {
+              const forgebornByType = normalizedCards.find(card =>
+                card.type?.toLowerCase().includes('forgeborn') ||
+                (card as any).cardType?.toLowerCase().includes('forgeborn')
+              )
+              if (forgebornByType) {
+                forgebornCards.push(forgebornByType)
+              }
+            }
+            const solbindCardObjects: any[] = []
+            normalizedCards.forEach(card => {
+              const cardData = card as any
+              if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                cardData.solbindCards.forEach((solbindCard: any) => {
+                  if (solbindCard && solbindCard.id) {
+                    if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+                      solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+                    }
+                  }
+                })
+              }
+            })
+  normalizedCards.forEach(card => {
+    if (forgebornCards.includes(card)) return
+    const cardData = card as any
+    const cardId = card.id
+    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+      return
+    }
+    if (solbindCardIds.has(cardId)) {
+      if (!solbindCardObjects.some(sb => sb.id === cardId)) {
+        solbindCardObjects.push(card)
+      }
+      return
+    }
+    // Do not treat parents with rarity Solbind as Solbind cards themselves
+  })
+            normalizedCards.forEach(card => {
+              if (forgebornCards.includes(card)) return
+              const cardData = card as any
+              const isSolbindCard = solbindCardObjects.some(sb => sb.id === card.id)
+              if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
+                return
+              }
+              const originalCardForType = deck.cards && Array.isArray(deck.cards)
+                ? deck.cards.find((c: any, idx: number) => {
+                    if (typeof c === 'string') {
+                      return c === card.id
+                    }
+                    const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
+                    return cId === card.id
+                  })
+                : null
+              const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+                ? (originalCardForType.cardType || originalCardForType.card_type || '')
+                : ''
+              const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+              const lowerCardType = cardType.toLowerCase()
+              const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+              const rarity = cardData.rarity
+              if (rarity && typeof rarity === 'string') {
+                let normalizedRarity = rarity.trim()
+                const lower = normalizedRarity.toLowerCase()
+                if (lower.includes('solbind')) {
+                  normalizedRarity = 'Solbind'
+                  if (card.id) solbindCardIds.add(card.id)
+                } else if (normalizedRarity.includes('Common') && normalizedRarity.includes('Rare')) {
+                  normalizedRarity = 'Common Rare'
+                } else if (lower.includes('common')) {
+                  normalizedRarity = 'Common'
+                } else if (lower.includes('rare')) {
+                  normalizedRarity = 'Rare'
+                } else if (lower.includes('ls') || lower.includes('legendary')) {
+                  normalizedRarity = 'LS'
+                }
+                const currentCount = rarityCounts.get(normalizedRarity) || 0
+                rarityCounts.set(normalizedRarity, currentCount + 1)
+              }
+            })
+            // Ensure Solbind rarity badge if we have Solbind cards
+            if (solbindCardIds.size > 0 && !rarityCounts.has('Solbind')) {
+              rarityCounts.set('Solbind', solbindCardIds.size)
+            }
+            return (
+              <Stack gap="xs">
+                <Group gap="xs">
+                  {counts.creatures > 0 && (
+                    <Badge color="green" variant="light" size="sm">
+                      {pluralize(counts.creatures, 'Creature')}
+                    </Badge>
+                  )}
+                  {counts.spells > 0 && (
+                    <Badge color="pink" variant="light" size="sm">
+                      {pluralize(counts.spells, 'Spell')}
+                    </Badge>
+                  )}
+                  {counts.solbind > 0 && (
+                    <Badge color="orange" variant="light" size="sm">
+                      {pluralize(counts.solbind, 'Solbind')}
+                    </Badge>
+                  )}
+                </Group>
+                {Array.from(rarityCounts.entries()).length > 0 && (
+                  <Group gap="xs">
+                    {Array.from(rarityCounts.entries())
+                      .sort(([a], [b]) => {
+                        const order: Record<string, number> = {
+                          Common: 1,
+                          'Common Rare': 2,
+                          Rare: 3,
+                          Solbind: 4,
+                          LS: 5,
+                        }
+                        return (order[a] || 99) - (order[b] || 99)
+                      })
+                      .map(([rarity, count]) => {
+                        const getRarityColor = (rarityName: string): string => {
+                          const normalized = rarityName.toLowerCase()
+                          if (normalized.includes('common') && normalized.includes('rare')) return '#0e87cf'
+                          if (normalized.includes('rare') && !normalized.includes('common')) return '#e6b70c'
+                          if (normalized.includes('solbind')) return '#75cec4'
+                          if (normalized.includes('common')) return '#1199e3'
+                          if (normalized.includes('ls')) return '#a90100'
+                          return '#1199e3'
+                        }
+                        return (
+                          <Badge
+                            key={rarity}
+                            variant="light"
+                            size="sm"
+                            style={{ backgroundColor: getRarityColor(rarity), color: 'white', border: 'none' }}
+                          >
+                            {count} {rarity}
+                          </Badge>
+                        )
+                      })}
+                  </Group>
+                )}
+              </Stack>
+            )
+          })()}
+
+          {(() => {
+            const expiryDate = getExpiryTimestamp(deck)
+            const isExpired = expiryDate !== null && expiryDate < renderNow
+            const receiptDate = (deck as any).updatedAt
+
+            return receiptDate ? (
+              <Group gap="xs" className="text-gray-400 text-sm">
+                <IconCalendar size={14} />
+                <Text size="xs">
+                  Updated at:{' '}
+                  {new Date(receiptDate).toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </Text>
+              </Group>
+            ) : null
+          })()}
+
+          {(() => {
+            const hasTags =
+              deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags) && Object.keys(deck.tags).length > 0
+            let tagsToDisplay: string[] = []
+            if (hasTags) {
+              tagsToDisplay = Object.entries(deck.tags)
+                .map(([key, value]) => {
+                  if (value === null || value === undefined || value === '') return null
+                  if (key === 'none' && (!value || value === '')) return null
+                  if (typeof value === 'string' && value.trim() === '') return null
+                  let tagText: string | null = null
+                  if (typeof value === 'string' && value.trim() !== '') {
+                    tagText = value.trim()
+                  } else if (typeof value === 'number' || typeof value === 'boolean') {
+                    tagText = String(value)
+                  } else if (key && key !== 'none' && !key.startsWith('tag_')) {
+                    tagText = key
+                  } else if (key && key.startsWith('tag_')) {
+                    return null
+                  }
+                  return tagText && tagText.trim() !== '' ? tagText.trim() : null
+                })
+                .filter((tag): tag is string => tag !== null)
+            } else if (deck.cards && Array.isArray(deck.cards)) {
+              const providesSet = new Set<string>()
+              deck.cards.forEach((card: any) => {
+                if (card && typeof card === 'object') {
+                  const provides = card.provides || card.Provides
+                  if (provides) {
+                    if (typeof provides === 'string') {
+                      provides.split(',').forEach((p: string) => {
+                        const trimmed = p.trim()
+                        if (trimmed) {
+                          providesSet.add(trimmed)
+                        }
+                      })
+                    } else if (Array.isArray(provides)) {
+                      provides.forEach((p: string) => {
+                        if (p && typeof p === 'string') {
+                          const trimmed = p.trim()
+                          if (trimmed) {
+                            providesSet.add(trimmed)
+                          }
+                        }
+                      })
+                    }
+                  }
+                }
+              })
+              tagsToDisplay = Array.from(providesSet).sort()
+            }
+            if (tagsToDisplay.length === 0) return null
+            return (
+              <Group gap="xs" className="mt-2 flex-wrap">
+                {tagsToDisplay.map((tagText) => (
+                  <Badge key={`${deck.id}-${tagText}`} color="violet" variant="light" size="sm">
+                    {tagText.toUpperCase()}
+                  </Badge>
+                ))}
+              </Group>
+            )
+          })()}
+        </Stack>
+      </Paper>
+    </Grid.Col>
+  )
+}
+
+function FusedDeckCard({
+  deck,
+  sourceDecks,
+  handleDeckClick,
+  deckTagsMap,
+  allDecks,
+}: {
+  deck: Deck
+  sourceDecks?: [Deck | null, Deck | null]
+  handleDeckClick: (deck: Deck) => void
+  deckTagsMap?: Record<string, string[]>
+  allDecks?: Deck[]
+}) {
+  const [renderNow] = useState(() => Date.now())
+  const fusedDeckAny = deck as any
+  const [deck1, deck2] = sourceDecks || [null, null]
+
+  // Helper to pull cards from any deck-like object
+  const extractCards = (d: any): any[] => {
+    if (!d || typeof d !== 'object') return []
+    if (Array.isArray(d.cardList) && d.cardList.length > 0) return d.cardList
+    if (Array.isArray(d.cards) && d.cards.length > 0) return d.cards
+    if (Array.isArray(d.cardIds) && d.cardIds.length > 0) return d.cardIds
+    if (d.cards && typeof d.cards === 'object') return Object.values(d.cards)
+    return []
+  }
+
+  // Fast lookup map for all decks by id (when provided)
+  const allDecksMap = useMemo(() => {
+    if (!Array.isArray(allDecks)) return new Map<string, Deck>()
+    const m = new Map<string, Deck>()
+    allDecks.forEach(d => {
+      if (d?.id) m.set(d.id, d)
+    })
+    return m
+  }, [allDecks])
+
+  const pluralize = (count: number, one: string, many?: string) =>
+    `${count} ${count === 1 ? one : many || `${one}s`}`
+
+  // Pick first two available source decks: prefer myDecks, then provided sourceDecks, then fusedDeckIds from allDecks
+  const sourceCandidates: Deck[] = []
+  if (Array.isArray(fusedDeckAny.myDecks)) {
+    fusedDeckAny.myDecks.forEach((d: any) => {
+      if (d && typeof d === 'object') sourceCandidates.push(d as Deck)
+    })
+  }
+  if (deck1) sourceCandidates.push(deck1)
+  if (deck2) sourceCandidates.push(deck2)
+  if (sourceCandidates.length < 2 && Array.isArray(fusedDeckAny.fusedDeckIds) && Array.isArray(allDecks)) {
+    fusedDeckAny.fusedDeckIds.forEach((id: string) => {
+      const found = allDecks.find(d => d.id === id)
+      if (found) {
+        sourceCandidates.push(found)
+      }
+    })
+  }
+  const pickedSources = sourceCandidates.slice(0, 2)
+
+  const factionSets: Array<{ faction: string; setNo: string | number | null }> = []
+  pickedSources.forEach((src) => {
+    if (src?.faction) {
+      const setNo = getDeckSet(src)
+      factionSets.push({ faction: src.faction, setNo: setNo || null })
+    }
+  })
+  if (factionSets.length === 0 && deck.faction) {
+    const deckSet = getDeckSet(deck)
+    factionSets.push({ faction: deck.faction, setNo: deckSet || null })
+  }
+
+  // Collect cards for rarity counts and tags display
+  const aggregateCards = (): any[] => {
+    const cards: any[] = []
+
+    // 1) Try myDecks halves; if they lack cards, fill from allDecks by id
+    if (Array.isArray(fusedDeckAny.myDecks)) {
+      fusedDeckAny.myDecks.forEach((d: any) => {
+        const fromSelf = extractCards(d)
+        if (fromSelf.length > 0) {
+          cards.push(...fromSelf)
+        } else if (d?.id && allDecksMap.has(d.id)) {
+          const mapped = extractCards(allDecksMap.get(d.id))
+          if (mapped.length > 0) cards.push(...mapped)
+        }
+      })
+    }
+
+    // 2) Otherwise, use pickedSources (from props or fusedDeckIds from allDecks)
+    if (cards.length === 0) {
+      pickedSources.forEach(src => {
+        if (!src) return
+        const extracted = extractCards(src)
+        if (extracted.length > 0) {
+          cards.push(...extracted)
+        } else if (src.id && allDecksMap.has(src.id)) {
+          const mapped = extractCards(allDecksMap.get(src.id))
+          if (mapped.length > 0) cards.push(...mapped)
+        }
+      })
+    }
+
+    // 3) If still empty, try fusedDeckIds lookup directly
+    if (cards.length === 0 && Array.isArray(fusedDeckAny.fusedDeckIds)) {
+      fusedDeckAny.fusedDeckIds.forEach((id: string) => {
+        const mapped = id && allDecksMap.has(id) ? extractCards(allDecksMap.get(id)) : []
+        if (mapped.length > 0) cards.push(...mapped)
+      })
+    }
+
+    // 4) If still empty, fallback to cards on fused deck itself
+    if (cards.length === 0) {
+      cards.push(...extractCards(deck))
+    }
+
+    // Also add Solbind cards from solbindCards arrays and forgeborn.solbindCards
+    const solbindSet = new Set<string>()
+    const solbindCards: any[] = []
+
+    const maybeAddSolbind = (sb: any) => {
+      if (sb && typeof sb === 'object' && sb.id) {
+        if (!solbindSet.has(sb.id)) {
+          solbindSet.add(sb.id)
+          solbindCards.push(getCardInfo(sb.id, sb))
+        }
+      }
+    }
+
+    // From cards' solbindCards
+    cards.forEach((card: any, idx: number) => {
+      const cardData = typeof card === 'string' ? getCardInfo(card) : getCardInfo(card.id || card.cardId || card.name || `card-${idx}`, card)
+      if (cardData && (cardData as any).solbindCards && Array.isArray((cardData as any).solbindCards)) {
+        ;(cardData as any).solbindCards.forEach((sb: any) => maybeAddSolbind(sb))
+      }
+    })
+
+    // From deck forgeborn solbindCards
+    if (deck && (deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
+      ;(deck as any).forgeborn.solbindCards.forEach((sb: any) => maybeAddSolbind(sb))
+    }
+
+    return [...cards, ...solbindCards]
+  }
+
+  const counts = (() => {
+    const agg = aggregateCards()
+    if (agg.length > 0) {
+      let creatures = 0
+      let spells = 0
+      let solbind = 0
+      agg.forEach((card: any, idx: number) => {
+        const info = typeof card === 'string'
+          ? getCardInfo(card)
+          : getCardInfo(card.id || card.cardId || card.name || `card-${idx}`, card)
+        const cardData = info as any
+        const cardType = (cardData.cardType || cardData.card_type || '').toLowerCase()
+        const isSpell = cardType.includes('spell') && !cardType.includes('creature')
+        const isSolbind = cardData.rarity && String(cardData.rarity).toLowerCase().includes('solbind')
+        if (isSolbind) solbind += 1
+        else if (isSpell) spells += 1
+        else creatures += 1
+      })
+      return { total: creatures + spells + solbind, creatures, spells, solbind }
+    }
+
+    const sources = pickedSources.filter(Boolean) as Deck[]
+    if (sources.length > 0) {
+      const summed = sources.reduce(
+        (acc, src) => {
+          const c = countPlayableCards(src)
+          return {
+            total: acc.total + c.total,
+            creatures: acc.creatures + c.creatures,
+            spells: acc.spells + c.spells,
+            solbind: acc.solbind + c.solbind,
+          }
+        },
+        { total: 0, creatures: 0, spells: 0, solbind: 0 }
+      )
+      if (summed.total > 0) return summed
+    }
+    if (deck.cards && Array.isArray(deck.cards) && deck.cards.length > 0) {
+      return countPlayableCards(deck)
+    }
+    return { total: 0, creatures: 0, spells: 0, solbind: 0 }
+  })()
+
+  const rarityCounts = (() => {
+    const cards = aggregateCards()
+    const counts = new Map<string, number>()
+
+    const solbindIds = new Set<string>()
+    let solbindByRarity = 0
+
+    cards.forEach((card: any, idx: number) => {
+      const info =
+        typeof card === 'string'
+          ? getCardInfo(card)
+          : getCardInfo(card.id || card.cardId || card.name || `card-${idx}`, card)
+      const rarity = (info as any)?.rarity
+      const cardData = info as any
+      const isParentSolbind = !!(cardData.solbindCards && Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0)
+      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+        cardData.solbindCards.forEach((sb: any) => {
+          if (sb?.id) solbindIds.add(sb.id)
+        })
+      }
+      // Also treat cards with Solbind rarity themselves
+      const isSolbindRarity = rarity && typeof rarity === 'string' && rarity.toLowerCase().includes('solbind')
+      if (isSolbindRarity) {
+        const solbindId =
+          cardData.id ||
+          cardData.cardId ||
+          cardData.card_id ||
+          cardData.name ||
+          `card-${idx}`
+        if (solbindId) {
+          solbindIds.add(solbindId)
+          solbindByRarity += 1
+        }
+      }
+      // Не считаем родительскую Solbind‑карту в бейдж редкостей (считаем только дочерние Solbind)
+      if (!isParentSolbind && rarity && typeof rarity === 'string') {
+        let normalized = rarity.trim()
+        if (normalized.includes('Common') && normalized.includes('Rare')) normalized = 'Common Rare'
+        else if (normalized.toLowerCase().includes('common')) normalized = 'Common'
+        else if (normalized.toLowerCase().includes('rare')) normalized = 'Rare'
+        else if (normalized.toLowerCase().includes('ls') || normalized.toLowerCase().includes('legendary'))
+          normalized = 'LS'
+        counts.set(normalized, (counts.get(normalized) || 0) + 1)
+      }
+    })
+    const solbindTotal = Math.max(solbindIds.size, solbindByRarity)
+    if (solbindTotal > 0) {
+      counts.set('Solbind', (counts.get('Solbind') || 0) + solbindTotal)
+    }
+    return counts
+  })()
+
+  // Guarantee a Solbind rarity badge when solbind cards are present
+  if (counts.solbind > 0 && !rarityCounts.has('Solbind')) {
+    rarityCounts.set('Solbind', counts.solbind)
+  }
+
+  const { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
+
+  return (
+    <Grid.Col key={deck.id} span={{ base: 12, sm: 6, md: 4 }}>
+      <Paper
+        data-deck-id={deck.id}
+        p="lg"
+        onClick={() => handleDeckClick(deck)}
+        className="h-full backdrop-blur-md border border-sf-primary/20 rounded-xl hover:border-sf-primary/50 transition-all cursor-pointer hover:shadow-xl hover:shadow-sf-primary/20 hover:scale-[1.02]"
+        style={{
+          backgroundColor: 'rgba(30, 41, 59, 0.5)',
+          borderColor,
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(74, 144, 226, 0.1)',
+          minHeight: '200px',
+          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = hoverBorderColor
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = borderColor
+        }}
+      >
+        <Stack gap="sm">
+          <Group justify="space-between" align="flex-start" wrap="nowrap">
+            <Title order={4} className="text-white flex-1" lineClamp={2}>
+              {deck.name || 'Untitled'}
+            </Title>
+          </Group>
+
+          <Group gap={8}>
+            {(deck as any).deckRank && (
+              <Badge color="yellow" variant="light" size="sm">
+                Rank: {(deck as any).deckRank}
+              </Badge>
+            )}
+            {(deck as any).elo !== undefined && (
+              <Badge color="violet" variant="light" size="sm">
+                ELO: {(deck as any).elo}
+              </Badge>
+            )}
+          </Group>
+
+          <Group gap="xs">
+            <Badge color="blue" variant="light" size="sm">
+              Fused deck
+            </Badge>
+          </Group>
+
+          {factionSets.length > 0 && (
+            <Group gap={6} wrap="wrap">
+              {factionSets.map((item, idx) => (
+                <Group key={`${deck.id}-faction-${idx}`} gap={6} wrap="nowrap" align="center">
+                  <Image
+                    src={`/images/icons/${item.faction.toLowerCase()}.png`}
+                    alt={item.faction}
+                    h={18}
+                    w="auto"
+                    style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
+                  />
+                  {item.setNo && (
+                    <Badge color="indigo" variant="light" size="sm">
+                      {formatSetName(item.setNo)}
+                    </Badge>
+                  )}
+                </Group>
+              ))}
+            </Group>
+          )}
+
+          <Group gap="xs">
+            <Badge color="blue" variant="light" size="sm" leftSection={<IconCards size={12} />}>
+              {pluralize(counts.total, 'card')}
+            </Badge>
+          </Group>
+
+          <Group gap="xs">
+            <Badge color="green" variant="light" size="sm">
+              {pluralize(counts.creatures, 'Creature')}
+            </Badge>
+            <Badge color="pink" variant="light" size="sm">
+              {pluralize(counts.spells, 'Spell')}
+            </Badge>
+            {counts.solbind > 0 && (
+              <Badge color="orange" variant="light" size="sm">
+                {pluralize(counts.solbind, 'Solbind')}
+              </Badge>
+            )}
+          </Group>
+
+          {(() => {
+            if (rarityCounts.size === 0) return null
+            const getRarityColor = (rarityName: string): string => {
+              const normalized = rarityName.toLowerCase()
+              if (normalized.includes('solbind')) return '#2dd4bf'
+              if (normalized.includes('common') && normalized.includes('rare')) return '#0e87cf'
+              if (normalized.includes('rare') && !normalized.includes('common')) return '#e6b70c'
+              if (normalized.includes('common')) return '#1199e3'
+              if (normalized.includes('ls')) return '#a90100'
+              return '#1199e3'
+            }
+            return (
+              <Group gap="xs" className="flex-wrap">
+                {Array.from(rarityCounts.entries())
+                  .sort(([a], [b]) => {
+                    const order: Record<string, number> = {
+                      Solbind: 0,
+                      Common: 1,
+                      'Common Rare': 2,
+                      Rare: 3,
+                      LS: 4,
+                    }
+                    return (order[a] || 99) - (order[b] || 99)
+                  })
+                  .map(([rarity, count]) => (
+                    <Badge
+                      key={`${deck.id}-${rarity}`}
+                      variant="light"
+                      size="sm"
+                      style={{ backgroundColor: getRarityColor(rarity), color: 'white', border: 'none' }}
+                    >
+                      {count} {rarity}
+                    </Badge>
+                  ))}
+              </Group>
+            )
+          })()}
+
+          {(() => {
+            const hasTags =
+              deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags) && Object.keys(deck.tags).length > 0
+            let tagsToDisplay: string[] = []
+            if (hasTags) {
+              tagsToDisplay = Object.entries(deck.tags)
+                .map(([key, value]) => {
+                  if (value === null || value === undefined || value === '') return null
+                  if (typeof value === 'string' && value.trim() === '') return null
+                  if (typeof value === 'string') return value.trim()
+                  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+                  if (key && key !== 'none' && !key.startsWith('tag_')) return key
+                  return null
+                })
+                .filter((t): t is string => !!t)
+            } else if (deckTagsMap && deckTagsMap[deck.id]?.length) {
+              tagsToDisplay = deckTagsMap[deck.id]
+            } else if (pickedSources.length > 0) {
+              // Union всех тегов из исходных колод
+              const tagSet = new Set<string>()
+              pickedSources.forEach(src => {
+                if (src?.tags && typeof src.tags === 'object' && !Array.isArray(src.tags)) {
+                  Object.entries(src.tags).forEach(([key, value]) => {
+                    if (value === null || value === undefined || value === '') return
+                    if (typeof value === 'string' && value.trim() === '') return
+                    if (typeof value === 'string') tagSet.add(value.trim())
+                    else if (typeof value === 'number' || typeof value === 'boolean') tagSet.add(String(value))
+                    else if (key && key !== 'none' && !key.startsWith('tag_')) tagSet.add(key)
+                  })
+                }
+              })
+              tagsToDisplay = Array.from(tagSet)
+            } else {
+              // Fallback: collect provides from aggregated cards (source decks)
+              const providesSet = new Set<string>()
+              aggregateCards().forEach((card: any) => {
+                if (card && typeof card === 'object') {
+                  const provides = card.provides || card.Provides
+                  if (provides) {
+                    if (typeof provides === 'string') {
+                      provides.split(',').forEach((p: string) => {
+                        const trimmed = p.trim()
+                        if (trimmed) providesSet.add(trimmed)
+                      })
+                    } else if (Array.isArray(provides)) {
+                      provides.forEach((p: string) => {
+                        if (p && typeof p === 'string') {
+                          const trimmed = p.trim()
+                          if (trimmed) providesSet.add(trimmed)
+                        }
+                      })
+                    }
+                  }
+                }
+              })
+              tagsToDisplay = Array.from(providesSet).sort()
+            }
+            if (tagsToDisplay.length === 0) return null
+            return (
+              <Group gap="xs" className="mt-2 flex-wrap">
+                {tagsToDisplay.map((tagText) => (
+                  <Badge key={`${deck.id}-${tagText}`} color="violet" variant="light" size="sm">
+                    {tagText.toUpperCase()}
+                  </Badge>
+                ))}
+              </Group>
+            )
+          })()}
+
+          {(() => {
+            const receiptDate = (deck as any).updatedAt
+            if (!receiptDate) return null
+            return (
+              <Group gap="xs" className="text-gray-400 text-sm">
+                <IconCalendar size={14} />
+                <Text size="xs">
+                  Updated at:{' '}
+                  {new Date(receiptDate).toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </Text>
+              </Group>
+            )
+          })()}
+        </Stack>
+      </Paper>
+    </Grid.Col>
+  )
 }
 
 interface DeckListProps {
   decks: Deck[]
   fusedDecks?: Deck[]
+  precomputedTags?: string[]
+  precomputedCardNames?: string[]
+  deckTagsMap?: Record<string, string[]>
 }
 
 interface FilterState {
@@ -305,7 +1269,7 @@ interface FilterState {
 
 type ViewMode = 'decks' | 'fused' | 'both'
 
-export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
+export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, deckTagsMap = {} }: DeckListProps) {
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null)
   const [detailsOpened, setDetailsOpened] = useState(false)
   const [parentFusedDeck, setParentFusedDeck] = useState<Deck | null>(null)
@@ -356,6 +1320,10 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
   
   // Collect all unique card names from all decks for the dropdown
   const allCardNames = useMemo(() => {
+    if (precomputedCardNames && precomputedCardNames.length > 0) {
+      return [...precomputedCardNames].sort()
+    }
+
     const cardNamesSet = new Set<string>()
     
     decks.forEach(deck => {
@@ -373,7 +1341,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     })
     
     return Array.from(cardNamesSet).sort()
-  }, [decks])
+  }, [decks, precomputedCardNames])
   
   // Collect all unique deck names from all decks for the dropdown
   const allDeckNames = useMemo(() => {
@@ -471,6 +1439,10 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
   
   // Collect all unique tags from all decks for the dropdown
   const allTags = useMemo(() => {
+    if (precomputedTags && precomputedTags.length > 0) {
+      return [...precomputedTags].sort()
+    }
+
     const tagsSet = new Set<string>()
     
     // Process both regular decks and fused decks
@@ -544,7 +1516,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     })
     
     return Array.from(tagsSet).sort()
-  }, [decks, fusedDecks])
+  }, [decks, fusedDecks, precomputedTags])
   
   // Collect all unique creature types from all decks for the dropdown with counts
   const allCreatureTypes = useMemo(() => {
@@ -1212,50 +2184,55 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
       // Filter by tags (must have ALL selected tags)
       if (debouncedFilters.tags.length > 0) {
         const searchTags = debouncedFilters.tags.map(t => t.trim().toLowerCase()).filter(Boolean)
-        const deckTags: string[] = []
-        
-        // Collect tags from deck.tags
-        if (deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags)) {
-          Object.entries(deck.tags).forEach(([key, value]) => {
-            // Skip empty tags
-            if (value === null || value === undefined || value === '') {
-              return
-            }
-            
-            let tagText: string | null = null
-            if (typeof value === 'string' && value.trim() !== '') {
-              tagText = value.trim().toLowerCase()
-            } else if (typeof value === 'number' || typeof value === 'boolean') {
-              tagText = String(value).toLowerCase()
-            } else if (key && key !== 'none' && !key.startsWith('tag_')) {
-              tagText = key.toLowerCase()
-            }
-            
-            if (tagText) {
-              deckTags.push(tagText)
+        let deckTags: string[] = []
+
+        const preTags = deckTagsMap[deck.id]
+        if (preTags && Array.isArray(preTags)) {
+          deckTags = preTags.map((t) => t.toLowerCase())
+        } else {
+          // Collect tags from deck.tags
+          if (deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags)) {
+            Object.entries(deck.tags).forEach(([key, value]) => {
+              // Skip empty tags
+              if (value === null || value === undefined || value === '') {
+                return
+              }
+              
+              let tagText: string | null = null
+              if (typeof value === 'string' && value.trim() !== '') {
+                tagText = value.trim().toLowerCase()
+              } else if (typeof value === 'number' || typeof value === 'boolean') {
+                tagText = String(value).toLowerCase()
+              } else if (key && key !== 'none' && !key.startsWith('tag_')) {
+                tagText = key.toLowerCase()
+              }
+              
+              if (tagText) {
+                deckTags.push(tagText)
+              }
+            })
+          }
+          
+          // Collect tags from card provides
+          normalizedCards.forEach((card: any) => {
+            const provides = card.provides || card.Provides
+            if (provides) {
+              if (typeof provides === 'string') {
+                provides.split(',').forEach((p: string) => {
+                  const trimmed = p.trim().toLowerCase()
+                  if (trimmed) deckTags.push(trimmed)
+                })
+              } else if (Array.isArray(provides)) {
+                provides.forEach((p: string) => {
+                  if (p && typeof p === 'string') {
+                    const trimmed = p.trim().toLowerCase()
+                    if (trimmed) deckTags.push(trimmed)
+                  }
+                })
+              }
             }
           })
         }
-        
-        // Collect tags from card provides
-        normalizedCards.forEach((card: any) => {
-          const provides = card.provides || card.Provides
-          if (provides) {
-            if (typeof provides === 'string') {
-              provides.split(',').forEach((p: string) => {
-                const trimmed = p.trim().toLowerCase()
-                if (trimmed) deckTags.push(trimmed)
-              })
-            } else if (Array.isArray(provides)) {
-              provides.forEach((p: string) => {
-                if (p && typeof p === 'string') {
-                  const trimmed = p.trim().toLowerCase()
-                  if (trimmed) deckTags.push(trimmed)
-                }
-              })
-            }
-          }
-        })
         
         // Check if deck has ALL selected tags
         const hasAllTags = searchTags.every(searchTag => 
@@ -2037,7 +3014,7 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
       
       return true
     })
-  }, [debouncedFilters, hasActiveFilters])
+  }, [debouncedFilters, hasActiveFilters, deckTagsMap])
   
   // Helper function to sort decks
   const sortDecks = useCallback((deckArray: Deck[]): Deck[] => {
@@ -2110,6 +3087,46 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
     const filtered = filterDeckArray(filteredFusedDecksByExpiry)
     return sortDecks(filtered)
   }, [filteredFusedDecksByExpiry, filterDeckArray, sortDecks])
+
+  // Virtualization setup (after filtered decks are computed)
+  const [regularListRef, rect] = useResizeObserver()
+  const [fusedListRef, fusedRect] = useResizeObserver()
+  const columnCount = useMemo(() => {
+    const width = rect.width || 1200
+    if (width < 640) return 1
+    if (width < 960) return 2
+    return 3
+  }, [rect.width])
+  const fusedColumnCount = useMemo(() => {
+    const width = fusedRect.width || 1200
+    if (width < 640) return 1
+    if (width < 960) return 2
+    return 3
+  }, [fusedRect.width])
+  const estimatedRowHeight = 360
+  const regularRowCount = Math.ceil(filteredHalfDecks.length / columnCount)
+  const regularVirtualizer = useWindowVirtualizer({
+    count: regularRowCount,
+    estimateSize: () => estimatedRowHeight,
+    overscan: 6,
+    measureElement: (el) => el.getBoundingClientRect().height,
+  })
+  const fusedRowCount = Math.ceil(filteredFusedDecks.length / fusedColumnCount)
+  const fusedVirtualizer = useWindowVirtualizer({
+    count: fusedRowCount,
+    estimateSize: () => estimatedRowHeight,
+    overscan: 6,
+    measureElement: (el) => el.getBoundingClientRect().height,
+  })
+
+  // Re-measure rows whenever column count or deck lengths change to avoid overlaps
+  useEffect(() => {
+    regularVirtualizer.measure()
+  }, [regularVirtualizer, columnCount, filteredHalfDecks.length])
+
+  useEffect(() => {
+    fusedVirtualizer.measure()
+  }, [fusedVirtualizer, fusedColumnCount, filteredFusedDecks.length])
   
   // Update content height and restore scroll position after filteredDecks changes
   useEffect(() => {
@@ -3124,516 +4141,41 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                 <Title order={3} className="text-white">
                   Decks ({filteredHalfDecks.length})
                 </Title>
-                <Grid 
-                  key="half-decks-grid"
-                  gutter="md" 
-                  style={{ 
-                    transition: 'all 0.3s ease',
-                    scrollBehavior: 'auto',
-                    willChange: 'contents'
-                  }}
-                >
-                  {filteredHalfDecks.map((deck) => {
-                    // Determine border color based on expiry date
-                    let borderColor = 'rgba(74, 144, 226, 0.6)' // Default: brighter blue for normal decks
-                    let hoverBorderColor = 'rgba(74, 144, 226, 0.9)' // Default hover - even brighter
-
-                    const expiryTs = getExpiryTimestamp(deck)
-                    if (expiryTs !== null) {
-                      const currentTimeUTC = Date.now()
-                      if (expiryTs < currentTimeUTC) {
-                        // Expired deck - black border
-                        borderColor = 'rgba(0, 0, 0, 1)'
-                        hoverBorderColor = 'rgba(0, 0, 0, 1)'
-                      } else {
-                        // Has expiry date but not expired yet - red border
-                        borderColor = 'rgba(220, 38, 38, 0.8)'
-                        hoverBorderColor = 'rgba(220, 38, 38, 1)'
-                      }
-                    }
-                    
-                    return (
-            <Grid.Col key={deck.id} span={{ base: 12, sm: 6, md: 4 }}>
-              <Paper
-                data-deck-id={deck.id}
-                p="lg"
-                onClick={() => handleDeckClick(deck)}
-                className="h-full backdrop-blur-md border rounded-xl transition-all cursor-pointer hover:shadow-xl hover:shadow-sf-primary/20 hover:scale-[1.02]"
-                style={{
-                  backgroundColor: 'rgba(30, 41, 59, 0.5)',
-                  borderColor: borderColor,
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(74, 144, 226, 0.1)',
-                  minHeight: '200px',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = hoverBorderColor
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = borderColor
-                }}
-              >
-              <Stack gap="sm">
-                {(deck as any).playerName && (
-                  <Text size="sm" className="text-gray-300" fw={600}>
-                    Owner:{' '}
-                    <a
-                      href={`/player/${encodeURIComponent((deck as any).playerName || '')}`}
-                      className="text-sf-secondary hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {(deck as any).playerName}
-                    </a>
-                    {deck.created && (
-                      <span className="text-gray-400">
-                        {' '}
-                        ·{' '}
-                        {new Date(deck.created).toLocaleString(undefined, {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    )}
-                  </Text>
-                )}
-
-                <Title order={4} className="text-white flex-1" lineClamp={2}>
-                  {deck.name || 'Untitled'}
-                </Title>
-
-                <Group gap={8}>
-                  <Group gap={4}>
-                    {deck.faction && (
-                      <Image
-                        src={`/images/icons/${deck.faction.toLowerCase()}.png`}
-                        alt={deck.faction}
-                        h={20}
-                        w="auto"
-                        style={{
-                          display: 'inline-block',
-                          verticalAlign: 'middle',
-                          flexShrink: 0,
-                        }}
-                      />
-                    )}
-                    {(() => {
-                      const deckSet = getDeckSet(deck)
-                      const formattedSet = formatSetName(deckSet)
-                      return formattedSet ? (
-                        <Badge
-                          color="indigo"
-                          variant="light"
-                          size="sm"
+                <div ref={regularListRef} style={{ position: 'relative' }}>
+                  <div
+                    style={{
+                      height: `${regularVirtualizer.getTotalSize()}px`,
+                      position: 'relative',
+                      width: '100%',
+                    }}
+                  >
+                    {regularVirtualizer.getVirtualItems().map(virtualRow => {
+                      const startIndex = virtualRow.index * columnCount
+                      const rowDecks = filteredHalfDecks.slice(startIndex, startIndex + columnCount)
+                      return (
+                        <div
+                          ref={regularVirtualizer.measureElement}
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            transform: `translateY(${virtualRow.start}px)`,
+                            paddingBottom: '16px',
+                          }}
                         >
-                          {formattedSet}
-                        </Badge>
-                      ) : null
-                    })()}
-                  </Group>
-                  {deck.cards && Array.isArray(deck.cards) && (
-                    <Badge
-                      color="blue"
-                      variant="light"
-                      size="sm"
-                      leftSection={<IconCards size={12} />}
-                    >
-                      {countPlayableCards(deck).total} cards
-                    </Badge>
-                  )}
-                  {deck.deckRank && deck.deckRank !== 'Unranked' && (
-                    <Badge
-                      color={
-                        deck.deckRank === 'Platinum' ? 'gray' :
-                        deck.deckRank === 'Gold' ? 'yellow' :
-                        deck.deckRank === 'Silver' ? 'gray' :
-                        deck.deckRank === 'Bronze' ? 'orange' : 'gray'
-                      }
-                      variant="light"
-                      size="sm"
-                    >
-                      {deck.deckRank}
-                    </Badge>
-                  )}
-                  {(deck as any).deckScore !== undefined && (deck as any).deckScore !== null && (
-                    <Badge
-                      color="grape"
-                      variant="light"
-                      size="sm"
-                    >
-                      Score: {typeof (deck as any).deckScore === 'number' ? Math.round((deck as any).deckScore * 100) : (deck as any).deckScore}
-                    </Badge>
-                  )}
-                  {(deck as any).elo !== undefined && (deck as any).elo !== null && (
-                    <Badge
-                      color="violet"
-                      variant="light"
-                      size="sm"
-                    >
-                      ELO: {typeof (deck as any).elo === 'number' ? Math.round((deck as any).elo) : (deck as any).elo}
-                    </Badge>
-                  )}
-                </Group>
-
-                {deck.cards && Array.isArray(deck.cards) && (() => {
-                  const counts = countPlayableCards(deck)
-                  
-                  // Collect rarity information from creatures and spells
-                  // Use the same logic as countPlayableCards to ensure consistency
-                  const rarityCounts = new Map<string, number>()
-                  
-                  // Normalize cards (same as in countPlayableCards)
-                  const normalizedCards = deck.cards.map((card: any, index: number) => {
-                    if (typeof card === 'string') {
-                      return getCardInfo(card)
-                    } else if (typeof card === 'object' && card !== null) {
-                      const cardId = card.id || card.cardId || card.name || `card-${index}`
-                      return getCardInfo(cardId, card)
-                    }
-                    return getCardInfo(`card-${index}`)
-                  })
-                  
-                  // Extract Solbind card IDs (same logic as countPlayableCards)
-                  const solbindCardIds = new Set<string>()
-                  normalizedCards.forEach(card => {
-                    const cardData = card as any
-                    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                      cardData.solbindCards.forEach((solbindCard: any) => {
-                        if (solbindCard && solbindCard.id) {
-                          solbindCardIds.add(solbindCard.id)
-                        }
-                      })
-                    }
-                  })
-                  
-                  // Identify Forgeborn (same logic as countPlayableCards)
-                  const forgebornId = deck.forgebornId
-                  const forgebornCards: any[] = []
-                  if (forgebornId) {
-                    const forgeborn = normalizedCards.find(card => 
-                      card.id === forgebornId || 
-                      (card.id && forgebornId && card.id.includes(forgebornId)) ||
-                      (forgebornId && card.id && forgebornId.includes(card.id))
-                    )
-                    if (forgeborn) {
-                      forgebornCards.push(forgeborn)
-                    }
-                  }
-                  if (forgebornCards.length === 0) {
-                    const forgebornByType = normalizedCards.find(card =>
-                      card.type?.toLowerCase().includes('forgeborn') ||
-                      (card as any).cardType?.toLowerCase().includes('forgeborn')
-                    )
-                    if (forgebornByType) {
-                      forgebornCards.push(forgebornByType)
-                    }
-                  }
-                  
-                  // Collect Solbind cards (same logic as countPlayableCards)
-                  const solbindCardObjects: any[] = []
-                  normalizedCards.forEach(card => {
-                    const cardData = card as any
-                    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                      cardData.solbindCards.forEach((solbindCard: any) => {
-                        if (solbindCard && solbindCard.id) {
-                          if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-                            solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-                          }
-                        }
-                      })
-                    }
-                  })
-                  normalizedCards.forEach(card => {
-                    if (forgebornCards.includes(card)) return
-                    const cardData = card as any
-                    const cardId = card.id
-                    
-                    // Skip parent cards with solbindCards array - they are not Solbind cards themselves
-                    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                      return
-                    }
-                    
-                    if (solbindCardIds.has(cardId)) {
-                      if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-                        solbindCardObjects.push(card)
-                      }
-                      return
-                    }
-                    if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
-                      if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-                        solbindCardObjects.push(card)
-                      }
-                    }
-                  })
-                  
-                  // Count rarity for creatures and spells (same logic as countPlayableCards)
-                  normalizedCards.forEach(card => {
-                    // Skip Forgeborn
-                    if (forgebornCards.includes(card)) return
-                    
-                    const cardData = card as any
-                    
-                    // Skip Solbind cards (already counted) - but NOT parent cards with solbindCards
-                    // Parent cards with solbindCards are regular cards (Spell or Creature)
-                    const isSolbindCard = solbindCardObjects.some(sb => sb.id === card.id)
-                    if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
-                      return
-                    }
-                    
-                    // Parent cards with solbindCards array should be counted for rarity
-                    // They are NOT Solbind cards themselves
-                    
-                    // Check if spell (same logic as countPlayableCards) - use ONLY cardType
-                    const originalCardForType = deck.cards && Array.isArray(deck.cards)
-                      ? deck.cards.find((c: any, idx: number) => {
-                          if (typeof c === 'string') {
-                            return c === card.id
-                          }
-                          const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
-                          return cId === card.id
-                        })
-                      : null
-                    const originalCardType = originalCardForType && typeof originalCardForType === 'object'
-                      ? (originalCardForType.cardType || originalCardForType.card_type || '')
-                      : ''
-                    const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
-                    const lowerCardType = cardType.toLowerCase()
-                    const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
-                    
-                    // Count rarity for creatures and spells (isSpell determines if it's a spell, otherwise it's a creature)
-                    const rarity = cardData.rarity
-                    if (rarity && typeof rarity === 'string') {
-                      // Normalize rarity names
-                      let normalizedRarity = rarity.trim()
-                      
-                      // Handle combined rarities like "Common Rare" or "Rare Common"
-                      if (normalizedRarity.includes('Common') && normalizedRarity.includes('Rare')) {
-                        normalizedRarity = 'Common Rare'
-                      } else if (normalizedRarity.toLowerCase().includes('common')) {
-                        normalizedRarity = 'Common'
-                      } else if (normalizedRarity.toLowerCase().includes('rare')) {
-                        normalizedRarity = 'Rare'
-                      } else if (normalizedRarity.toLowerCase().includes('ls') || normalizedRarity.toLowerCase().includes('legendary')) {
-                        normalizedRarity = 'LS'
-                      }
-                      
-                      const currentCount = rarityCounts.get(normalizedRarity) || 0
-                      rarityCounts.set(normalizedRarity, currentCount + 1)
-                    }
-                  })
-                  
-                  return (
-                    <Stack gap="xs">
-                      <Group gap="xs">
-                        <Badge color="green" variant="light" size="sm">
-                          {counts.creatures} Creatures
-                        </Badge>
-                        <Badge color="pink" variant="light" size="sm">
-                          {counts.spells} Spells
-                        </Badge>
-                        <Badge color="orange" variant="light" size="sm">
-                          {counts.solbind} Solbind
-                        </Badge>
-                      </Group>
-                      {Array.from(rarityCounts.entries()).length > 0 && (
-                        <Group gap="xs">
-                          {Array.from(rarityCounts.entries())
-                            .sort(([a], [b]) => {
-                              // Sort by rarity order: Common, Common Rare, Rare, LS
-                              const order: Record<string, number> = {
-                                'Common': 1,
-                                'Common Rare': 2,
-                                'Rare': 3,
-                                'LS': 4
-                              }
-                              return (order[a] || 99) - (order[b] || 99)
-                            })
-                            .map(([rarity, count]) => {
-                              // Get color for rarity
-                              const getRarityColor = (rarityName: string): string => {
-                                const normalized = rarityName.toLowerCase()
-                                if (normalized.includes('common') && normalized.includes('rare')) {
-                                  return '#0e87cf' // RareCommon
-                                } else if (normalized.includes('rare') && !normalized.includes('common')) {
-                                  return '#e6b70c' // Rare
-                                } else if (normalized.includes('common')) {
-                                  return '#1199e3' // Common
-                                } else if (normalized.includes('solbind')) {
-                                  return '#75cec4' // Solbind
-                                } else if (normalized.includes('ls')) {
-                                  return '#a90100' // LS
-                                }
-                                return '#1199e3' // Default to Common
-                              }
-                              
-                              return (
-                                <Badge 
-                                  key={rarity} 
-                                  variant="light" 
-                                  size="sm"
-                                  style={{
-                                    backgroundColor: getRarityColor(rarity),
-                                    color: 'white',
-                                    border: 'none'
-                                  }}
-                                >
-                                  {count} {rarity}
-                                </Badge>
-                              )
-                            })}
-                        </Group>
-                      )}
-                    </Stack>
-                  )
-                })()}
-
-                {(() => {
-                  // Determine if deck is expired or expiring
-                  const currentTimeUTC = new Date().getTime()
-                  const expiryDate = deck.created ? new Date(deck.created).getTime() : null
-                  const isExpired = expiryDate !== null && expiryDate < currentTimeUTC
-                  const isExpiring = expiryDate !== null && expiryDate >= currentTimeUTC
-                  
-                  // Show Updated at (updatedAt) for active decks, or Expire date (created) for expired/expiring decks
-                  const receiptDate = (deck as any).updatedAt
-                  const showReceiptDate = receiptDate && !isExpired && !isExpiring
-                  const showExpireDate = deck.created && (isExpired || isExpiring)
-                  
-                  if (showReceiptDate && receiptDate) {
-                    return (
-                      <Group gap="xs" className="text-gray-400 text-sm">
-                        <IconCalendar size={14} />
-                        <Text size="xs">
-                          Updated at: {new Date(receiptDate).toLocaleDateString('en-GB', { 
-                            day: 'numeric', 
-                            month: 'short', 
-                            year: 'numeric' 
-                          })}
-                        </Text>
-                      </Group>
-                    )
-                  } else if (showExpireDate && deck.created) {
-                    return (
-                      <Group gap="xs" className="text-gray-400 text-sm">
-                        <IconCalendar size={14} />
-                        <Text size="xs">
-                          Expire date: {new Date(deck.created).toLocaleDateString('en-GB', { 
-                            day: 'numeric', 
-                            month: 'short', 
-                            year: 'numeric' 
-                          })}
-                        </Text>
-                      </Group>
-                    )
-                  }
-                  return null
-                })()}
-
-                {(() => {
-                  // Check if deck has tags
-                  const hasTags = deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags) && Object.keys(deck.tags).length > 0
-                  
-                  // Collect tags from deck tags or provides
-                  let tagsToDisplay: string[] = []
-                  
-                  if (hasTags) {
-                    // Use existing tags
-                    tagsToDisplay = Object.entries(deck.tags)
-                      .map(([key, value]) => {
-                        // Skip empty tags and tags with empty values
-                        if (value === null || value === undefined || value === '') {
-                          return null
-                        }
-                        
-                        // Skip tags where key is 'none' and value is empty
-                        if (key === 'none' && (!value || value === '')) {
-                          return null
-                        }
-                        
-                        // Skip if value is a string and empty after trim
-                        if (typeof value === 'string' && value.trim() === '') {
-                          return null
-                        }
-                        
-                        // Use value if it's a non-empty string, otherwise use key (if key is meaningful)
-                        let tagText: string | null = null
-                        
-                        if (typeof value === 'string' && value.trim() !== '') {
-                          tagText = value.trim()
-                        } else if (typeof value === 'number' || typeof value === 'boolean') {
-                          tagText = String(value)
-                        } else if (key && key !== 'none' && !key.startsWith('tag_')) {
-                          // Use key if it's meaningful (not a generated key)
-                          tagText = key
-                        } else if (key && key.startsWith('tag_')) {
-                          // For generated keys, try to use value or skip
-                          return null
-                        }
-                        
-                        return tagText && tagText.trim() !== '' ? tagText.trim() : null
-                      })
-                      .filter((tag): tag is string => tag !== null)
-                  } else if (deck.cards && Array.isArray(deck.cards)) {
-                    // Collect unique provides from cards
-                    const providesSet = new Set<string>()
-                    
-                    deck.cards.forEach((card: any) => {
-                      if (card && typeof card === 'object') {
-                        const provides = card.provides || card.Provides
-                        if (provides) {
-                          if (typeof provides === 'string') {
-                            // Split by comma and add each value
-                            provides.split(',').forEach((p: string) => {
-                              const trimmed = p.trim()
-                              if (trimmed) {
-                                providesSet.add(trimmed)
-                              }
-                            })
-                          } else if (Array.isArray(provides)) {
-                            provides.forEach((p: string) => {
-                              if (p && typeof p === 'string') {
-                                const trimmed = p.trim()
-                                if (trimmed) {
-                                  providesSet.add(trimmed)
-                                }
-                              }
-                            })
-                          }
-                        }
-                      }
-                    })
-                    
-                    tagsToDisplay = Array.from(providesSet).sort()
-                  }
-                  
-                  
-                  if (tagsToDisplay.length === 0) {
-                    return null
-                  }
-                  
-                  return (
-                    <Group gap="xs" className="mt-2 flex-wrap">
-                      {tagsToDisplay.map((tagText) => (
-                        <Badge
-                          key={`${deck.id}-${tagText}`}
-                          color="violet"
-                          variant="light"
-                          size="sm"
-                        >
-                          {tagText.toUpperCase()}
-                        </Badge>
-                      ))}
-                    </Group>
-                  )
-                })()}
-              </Stack>
-            </Paper>
-          </Grid.Col>
-                    )
-                  })}
-                </Grid>
+                          <Grid gutter="md">
+                            {rowDecks.map(deck => (
+                              <RegularDeckCard key={deck.id} deck={deck} handleDeckClick={handleDeckClick} />
+                            ))}
+                          </Grid>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               </Stack>
             )}
             
@@ -3643,501 +4185,54 @@ export function DeckList({ decks, fusedDecks = [] }: DeckListProps) {
                 <Title order={3} className="text-white">
                   Fused ({filteredFusedDecks.length})
                 </Title>
-                <Grid 
-                  key="fused-decks-grid"
-                  gutter="md" 
-                  style={{ 
-                    transition: 'all 0.3s ease',
-                    scrollBehavior: 'auto',
-                    willChange: 'contents'
-                  }}
-                >
-                  {filteredFusedDecks.map((deck) => (
-                    <Grid.Col key={deck.id} span={{ base: 12, sm: 6, md: 4 }}>
-                      {/* Reuse the same deck card rendering as half decks */}
-                      <Paper
-                        data-deck-id={deck.id}
-                        p="lg"
-                        onClick={() => handleDeckClick(deck)}
-                        className="h-full backdrop-blur-md border border-sf-primary/20 rounded-xl hover:border-sf-primary/50 transition-all cursor-pointer hover:shadow-xl hover:shadow-sf-primary/20 hover:scale-[1.02]"
-                        style={{
-                          backgroundColor: 'rgba(30, 41, 59, 0.5)',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(74, 144, 226, 0.1)',
-                          minHeight: '200px',
-                          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                        }}
-                      >
-                        <Stack gap="sm">
-                          <Group justify="space-between" align="flex-start" wrap="nowrap">
-                            <Title order={4} className="text-white flex-1" lineClamp={2}>
-                              {deck.name || 'Untitled'}
-                            </Title>
-                          </Group>
-
-                          <Group gap={8}>
-                            <Group gap={4}>
-                              {(() => {
-                                // For fused decks, show icons from both source decks
-                                const [deck1, deck2] = getFusedDeckSourceDecks(deck, [...decks, ...fusedDecks])
-                                const factionSets: Array<{ faction: string; setNo: string | number | null }> = []
-                                
-                                if (deck1?.faction) {
-                                  // Use getDeckSet to determine the actual set (B1 if any card is from B1, otherwise deck.cardSetNo)
-                                  const deck1Set = getDeckSet(deck1)
-                                  factionSets.push({ faction: deck1.faction, setNo: deck1Set || null })
-                                }
-                                if (deck2?.faction) {
-                                  // Use getDeckSet to determine the actual set (B1 if any card is from B1, otherwise deck.cardSetNo)
-                                  const deck2Set = getDeckSet(deck2)
-                                  factionSets.push({ faction: deck2.faction, setNo: deck2Set || null })
-                                }
-                                
-                                // If we couldn't get factions from source decks, fall back to deck.faction
-                                if (factionSets.length === 0 && deck.faction) {
-                                  const deckSet = getDeckSet(deck)
-                                  factionSets.push({ faction: deck.faction, setNo: deckSet || null })
-                                }
-                                
-                                return (
-                                  <>
-                                    {factionSets.map((item, index) => (
-                                      <Group key={`${deck.id}-faction-set-${index}`} gap={4}>
-                                        <Image
-                                          src={`/images/icons/${item.faction.toLowerCase()}.png`}
-                                          alt={item.faction}
-                                          h={20}
-                                          w="auto"
-                                          style={{
-                                            display: 'inline-block',
-                                            verticalAlign: 'middle',
-                                            flexShrink: 0,
-                                          }}
-                                        />
-                                        {item.setNo && (
-                                          <Badge
-                                            color="indigo"
-                                            variant="light"
-                                            size="sm"
-                                          >
-                                            {formatSetName(item.setNo)}
-                                          </Badge>
-                                        )}
-                                      </Group>
-                                    ))}
-                                  </>
-                                )
-                              })()}
-                            </Group>
-                            {deck.cards && Array.isArray(deck.cards) && (
-                              <Badge
-                                color="blue"
-                                variant="light"
-                                size="sm"
-                                leftSection={<IconCards size={12} />}
-                              >
-                                {countPlayableCards(deck).total} cards
-                              </Badge>
-                            )}
-                            {deck.deckRank && deck.deckRank !== 'Unranked' && (
-                              <Badge
-                                color={
-                                  deck.deckRank === 'Platinum' ? 'gray' :
-                                  deck.deckRank === 'Gold' ? 'yellow' :
-                                  deck.deckRank === 'Silver' ? 'gray' :
-                                  deck.deckRank === 'Bronze' ? 'orange' : 'gray'
-                                }
-                                variant="light"
-                                size="sm"
-                              >
-                                {deck.deckRank}
-                              </Badge>
-                            )}
-                            {(deck as any).deckScore !== undefined && (deck as any).deckScore !== null && (
-                              <Badge
-                                color="grape"
-                                variant="light"
-                                size="sm"
-                              >
-                                Score: {typeof (deck as any).deckScore === 'number' ? Math.round((deck as any).deckScore * 100) : (deck as any).deckScore}
-                              </Badge>
-                            )}
-                            {(deck as any).elo !== undefined && (deck as any).elo !== null && (
-                              <Badge
-                                color="violet"
-                                variant="light"
-                                size="sm"
-                              >
-                                ELO: {typeof (deck as any).elo === 'number' ? Math.round((deck as any).elo) : (deck as any).elo}
-                              </Badge>
-                            )}
-                          </Group>
-
-                          {deck.cards && Array.isArray(deck.cards) && (() => {
-                            const counts = countPlayableCards(deck)
-                            
-                            // Collect rarity information from creatures and spells
-                            // Use the same logic as countPlayableCards to ensure consistency
-                            const rarityCounts = new Map<string, number>()
-                            
-                            // Normalize cards (same as in countPlayableCards)
-                            const normalizedCards = deck.cards.map((card: any, index: number) => {
-                              if (typeof card === 'string') {
-                                return getCardInfo(card)
-                              } else if (typeof card === 'object' && card !== null) {
-                                const cardId = card.id || card.cardId || card.name || `card-${index}`
-                                return getCardInfo(cardId, card)
-                              }
-                              return getCardInfo(`card-${index}`)
-                            })
-                            
-                            // Extract Solbind card IDs (same logic as countPlayableCards)
-                            const solbindCardIds = new Set<string>()
-                            normalizedCards.forEach(card => {
-                              const cardData = card as any
-                              if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                                cardData.solbindCards.forEach((solbindCard: any) => {
-                                  if (solbindCard && solbindCard.id) {
-                                    solbindCardIds.add(solbindCard.id)
-                                  }
-                                })
-                              }
-                            })
-                            
-                            // Identify Forgeborn (same logic as countPlayableCards)
-                            const forgebornId = deck.forgebornId
-                            const forgebornCards: any[] = []
-                            if (forgebornId) {
-                              const forgeborn = normalizedCards.find(card => 
-                                card.id === forgebornId || 
-                                (card.id && forgebornId && card.id.includes(forgebornId)) ||
-                                (forgebornId && card.id && forgebornId.includes(card.id))
-                              )
-                              if (forgeborn) {
-                                forgebornCards.push(forgeborn)
-                              }
-                            }
-                            if (forgebornCards.length === 0) {
-                              const forgebornByType = normalizedCards.find(card =>
-                                card.type?.toLowerCase().includes('forgeborn') ||
-                                (card as any).cardType?.toLowerCase().includes('forgeborn')
-                              )
-                              if (forgebornByType) {
-                                forgebornCards.push(forgebornByType)
-                              }
-                            }
-                            
-                            // Collect Solbind cards (same logic as countPlayableCards)
-                            const solbindCardObjects: any[] = []
-                            normalizedCards.forEach(card => {
-                              const cardData = card as any
-                              if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                                cardData.solbindCards.forEach((solbindCard: any) => {
-                                  if (solbindCard && solbindCard.id) {
-                                    if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-                                      solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-                                    }
-                                  }
-                                })
-                              }
-                            })
-                            normalizedCards.forEach(card => {
-                              if (forgebornCards.includes(card)) return
-                              const cardData = card as any
-                              const cardId = card.id
-                              
-                              // Skip parent cards with solbindCards array - they are not Solbind cards themselves
-                              if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                                return
-                              }
-                              
-                              if (solbindCardIds.has(cardId)) {
-                                if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-                                  solbindCardObjects.push(card)
-                                }
-                                return
-                              }
-                              if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
-                                if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-                                  solbindCardObjects.push(card)
-                                }
-                              }
-                            })
-                            
-                            // Count rarity for creatures and spells (same logic as countPlayableCards)
-                            normalizedCards.forEach(card => {
-                              // Skip Forgeborn
-                              if (forgebornCards.includes(card)) return
-                              
-                              const cardData = card as any
-                              
-                              // Skip Solbind cards (already counted) - but NOT parent cards with solbindCards
-                              // Parent cards with solbindCards are regular cards (Spell or Creature)
-                              const isSolbindCard = solbindCardObjects.some(sb => sb.id === card.id)
-                              if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
-                                return
-                              }
-                              
-                              // Parent cards with solbindCards array should be counted for rarity
-                              // They are NOT Solbind cards themselves
-                              
-                              // Check if spell (same logic as countPlayableCards) - use ONLY cardType
-                              const originalCardForType = deck.cards && Array.isArray(deck.cards)
-                                ? deck.cards.find((c: any, idx: number) => {
-                                    if (typeof c === 'string') {
-                                      return c === card.id
-                                    }
-                                    const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
-                                    return cId === card.id
-                                  })
-                                : null
-                              const originalCardType = originalCardForType && typeof originalCardForType === 'object'
-                                ? (originalCardForType.cardType || originalCardForType.card_type || '')
-                                : ''
-                              const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
-                              const lowerCardType = cardType.toLowerCase()
-                              const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
-                              
-                              // Count rarity for creatures and spells (isSpell determines if it's a spell, otherwise it's a creature)
-                              const rarity = cardData.rarity
-                              if (rarity && typeof rarity === 'string') {
-                                // Normalize rarity names
-                                let normalizedRarity = rarity.trim()
-                                
-                                // Handle combined rarities like "Common Rare" or "Rare Common"
-                                if (normalizedRarity.includes('Common') && normalizedRarity.includes('Rare')) {
-                                  normalizedRarity = 'Common Rare'
-                                } else if (normalizedRarity.toLowerCase().includes('common')) {
-                                  normalizedRarity = 'Common'
-                                } else if (normalizedRarity.toLowerCase().includes('rare')) {
-                                  normalizedRarity = 'Rare'
-                                } else if (normalizedRarity.toLowerCase().includes('ls') || normalizedRarity.toLowerCase().includes('legendary')) {
-                                  normalizedRarity = 'LS'
-                                }
-                                
-                                const currentCount = rarityCounts.get(normalizedRarity) || 0
-                                rarityCounts.set(normalizedRarity, currentCount + 1)
-                              }
-                            })
-                            
-                            return (
-                              <Stack gap="xs">
-                                <Group gap="xs">
-                                  <Badge color="green" variant="light" size="sm">
-                                    {counts.creatures} Creatures
-                                  </Badge>
-                                  <Badge color="pink" variant="light" size="sm">
-                                    {counts.spells} Spells
-                                  </Badge>
-                                  <Badge color="orange" variant="light" size="sm">
-                                    {counts.solbind} Solbind
-                                  </Badge>
-                                </Group>
-                                {Array.from(rarityCounts.entries()).length > 0 && (
-                                  <Group gap="xs">
-                                    {Array.from(rarityCounts.entries())
-                                      .sort(([a], [b]) => {
-                                        // Sort by rarity order: Common, Common Rare, Rare, LS
-                                        const order: Record<string, number> = {
-                                          'Common': 1,
-                                          'Common Rare': 2,
-                                          'Rare': 3,
-                                          'LS': 4
-                                        }
-                                        return (order[a] || 99) - (order[b] || 99)
-                                      })
-                                      .map(([rarity, count]) => {
-                                        // Get color for rarity
-                                        const getRarityColor = (rarityName: string): string => {
-                                          const normalized = rarityName.toLowerCase()
-                                          if (normalized.includes('common') && normalized.includes('rare')) {
-                                            return '#0e87cf' // RareCommon
-                                          } else if (normalized.includes('rare') && !normalized.includes('common')) {
-                                            return '#e6b70c' // Rare
-                                          } else if (normalized.includes('common')) {
-                                            return '#1199e3' // Common
-                                          } else if (normalized.includes('solbind')) {
-                                            return '#75cec4' // Solbind
-                                          } else if (normalized.includes('ls')) {
-                                            return '#a90100' // LS
-                                          }
-                                          return '#1199e3' // Default to Common
-                                        }
-                                        
-                                        return (
-                                          <Badge 
-                                            key={rarity} 
-                                            variant="light" 
-                                            size="sm"
-                                            style={{
-                                              backgroundColor: getRarityColor(rarity),
-                                              color: 'white',
-                                              border: 'none'
-                                            }}
-                                          >
-                                            {count} {rarity}
-                                          </Badge>
-                                        )
-                                      })}
-                                  </Group>
-                                )}
-                              </Stack>
-                            )
-                          })()}
-
-                          {(() => {
-                            // For fused decks, check if they're expired or expiring
-                            const expiryStatus = getFusedDeckExpiryStatus(deck, decks)
-                            const showDate = deck.created || expiryStatus.expireDate || expiryStatus.minExpiringDate
-                            // For expired fused decks: use minExpiredDate
-                            // For expiring fused decks: use minExpiringDate (earliest expiring date)
-                            // For regular fused decks: use deck.created
-                            const dateToShow = expiryStatus.isExpired && expiryStatus.minExpiredDate 
-                              ? expiryStatus.minExpiredDate 
-                              : (expiryStatus.isExpiring && expiryStatus.minExpiringDate 
-                                ? expiryStatus.minExpiringDate 
-                                : deck.created)
-                            const isExpiredFused = expiryStatus.isExpired
-                            const isExpiringFused = expiryStatus.isExpiring
-                            
-                            // For fused decks, show Updated at (updatedAt) for active decks, or Expire date for expired/expiring
-                            const receiptDate = (deck as any).updatedAt
-                            const showReceiptDate = receiptDate && !isExpiredFused && !isExpiringFused
-                            const showExpireDate = showDate && dateToShow && (isExpiredFused || isExpiringFused)
-                            
-                            if (showReceiptDate) {
+                <div ref={fusedListRef} style={{ position: 'relative' }}>
+                  <div
+                    style={{
+                      height: `${fusedVirtualizer.getTotalSize()}px`,
+                      position: 'relative',
+                      width: '100%',
+                    }}
+                  >
+                    {fusedVirtualizer.getVirtualItems().map(virtualRow => {
+                      const startIndex = virtualRow.index * fusedColumnCount
+                      const rowDecks = filteredFusedDecks.slice(startIndex, startIndex + fusedColumnCount)
+                      return (
+                        <div
+                          ref={fusedVirtualizer.measureElement}
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            transform: `translateY(${virtualRow.start}px)`,
+                            paddingBottom: '16px',
+                          }}
+                        >
+                          <Grid gutter="md">
+                            {rowDecks.map(deck => {
+                              const [d1, d2] = getFusedDeckSourceDecks(deck, [...decks, ...fusedDecks])
                               return (
-                                <Group gap="xs" className="text-gray-400 text-sm">
-                                  <IconCalendar size={14} />
-                                  <Text size="xs">
-                                    Updated at: {new Date(receiptDate).toLocaleDateString('en-GB', { 
-                                      day: 'numeric', 
-                                      month: 'short', 
-                                      year: 'numeric' 
-                                    })}
-                                  </Text>
-                                </Group>
+                                <FusedDeckCard
+                                  key={deck.id}
+                                  deck={deck}
+                                  sourceDecks={[d1, d2]}
+                                  handleDeckClick={handleDeckClick}
+                                  deckTagsMap={deckTagsMap}
+                                  allDecks={[...decks, ...fusedDecks]}
+                                />
                               )
-                            } else if (showExpireDate) {
-                              return (
-                                <Group gap="xs" className="text-gray-400 text-sm">
-                                  <IconCalendar size={14} />
-                                  <Text size="xs">
-                                    Expire date: {new Date(dateToShow).toLocaleDateString('en-GB', { 
-                                      day: 'numeric', 
-                                      month: 'short', 
-                                      year: 'numeric' 
-                                    })}
-                                  </Text>
-                                </Group>
-                              )
-                            }
-                            return null
-                          })()}
-
-                          {(() => {
-                            // Check if deck has tags
-                            const hasTags = deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags) && Object.keys(deck.tags).length > 0
-                            
-                            // Collect tags from deck tags or provides
-                            let tagsToDisplay: string[] = []
-                            
-                            if (hasTags) {
-                              // Use existing tags
-                              tagsToDisplay = Object.entries(deck.tags)
-                                .map(([key, value]) => {
-                                  // Skip empty tags and tags with empty values
-                                  if (value === null || value === undefined || value === '') {
-                                    return null
-                                  }
-                                  
-                                  // Skip tags where key is 'none' and value is empty
-                                  if (key === 'none' && (!value || value === '')) {
-                                    return null
-                                  }
-                                  
-                                  // Skip if value is a string and empty after trim
-                                  if (typeof value === 'string' && value.trim() === '') {
-                                    return null
-                                  }
-                                  
-                                  // Use value if it's a non-empty string, otherwise use key (if key is meaningful)
-                                  let tagText: string | null = null
-                                  
-                                  if (typeof value === 'string' && value.trim() !== '') {
-                                    tagText = value.trim()
-                                  } else if (typeof value === 'number' || typeof value === 'boolean') {
-                                    tagText = String(value)
-                                  } else if (key && key !== 'none' && !key.startsWith('tag_')) {
-                                    // Use key if it's meaningful (not a generated key)
-                                    tagText = key
-                                  } else if (key && key.startsWith('tag_')) {
-                                    // For generated keys, try to use value or skip
-                                    return null
-                                  }
-                                  
-                                  return tagText && tagText.trim() !== '' ? tagText.trim() : null
-                                })
-                                .filter((tag): tag is string => tag !== null)
-                            } else if (deck.cards && Array.isArray(deck.cards)) {
-                              // Collect unique provides from cards
-                              const providesSet = new Set<string>()
-                              
-                              deck.cards.forEach((card: any) => {
-                                if (card && typeof card === 'object') {
-                                  const provides = card.provides || card.Provides
-                                  if (provides) {
-                                    if (typeof provides === 'string') {
-                                      // Split by comma and add each value
-                                      provides.split(',').forEach((p: string) => {
-                                        const trimmed = p.trim()
-                                        if (trimmed) {
-                                          providesSet.add(trimmed)
-                                        }
-                                      })
-                                    } else if (Array.isArray(provides)) {
-                                      provides.forEach((p: string) => {
-                                        if (p && typeof p === 'string') {
-                                          const trimmed = p.trim()
-                                          if (trimmed) {
-                                            providesSet.add(trimmed)
-                                          }
-                                        }
-                                      })
-                                    }
-                                  }
-                                }
-                              })
-                              
-                              tagsToDisplay = Array.from(providesSet).sort()
-                            }
-                            
-                            
-                            if (tagsToDisplay.length === 0) {
-                              return null
-                            }
-                            
-                            return (
-                              <Group gap="xs" className="mt-2 flex-wrap">
-                                {tagsToDisplay.map((tagText) => (
-                                  <Badge
-                                    key={`${deck.id}-${tagText}`}
-                                    color="violet"
-                                    variant="light"
-                                    size="sm"
-                                  >
-                                    {tagText.toUpperCase()}
-                                  </Badge>
-                                ))}
-                              </Group>
-                            )
-                          })()}
-                        </Stack>
-                      </Paper>
-                    </Grid.Col>
-                  ))}
-                </Grid>
+                            })}
+                          </Grid>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               </Stack>
             )}
+
           </div>
         )}
       </div>

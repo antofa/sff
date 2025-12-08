@@ -106,6 +106,9 @@ export function normalizeDeck(deck: any): ApiDeck {
   } else if (Array.isArray(deck.cards)) {
     // If cards is an array of objects, preserve them
     cards = deck.cards
+  } else if (deck.cards && typeof deck.cards === 'object') {
+    // Cards provided as an object map (common in /deck/app)
+    cards = Object.values(deck.cards)
   } else if (Array.isArray(deck.cardIds)) {
     // cardIds is just an array of strings, less information
     cards = deck.cardIds
@@ -123,12 +126,22 @@ export function normalizeDeck(deck: any): ApiDeck {
     }
   }
 
+  // Extract expiry date (pExpiry/expireAt/etc.) and preserve separately
+  const expireAtRaw =
+    deck.expireAt ??
+    deck.expire_at ??
+    deck.expireDate ??
+    deck.expire_date ??
+    deck.pExpiry ??
+    null
+
   return {
     id: String(id),
     name: deck.name || deck.deckName || 'Untitled',
     format: deck.format || deck.gameFormat,
     cards: cards,
-    created: deck.created || deck.createdAt || deck.CreatedAt || deck.pExpiry,
+    created: deck.created || deck.createdAt || deck.CreatedAt,
+    expireAt: expireAtRaw || undefined,
     updatedAt: deck.UpdatedAt || deck.updatedAt || deck.updated_at,
     // Additional fields from API
     faction: deck.faction,
@@ -179,7 +192,29 @@ export async function fetchDeckDetails(deckId: string): Promise<any> {
   }
 }
 
-async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
+type DeckFetchMeta = {
+  total: number
+  pages: number
+}
+
+type DeckFetchResult = {
+  decks: ApiDeck[]
+  meta: DeckFetchMeta
+}
+
+type DeckPageProgress = {
+  page: number
+  received: number
+  totalSoFar: number
+  items?: any[]
+}
+
+async function fetchDecksFromAPI(
+  playerName: string,
+  options?: {
+    onPage?: (info: DeckPageProgress) => void
+  }
+): Promise<DeckFetchResult> {
   const encodedName = encodeURIComponent(playerName.toLowerCase())
   const url = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true`
   
@@ -190,6 +225,13 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
   let lastPK = ""
   let pageCount = 0
   const maxPages = 100 // Protection against infinite loop
+  const notifyPage = (info: DeckPageProgress) => {
+    try {
+      options?.onPage?.(info)
+    } catch (err) {
+      console.warn('[API] onPage callback error:', err)
+    }
+  }
 
   try {
     // First request
@@ -242,6 +284,12 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
     if (pageData.Items && Array.isArray(pageData.Items)) {
       allDecks = allDecks.concat(pageData.Items)
       logWithTimestamp(`[API] Page ${pageCount + 1}: received ${pageData.Items.length} decks`)
+      notifyPage({
+        page: pageCount + 1,
+        received: pageData.Items.length,
+        totalSoFar: allDecks.length,
+        items: pageData.Items,
+      })
     } else {
       console.warn(`[API] Response does not contain Items or Items is not an array`)
       logWithTimestamp(`[API] Type of Items:`, typeof pageData.Items)
@@ -292,6 +340,12 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
       if (pageData.Items && Array.isArray(pageData.Items)) {
         allDecks = allDecks.concat(pageData.Items)
         logWithTimestamp(`[API] Page ${pageCount + 1}: received ${pageData.Items.length} decks`)
+        notifyPage({
+          page: pageCount + 1,
+          received: pageData.Items.length,
+          totalSoFar: allDecks.length,
+          items: pageData.Items,
+        })
       } else {
         console.warn(`[API] Page ${pageCount + 1}: response does not contain Items`)
         break
@@ -305,23 +359,17 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
       return []
     }
     
-    // Normalize decks, filtering invalid ones
-    // For each deck, try to fetch detailed information if cardList is not available
+    // Normalize decks, filtering invalid ones (avoid per-deck detail fetches)
+    const missingCardListCount = allDecks.filter(d => !d.cardList).length
+    if (missingCardListCount > 0) {
+      logWithTimestamp(`[API] ${missingCardListCount} deck(s) missing cardList; skipping extra detail fetch to avoid thundering herd`)
+    }
+
+    // Normalize in-place without additional network calls
     const normalizedDecks = await Promise.all(
       allDecks.map(async (deck, index) => {
         try {
-          let deckData = deck
-          
-          // If deck doesn't have cardList, try to fetch detailed info
-          if (!deck.cardList && deck.id) {
-            logWithTimestamp(`[API] Fetching detailed info for deck ${deck.id}`)
-            const details = await fetchDeckDetails(deck.id)
-            if (details && details.cardList) {
-              deckData = { ...deck, cardList: details.cardList }
-            }
-          }
-          
-          const normalized = normalizeDeck(deckData)
+          const normalized = normalizeDeck(deck)
           // Log tag information for debugging
           if (normalized.tags) {
             const tagCount = typeof normalized.tags === 'object' && !Array.isArray(normalized.tags)
@@ -353,7 +401,12 @@ async function fetchDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
     logWithTimestamp(`[API] Decks with full card data (cardList): ${decksWithCardList.length}`)
 
     // Caching for regular decks happens in getPlayerDecks; keep this function pure
-    return validDecks
+    const meta: DeckFetchMeta = {
+      total: validDecks.length,
+      pages: Math.max(1, pageCount + 1),
+    }
+
+    return { decks: validDecks, meta }
   } catch (error) {
     console.error(`[API] Error fetching decks:`, error)
     throw error
@@ -628,16 +681,6 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
           const deck1 = fusedDeck.myDecks[0]
           const deck2 = fusedDeck.myDecks[1]
           
-          // Log to check data structure
-          logWithTimestamp(`[API] Fused deck ${fusedDeck.id || fusedDeck.name}:`, {
-            hasMyDecks: !!fusedDeck.myDecks,
-            myDecksLength: fusedDeck.myDecks?.length,
-            deck1Id: deck1?.id,
-            deck1Name: deck1?.name,
-            deck2Id: deck2?.id,
-            deck2Name: deck2?.name
-          })
-          
           // Combine cards from both decks
           // For now, we'll need to fetch full deck details to get all cards
           // But we can create a normalized structure first
@@ -678,31 +721,70 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
     // Fetch full deck details for each fused deck to get all cards
     // This is similar to how we handle regular decks
     const fusedDecksWithCards: ApiDeck[] = []
+    let decksNeedingFetch = 0
+
+    // Helper to collect cards from an embedded deck object without network
+    const collectCards = (deckObj: any): any[] => {
+      if (!deckObj) return []
+      if (Array.isArray(deckObj.cardList) && deckObj.cardList.length > 0) return deckObj.cardList
+      if (Array.isArray(deckObj.cards) && deckObj.cards.length > 0) return deckObj.cards
+      if (Array.isArray(deckObj.cardIds) && deckObj.cardIds.length > 0) return deckObj.cardIds
+      if (deckObj.cards && typeof deckObj.cards === 'object') return Object.values(deckObj.cards)
+      return []
+    }
+
     for (const fusedDeck of fusedDecks) {
-      if (fusedDeck.fusedDeckIds && Array.isArray(fusedDeck.fusedDeckIds)) {
-        const allCards: any[] = []
-        
-        // Fetch details for each deck in the fused deck
-        for (const deckId of fusedDeck.fusedDeckIds) {
-          const deckDetails = await fetchDeckDetails(deckId)
-          if (deckDetails && deckDetails.cardList && Array.isArray(deckDetails.cardList)) {
-            allCards.push(...deckDetails.cardList)
-          } else if (deckDetails && deckDetails.cards && Array.isArray(deckDetails.cards)) {
-            allCards.push(...deckDetails.cards)
+      const allCards: any[] = []
+
+      // Prefer embedded myDecks data (fast, no network)
+      if (Array.isArray(fusedDeck.myDecks)) {
+        // If fusedDeckIds are missing, build them from myDecks so downstream logic can still work
+        if (!Array.isArray(fusedDeck.fusedDeckIds) || fusedDeck.fusedDeckIds.length === 0) {
+          fusedDeck.fusedDeckIds = fusedDeck.myDecks
+            .map((d: any) => d?.id)
+            .filter((id: any): id is string => Boolean(id))
+        }
+
+        for (const d of fusedDeck.myDecks) {
+          const cards = collectCards(d)
+          if (cards.length > 0) {
+            allCards.push(...cards)
           }
         }
-        
-        // Remove duplicates (based on card ID)
-        const uniqueCards = new Map<string, any>()
-        allCards.forEach(card => {
-          const cardId = typeof card === 'string' ? card : (card.id || card.cardId)
-          if (cardId && !uniqueCards.has(cardId)) {
-            uniqueCards.set(cardId, card)
-          }
-        })
-        
-        fusedDeck.cards = Array.from(uniqueCards.values())
       }
+
+      // If still no cards, fetch fused deck details from API as fallback (even when fusedDeckIds are absent)
+      if (allCards.length === 0) {
+        decksNeedingFetch++
+        const details = await fetchDeckDetails(String(fusedDeck.id))
+        if (details) {
+          const detailedCards = collectCards(details)
+          if (detailedCards.length > 0) {
+            allCards.push(...detailedCards)
+          }
+          // Enrich fused deck with extra fields from detail response
+          if (details.myDecks) {
+            fusedDeck.myDecks = details.myDecks
+          }
+          if (details.fusedDeckIds) {
+            fusedDeck.fusedDeckIds = details.fusedDeckIds
+          }
+          if (!fusedDeck.tags && details.tags) {
+            fusedDeck.tags = details.tags
+          }
+        }
+      }
+      
+      // Remove duplicates (based on card ID)
+      const uniqueCards = new Map<string, any>()
+      allCards.forEach(card => {
+        const cardId = typeof card === 'string' ? card : (card.id || card.cardId)
+        if (cardId && !uniqueCards.has(cardId)) {
+          uniqueCards.set(cardId, card)
+        }
+      })
+      
+      fusedDeck.cards = Array.from(uniqueCards.values())
       
       // Add forgeborn if not already in cards
       if (fusedDeck.forgeborn && fusedDeck.forgeborn.id) {
@@ -723,16 +805,12 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
         myDecks: fusedDeck.myDecks,
         fusedDeckIds: fusedDeck.fusedDeckIds
       }
-      
-      // Log to verify data preservation
-      logWithTimestamp(`[API] Normalized fused deck ${normalizedWithFusedData.id}:`, {
-        hasMyDecks: !!normalizedWithFusedData.myDecks,
-        myDecksLength: Array.isArray(normalizedWithFusedData.myDecks) ? normalizedWithFusedData.myDecks.length : 0,
-        hasFusedDeckIds: !!normalizedWithFusedData.fusedDeckIds,
-        fusedDeckIdsLength: Array.isArray(normalizedWithFusedData.fusedDeckIds) ? normalizedWithFusedData.fusedDeckIds.length : 0
-      })
-      
+
       fusedDecksWithCards.push(normalizedWithFusedData)
+    }
+
+    if (decksNeedingFetch > 0) {
+      logWithTimestamp(`[API] Fused decks missing embedded cards: ${decksNeedingFetch} (fallback fetch attempted via detail API)`)
     }
     
     return fusedDecksWithCards
@@ -750,7 +828,12 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
   }
 }
 
-export async function getPlayerDecks(playerName: string): Promise<ApiDeck[]> {
+export async function getPlayerDecks(
+  playerName: string,
+  options?: {
+    onPage?: (info: DeckPageProgress) => void
+  }
+): Promise<DeckFetchResult> {
   if (!playerName || !playerName.trim()) {
     throw new Error('Player nickname cannot be empty')
   }
@@ -760,23 +843,37 @@ export async function getPlayerDecks(playerName: string): Promise<ApiDeck[]> {
   const cached = getCached(regularDeckCache, cacheKey)
   if (cached) {
     logWithTimestamp(`[API] Returning regular decks from cache for ${trimmedName} (${cached.length})`)
-    return cached
+    options?.onPage?.({
+      page: 1,
+      received: cached.length,
+      totalSoFar: cached.length,
+    })
+    return {
+      decks: cached,
+      meta: {
+        total: cached.length,
+        pages: 1,
+      },
+    }
   }
 
   logWithTimestamp(`[API] ===== Starting deck search for player: ${trimmedName} =====`)
 
   try {
     // Use real API endpoint from Apps Script
-    const decks = await fetchDecksFromAPI(trimmedName)
+    const { decks, meta } = await fetchDecksFromAPI(trimmedName, { onPage: options?.onPage })
     
     if (decks.length > 0) {
       logWithTimestamp(`[API] ===== SUCCESS: Found ${decks.length} decks =====`)
       setCached(regularDeckCache, cacheKey, decks)
-      return decks
+      return { decks, meta }
     } else {
       logWithTimestamp(`[API] ===== No decks found for player: ${trimmedName} =====`)
       setCached(regularDeckCache, cacheKey, [])
-      return []
+      return {
+        decks: [],
+        meta: { total: 0, pages: meta.pages || 1 },
+      }
     }
   } catch (error) {
     console.error(`[API] ===== ERROR fetching decks:`, error)

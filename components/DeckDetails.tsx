@@ -8,6 +8,7 @@ import NextImage from 'next/image'
 import type { Deck } from '@/store/deckStore'
 import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForgebornAlternativeUrl, type CardInfo } from '@/lib/api'
 import { logWithTimestamp } from '@/lib/logger'
+import { pluralize } from '@/lib/pluralize'
 
 // Fetch full deck details directly from API (faster than going through API route)
 async function fetchDeckDetails(deckId: string): Promise<any> {
@@ -413,24 +414,11 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     return [deck1, deck2]
   }, [deck, allDecks])
 
-  const formatSourceDeckExpireDate = (sourceDeck: Deck | null) => {
-    const expireDate = (sourceDeck as any)?.expireDate || (sourceDeck as any)?.created
-    if (!expireDate) return null
-    const parsed = new Date(expireDate)
-    if (Number.isNaN(parsed.getTime())) return null
-    return parsed.toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    })
-  }
-
   const renderSourceDeckMeta = (sourceDeck: Deck | null) => {
     if (!sourceDeck) return null
 
     const deckScore = (sourceDeck as any).deckScore
     const elo = (sourceDeck as any).elo
-    const expireDateLabel = formatSourceDeckExpireDate(sourceDeck)
 
     const badges: React.ReactElement[] = []
 
@@ -460,21 +448,11 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       )
     }
 
-    const expireNode = expireDateLabel ? (
-      <Group key="expire" gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
-        <IconCalendar size={12} className="text-gray-400" />
-        <Text size="xs" className="text-gray-400">
-          Expire: {expireDateLabel}
-        </Text>
-      </Group>
-    ) : null
-
-    if (badges.length === 0 && !expireNode) return null
+    if (badges.length === 0) return null
 
     return (
       <Group gap="xs" wrap="wrap">
         {badges}
-        {expireNode}
       </Group>
     )
   }
@@ -715,6 +693,56 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const solbindCardIdsKey = useMemo(() => {
     return Array.from(solbindCardIdsSet).sort().join(',')
   }, [solbindCardIdsSet])
+
+  // Rarity summary (including Solbind) for badges in header
+  const raritySummary = useMemo(() => {
+    const summary = new Map<string, number>()
+
+    const add = (key: string) => summary.set(key, (summary.get(key) || 0) + 1)
+
+    const solbindIds = solbindCardIdsSet
+
+    normalizedCards.forEach((card, idx) => {
+      const cardData = card as any
+
+      // Skip parent Solbind cards (they are containers)
+      const isParentSolbind = cardData.solbindCards && Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0
+      if (isParentSolbind) return
+
+      const cardId = card.id || cardData.cardId || `card-${idx}`
+      const rarityRaw = cardData.rarity
+
+      // Solbind check
+      const isSolbind =
+        solbindIds.has(cardId) ||
+        (typeof rarityRaw === 'string' && rarityRaw.toLowerCase().includes('solbind'))
+      if (isSolbind) {
+        add('Solbind')
+        return
+      }
+
+      if (typeof rarityRaw === 'string') {
+        let normalizedRarity = rarityRaw.trim()
+        const lower = normalizedRarity.toLowerCase()
+
+        if (lower.includes('common') && lower.includes('rare')) {
+          normalizedRarity = 'Common Rare'
+        } else if (lower.includes('rare') && !lower.includes('common')) {
+          normalizedRarity = 'Rare'
+        } else if (lower.includes('solbind')) {
+          normalizedRarity = 'Solbind'
+        } else if (lower.includes('common')) {
+          normalizedRarity = 'Common'
+        } else if (lower.includes('ls') || lower.includes('legendary')) {
+          normalizedRarity = 'LS'
+        }
+
+        add(normalizedRarity)
+      }
+    })
+
+    return summary
+  }, [normalizedCards, solbindCardIdsSet])
 
   // Helper function to load images in parallel with a concurrency limit
   const loadImagesInParallel = async (
@@ -2007,6 +2035,19 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     return solbindCardObjects
   }, [normalizedCards, forgebornCards, solbindCardIdsSet, deck, fullDeckData])
 
+  // Merge rarity summary with Solbind count (make sure Solbind shows up if we have Solbind cards)
+  const displayRaritySummary = useMemo(() => {
+    const summary = new Map(raritySummary)
+    // Safety net: if solbindCards somehow misses items, also use the size of the ID set
+    const solbindCount = Math.max(solbindCards.length, solbindCardIdsSet.size)
+    if (solbindCount > 0) {
+      const existing = summary.get('Solbind') || 0
+      const finalCount = Math.max(existing, solbindCount)
+      summary.set('Solbind', finalCount)
+    }
+    return summary
+  }, [raritySummary, solbindCards, solbindCardIdsSet])
+
   // Track last deck ID to detect deck changes
   const lastDeckIdRef = useRef<string | null>(null)
   const lastForgebornCardsLengthRef = useRef<number>(0)
@@ -2682,6 +2723,69 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                   </Badge>
                 </Group>
               )}
+              {/* Owner / Expire badges directly under the title */}
+              {(() => {
+                const d = deck as any
+                const ownerName = d.username || d.playerName || null
+                if (!ownerName) return null
+                const expireAt =
+                  d.expireAt ||
+                  d.expire ||
+                  d.expireDate ||
+                  d.expire_date ||
+                  d.expiry ||
+                  d.pExpiry ||
+                  null
+                const expireLabel =
+                  expireAt &&
+                  new Date(expireAt).toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })
+                const expireTs = expireAt ? Date.parse(expireAt) : NaN
+                const hasExpire = Number.isFinite(expireTs)
+                const isExpired = hasExpire ? expireTs < Date.now() : false
+
+                return (
+                  <Group gap="xs" wrap="wrap">
+                    <Badge
+                      component="a"
+                      href={`/player/${encodeURIComponent(ownerName)}`}
+                      color="teal"
+                      variant="light"
+                      size="sm"
+                      radius="sm"
+                      style={{ textDecoration: 'none' }}
+                    >
+                      Owner: {ownerName as string}
+                    </Badge>
+                    {expireLabel && (
+                      <Badge
+                        color={undefined}
+                        variant="filled"
+                        size="sm"
+                        radius="sm"
+                        style={
+                          isExpired
+                            ? {
+                                backgroundColor: '#000',
+                                color: '#fff',
+                                border: '1px solid #000',
+                              }
+                            : {
+                                backgroundColor: '#b32626',
+                                color: '#fff',
+                                border: '1px solid #b32626',
+                              }
+                        }
+                      >
+                        Expire: {expireLabel}
+                      </Badge>
+                    )}
+                  </Group>
+                )
+              })()}
             </Group>
             <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
             {deck.deckRank && (
@@ -2693,23 +2797,6 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                 {deck.deckRank}
               </Badge>
             )}
-            {(() => {
-              const d = deck as any
-              const ownerName = d.username || null
-              if (!ownerName) return null
-              return (
-                <Badge
-                  component="a"
-                  href={`/player/${encodeURIComponent(ownerName || '')}`}
-                  color="violet"
-                  variant="light"
-                  size="sm"
-                  style={{ textDecoration: 'none' }}
-                >
-                  Owner: {ownerName as string}
-                </Badge>
-              )
-            })()}
             {deck.format && (
                 <Badge
                   color="gray"

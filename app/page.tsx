@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Container, Title, TextInput, Button, Paper, Loader, Stack } from '@mantine/core'
-import { IconSearch } from '@tabler/icons-react'
+import { Badge, Button, Checkbox, Container, Group, Loader, Paper, Progress, Stack, Text, TextInput, Title } from '@mantine/core'
+import { IconAlertTriangle, IconCheck, IconClockHour3, IconSearch } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { useDeckStore } from '@/store/deckStore'
 import { DeckList } from '@/components/DeckList'
@@ -13,10 +13,101 @@ export default function Home() {
   const [playerName, setPlayerName] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
+  const [forceRefresh, setForceRefresh] = useState(false)
   const searchedNameRef = useRef<string>('')
-  const { decks, fusedDecks, loading, fetchDecks } = useDeckStore()
+  const { decks, fusedDecks, loading, fetchDecks, progress, tagIndex, cardNameIndex, deckTags } = useDeckStore()
   const lastSearchRef = useRef<string>('')
+  const [elapsedMs, setElapsedMs] = useState(0)
+  const [progressVisible, setProgressVisible] = useState(false)
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null
+    if ((progress.status === 'running' || progress.status === 'cached') && progress.startedAt) {
+      const tick = () => {
+        setElapsedMs(Date.now() - (progress.startedAt || Date.now()))
+      }
+      tick()
+      timer = setInterval(tick, 400)
+    } else if (progress.startedAt && progress.finishedAt) {
+      setTimeout(() => setElapsedMs(progress.finishedAt! - progress.startedAt!), 0)
+    } else {
+      setTimeout(() => setElapsedMs(0), 0)
+    }
+
+    return () => {
+      if (timer) {
+        clearInterval(timer)
+      }
+    }
+  }, [progress.finishedAt, progress.startedAt, progress.status])
+
+  useEffect(() => {
+    let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+    if (progress.status === 'running' || progress.status === 'error') {
+      setTimeout(() => setProgressVisible(true), 0)
+    } else if ((progress.status === 'done' || progress.status === 'cached') && progress.startedAt && progress.finishedAt) {
+      setTimeout(() => setProgressVisible(true), 0)
+      hideTimer = setTimeout(() => setProgressVisible(false), 1400)
+    } else if (progress.status === 'idle') {
+      setTimeout(() => setProgressVisible(false), 0)
+    }
+
+    return () => {
+      if (hideTimer) {
+        clearTimeout(hideTimer)
+      }
+    }
+  }, [progress.status, progress.startedAt, progress.finishedAt])
+
+  const formatDuration = useCallback((ms: number) => {
+    const totalSeconds = Math.max(0, Math.round(ms / 1000))
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    if (minutes > 0) {
+      return `${minutes}m ${seconds.toString().padStart(2, '0')}s`
+    }
+    return `${seconds}s`
+  }, [])
+
+  const totalSteps = progress.totalSteps || progress.steps.length || 1
+  const completedSteps = progress.steps.filter((step) => step.status === 'done').length
+  const hasActiveStep = progress.steps.some((step) => step.status === 'active')
+  const errorStepIndex = progress.steps.findIndex((step) => step.status === 'error')
+  const activeIndex = errorStepIndex >= 0
+    ? errorStepIndex
+    : progress.currentStepIndex >= 0
+      ? progress.currentStepIndex
+      : Math.min(totalSteps - 1, completedSteps)
+  const progressPercent = Math.min(
+    100,
+    Math.round(((completedSteps + (progress.status === 'running' && hasActiveStep ? 0.35 : 0)) / totalSteps) * 100)
+  )
+  const etaMs =
+    progress.status === 'running' && (completedSteps > 0 || hasActiveStep)
+      ? Math.max(
+          0,
+          Math.round(
+            (elapsedMs / Math.max(1, completedSteps + (hasActiveStep ? 1 : 0))) *
+              Math.max(0, totalSteps - completedSteps - (hasActiveStep ? 1 : 0))
+          )
+        )
+      : 0
+  const statusLabels: Record<'pending' | 'active' | 'done' | 'error', string> = {
+    pending: 'Waiting',
+    active: 'In progress',
+    done: 'Done',
+    error: 'Failed',
+  }
+  const statusColors: Record<'pending' | 'active' | 'done' | 'error', string> = {
+    pending: 'gray',
+    active: 'blue',
+    done: 'teal',
+    error: 'red',
+  }
+  const counters = progress.counters || {}
+  const showProgress = progressVisible
+  const [lastSearchedName, setLastSearchedName] = useState('')
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value
@@ -59,22 +150,29 @@ export default function Home() {
     // Store the searched name to detect when user starts typing new text
     searchedNameRef.current = playerName.trim()
     lastSearchRef.current = playerName.trim()
+    setLastSearchedName(playerName.trim())
 
     try {
-      await fetchDecks(playerName.trim())
+      await fetchDecks(playerName.trim(), { force: forceRefresh })
       const { decks: loadedDecks, fusedDecks: loadedFusedDecks } = useDeckStore.getState()
+      const latestProgress = useDeckStore.getState().progress
+      const totalMs =
+        latestProgress?.finishedAt && latestProgress?.startedAt
+          ? latestProgress.finishedAt - latestProgress.startedAt
+          : null
+      const timeLabel = totalMs !== null ? formatDuration(totalMs) : null
 
       if (loadedDecks.length > 0 || loadedFusedDecks.length > 0) {
         const totalDecks = loadedDecks.length + loadedFusedDecks.length
         notifications.show({
           title: 'Success',
-          message: `Found ${totalDecks} deck${totalDecks !== 1 ? 's' : ''}`,
+          message: `Found ${totalDecks} deck${totalDecks !== 1 ? 's' : ''}${timeLabel ? ` in ${timeLabel}` : ''}`,
           color: 'green',
         })
       } else {
         notifications.show({
           title: 'Information',
-          message: 'No decks found. Please check the player nickname.',
+          message: `No decks found. Please check the player nickname.${timeLabel ? ` Search time: ${timeLabel}.` : ''}`,
           color: 'blue',
         })
       }
@@ -102,29 +200,16 @@ export default function Home() {
     }
   }
 
-  // If tab was inactive and loading froze, re-trigger search on visibility change
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && loading && lastSearchRef.current) {
-        fetchDecks(lastSearchRef.current).catch(() => {
-          /* errors already logged inside fetchDecks */
-        })
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [loading, fetchDecks])
-
   return (
     <main className="min-h-screen relative overflow-hidden">
       <BackgroundElements />
       <Header />
-      <Container size="xl" className="relative z-10 py-12">
+      <Container size="xl" className="relative z-10 py-6">
         <Stack gap="xl" align="center">
           <div className="text-center space-y-4">
             <Title
               order={1}
-              className="text-5xl md:text-6xl font-bold text-white mb-4"
+              className="text-5xl md:text-6xl font-bold text-white mb-2"
               style={{
                 textShadow: '0 0 25px rgba(74, 144, 226, 0.4), 0 0 50px rgba(80, 200, 120, 0.2)',
               }}
@@ -167,26 +252,152 @@ export default function Home() {
                   input: 'bg-slate-700/40 text-white border-sf-primary/40 focus:border-sf-primary placeholder:text-gray-400',
                 }}
               />
-              <Button
-                size="lg"
-                onClick={handleSearch}
-                loading={loading}
-                className="bg-gradient-to-r from-sf-primary to-sf-secondary hover:from-sf-primary/90 hover:to-sf-secondary/90 transition-all shadow-lg hover:shadow-xl"
-                fullWidth
-              >
-                Search Decks
-              </Button>
+              <Group justify="space-between" align="center" wrap="nowrap" className="w-full">
+                <div className="flex-1" />
+                <Button
+                  size="xl"
+                  onClick={handleSearch}
+                  loading={loading}
+                  className="bg-gradient-to-r from-sf-primary to-sf-secondary hover:from-sf-primary/90 hover:to-sf-secondary/90 transition-all shadow-lg hover:shadow-xl"
+                  style={{ minWidth: 270, height: 60 }}
+                >
+                  Search Decks
+                </Button>
+                <div className="flex-1 flex justify-end">
+                  <Checkbox
+                    label={
+                      <div className="leading-tight text-white text-right">
+                        <div>Force refresh</div>
+                        <div className="text-xs text-gray-300">(ignore cache)</div>
+                      </div>
+                    }
+                    checked={forceRefresh}
+                    onChange={(e) => setForceRefresh(e.currentTarget.checked)}
+                    color="blue"
+                  />
+                </div>
+              </Group>
             </Stack>
           </Paper>
 
-          {loading && (
-            <div className="flex justify-center py-8">
-              <Loader size="lg" color="blue" />
-            </div>
+          {showProgress && (
+            <Paper
+              p="lg"
+              className="w-full max-w-2xl bg-slate-800/60 backdrop-blur-md border border-sf-primary/30 rounded-xl"
+              style={{ backgroundColor: 'rgba(30, 41, 59, 0.6)' }}
+            >
+              <Stack gap="md">
+                <Group justify="space-between" align="flex-start">
+                  <div>
+                    <Text fw={600} className="text-white">
+                      {progress.status === 'error'
+                        ? 'Search failed'
+                        : `Searching decks${lastSearchedName ? ` for ${lastSearchedName}` : ''}`}
+                    </Text>
+                    <Text size="sm" className="text-gray-300">
+                      {progress.message || (progress.status === 'error' ? 'Something went wrong' : 'Working on it...')}
+                    </Text>
+                  </div>
+                  <Badge color="blue" variant="light">
+                    Step {Math.max(1, activeIndex + 1)} / {totalSteps}
+                  </Badge>
+                </Group>
+
+                <Progress
+                  value={progressPercent}
+                  color={progress.status === 'running' ? 'blue' : progress.status === 'error' ? 'red' : 'teal'}
+                  size="lg"
+                  striped
+                  animated
+                />
+
+                <Group gap="xl">
+                  <div>
+                    <Text size="xs" className="text-gray-400 uppercase tracking-wide">
+                      Elapsed
+                    </Text>
+                    <Text fw={600} className="text-white">
+                      {formatDuration(elapsedMs)}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" className="text-gray-400 uppercase tracking-wide">
+                      ETA
+                    </Text>
+                    <Text fw={600} className="text-white">
+                      {progress.status === 'error'
+                        ? '—'
+                        : etaMs > 0
+                          ? `~${formatDuration(etaMs)}`
+                          : 'Estimating...'}
+                    </Text>
+                  </div>
+                </Group>
+
+                <Stack gap={6}>
+                  {progress.steps.map((step) => {
+                    return (
+                      <Group
+                        key={step.key}
+                        justify="space-between"
+                        className="bg-slate-700/30 rounded-md px-3 py-2"
+                      >
+                        <Group gap={8}>
+                          {step.status === 'done' ? (
+                            <IconCheck size={16} className="text-teal-400" />
+                          ) : step.status === 'error' ? (
+                            <IconAlertTriangle size={16} className="text-red-400" />
+                          ) : step.status === 'active' ? (
+                            <Loader size="xs" color="blue" />
+                          ) : (
+                            <IconClockHour3 size={16} className="text-gray-400" />
+                          )}
+                          <Text className="text-white" size="sm">
+                            {step.label}
+                          </Text>
+                        </Group>
+                        <Badge color={statusColors[step.status]} variant="light" size="sm">
+                          {statusLabels[step.status]}
+                        </Badge>
+                      </Group>
+                    )
+                  })}
+                </Stack>
+
+                <Stack gap={6}>
+                  <Text size="xs" className="text-gray-400 uppercase tracking-wide">
+                    Deck progress
+                  </Text>
+                  <Group gap="md" wrap="wrap">
+                    <Badge color="teal" variant="light">
+                      Total decks: {counters.totalCount ?? '—'}
+                    </Badge>
+                    <Badge color="blue" variant="light">
+                      Regular: {counters.regularCount ?? '—'}
+                    </Badge>
+                    <Badge color="violet" variant="light">
+                      Fused: {counters.fusedCount ?? '—'}
+                    </Badge>
+                    <Badge color="cyan" variant="light">
+                      Regular pages: {counters.regularPages ?? '—'}
+                    </Badge>
+                    <Badge color="grape" variant="light">
+                      Fused pages: {counters.fusedPages ?? '—'}
+                    </Badge>
+                  </Group>
+                </Stack>
+              </Stack>
+            </Paper>
           )}
 
           {!loading && !isTyping && (decks.length > 0 || fusedDecks.length > 0) && (
-            <DeckList decks={decks} fusedDecks={fusedDecks} />
+            <DeckList
+              decks={decks}
+              fusedDecks={fusedDecks}
+              precomputedTags={tagIndex}
+              precomputedCardNames={cardNameIndex}
+              deckTagsMap={deckTags}
+            />
           )}
           
           {!loading && !isTyping && decks.length === 0 && fusedDecks.length === 0 && hasSearched && (
