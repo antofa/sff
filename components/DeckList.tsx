@@ -102,28 +102,46 @@ function getDeckSet(deck: Deck): string | null {
   if (!deck) return null
   
   const deckAny = deck as any
+
+  const deriveSetFromId = (id?: string | null): string | null => {
+    if (!id || typeof id !== 'string') return null
+    const lower = id.toLowerCase()
+    if (lower.startsWith('s1-')) return 'S1'
+    if (lower.startsWith('s2-')) return 'S2'
+    if (lower.startsWith('s3-')) return 'S3'
+    if (lower.startsWith('s4-')) return 'S4'
+    return null
+  }
   
   // For fused decks, check cards from source decks (myDecks) if cards array is empty
   if (deckAny.format === 'Fused' && (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0)) {
-    // Check source decks (myDecks) for B1 cards
+    // Check source decks (myDecks) for explicit set first, then B1 cards
     if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
       for (const sourceDeck of deckAny.myDecks) {
-        if (sourceDeck && sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
+        if (!sourceDeck) continue
+        const explicitSet = sourceDeck.cardSetNo || sourceDeck.cardSetId || deriveSetFromId(sourceDeck.id)
+        if (explicitSet) {
+          return explicitSet
+        }
+        if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
           const hasB1Card = sourceDeck.cards.some((card: any) => isB1Card(card))
-          if (hasB1Card) {
-            return 'B1'
-          }
+          if (hasB1Card) return 'B1'
         }
       }
     }
     
-    // If no B1 cards found in source decks, return null (fused decks don't have cardSetNo)
+    // Fallback: check fused deck itself for set
+    const derivedParentSet = deckAny.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id)
+    if (derivedParentSet) {
+      return derivedParentSet
+    }
+
     return null
   }
   
   // For regular decks or fused decks with cards
   if (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0) {
-    return deck.cardSetNo || null
+    return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
   }
   
   // Check if any card is from B1 set
@@ -134,19 +152,38 @@ function getDeckSet(deck: Deck): string | null {
   }
   
   // Otherwise use deck.cardSetNo
-  return deck.cardSetNo || null
+  return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
 }
 
 // Helper function to count cards as sum of creatures + spells + solbind (excluding Forgeborn)
 function countPlayableCards(deck: Deck): { total: number; creatures: number; spells: number; solbind: number } {
-  // Support cards, cardList, or object map of cards
-  let rawCards: any[] = []
-  if (Array.isArray((deck as any).cardList)) {
-    rawCards = (deck as any).cardList
-  } else if (deck.cards && Array.isArray(deck.cards)) {
-    rawCards = deck.cards
-  } else if (deck.cards && typeof deck.cards === 'object') {
-    rawCards = Object.values(deck.cards)
+  const deckAny = deck as any
+  const extractCards = (d: any): any[] => {
+    if (!d) return []
+    if (Array.isArray(d.cardList)) return d.cardList
+    if (Array.isArray(d.cards)) return d.cards
+    if (d.cards && typeof d.cards === 'object') return Object.values(d.cards)
+    return []
+  }
+
+  let rawCards: any[] = extractCards(deckAny)
+
+  // For fused decks, prefer cards from source halves when available to avoid miscounts
+  if (deckAny.format === 'Fused' && Array.isArray(deckAny.myDecks) && deckAny.myDecks.length >= 2) {
+    const combined: any[] = []
+    const seen = new Set<string>()
+    const addCards = (cardsArr: any[]) => {
+      cardsArr.forEach((c, idx) => {
+        const key = c?.id || c?.cardId || c?.name || `card-${combined.length + idx}`
+        if (seen.has(key)) return
+        seen.add(key)
+        combined.push(c)
+      })
+    }
+    deckAny.myDecks.forEach((src: any) => addCards(extractCards(src)))
+    if (combined.length > 0) {
+      rawCards = combined
+    }
   }
 
   if (!rawCards || rawCards.length === 0) return { total: 0, creatures: 0, spells: 0, solbind: 0 }
@@ -298,23 +335,29 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
   // Categorize remaining cards
   let creatures = 0
   let spells = 0
+  const forgebornIdSet = new Set<string>()
+  if (deck.forgebornId) forgebornIdSet.add(deck.forgebornId)
+  normalizedCards.forEach(card => {
+    const cardData = card as any
+    const ct = (cardData.cardType || cardData.type || '').toLowerCase()
+    if (ct.includes('forgeborn') && card.id) {
+      forgebornIdSet.add(card.id)
+    }
+  })
   
   normalizedCards.forEach(card => {
-    // Skip Forgeborn
-    if (forgebornCards.includes(card)) return
-    
-    // Skip Solbind cards (already counted) - but NOT parent cards with solbindCards
-    // Parent cards with solbindCards are regular cards (Spell or Creature)
     const cardData = card as any
-    const isSolbindCard = solbindCardsUnique.some(sb => sb.id === card.id)
-    
-    // Only skip if it's a Solbind card AND not a parent card
-    if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
-      return
-    }
-    
-    // Parent cards with solbindCards array should be counted as regular cards (Spell or Creature)
-    // They are NOT Solbind cards themselves
+    // Skip forgeborn by id or type
+    const isForgeborn =
+      forgebornIdSet.has(card.id) ||
+      cardData.type?.toLowerCase().includes('forgeborn') ||
+      cardData.cardType?.toLowerCase().includes('forgeborn')
+    if (isForgeborn) return
+
+    // Detect solbind (keep counting as spell/creature too)
+    const isSolbindCard =
+      solbindCardsUnique.some(sb => sb.id === card.id) ||
+      (typeof cardData.rarity === 'string' && cardData.rarity.toLowerCase().includes('solbind'))
     
     // Get original card data to check cardType properly
     const originalCard = deck.cards && Array.isArray(deck.cards)
@@ -338,21 +381,26 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
     const lowerCardType = cardType.toLowerCase()
     const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
     
-    if (isSpell) {
-      spells++
-    } else {
-      creatures++
+    if (isSpell) spells++
+    else creatures++
+
+    // Count solbind separately (do not exclude from spell/creature counts)
+    if (isSolbindCard) {
+      solbindCount += 1
     }
   })
   
-  let solbind = Math.max(solbindCardIds.size, solbindCardsUnique.length, solbindCount)
-  // Heuristic: if only one Solbind child is visible from partial data, assume a missing partner
-  if (solbind < 2 && solbindCardIds.size === 1 && solbindCount === 0) {
-    solbind = 2
-  }
+  const solbind = Math.max(solbindCardIds.size, solbindCardsUnique.length, solbindCount)
 
-  // Total cards: base card list (includes parents) plus Solbind children
-  const total = normalizedCards.length + solbind
+  // Total cards: exclude forgeborn only
+  const total = normalizedCards.filter(card => {
+    const cardData = card as any
+    const isForgeborn =
+      forgebornIdSet.has(card.id) ||
+      cardData.type?.toLowerCase().includes('forgeborn') ||
+      cardData.cardType?.toLowerCase().includes('forgeborn')
+    return !isForgeborn
+  }).length
 
   return { total, creatures, spells, solbind }
 }
@@ -366,9 +414,9 @@ function RegularDeckCard({
   handleDeckClick: (deck: Deck) => void
 }) {
   const [renderNow] = useState(() => Date.now())
-  const { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
   const expiryTs = getExpiryTimestamp(deck)
   const isExpired = expiryTs !== null && expiryTs < renderNow
+  const { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
 
   return (
     <Grid.Col key={deck.id} span={{ base: 12, sm: 6, md: 4 }}>
@@ -771,26 +819,34 @@ function FusedDeckCard({
   handleDeckClick,
   deckTagsMap,
   allDecks,
+  fusedExpiryResolver,
 }: {
   deck: Deck
   sourceDecks?: [Deck | null, Deck | null]
   handleDeckClick: (deck: Deck) => void
   deckTagsMap?: Record<string, string[]>
   allDecks?: Deck[]
+  fusedExpiryResolver: (deck: Deck, allDecks: Deck[]) => {
+    isExpired: boolean
+    isExpiring: boolean
+    expireDate: string | null
+    minExpiredDate: string | null
+    minExpiringDate: string | null
+  }
 }) {
   const [renderNow] = useState(() => Date.now())
   const fusedDeckAny = deck as any
   const [deck1, deck2] = sourceDecks || [null, null]
 
   // Helper to pull cards from any deck-like object
-  const extractCards = (d: any): any[] => {
+  const extractCards = useCallback((d: any): any[] => {
     if (!d || typeof d !== 'object') return []
     if (Array.isArray(d.cardList) && d.cardList.length > 0) return d.cardList
     if (Array.isArray(d.cards) && d.cards.length > 0) return d.cards
     if (Array.isArray(d.cardIds) && d.cardIds.length > 0) return d.cardIds
     if (d.cards && typeof d.cards === 'object') return Object.values(d.cards)
     return []
-  }
+  }, [])
 
   // Fast lookup map for all decks by id (when provided)
   const allDecksMap = useMemo(() => {
@@ -824,20 +880,36 @@ function FusedDeckCard({
   }
   const pickedSources = sourceCandidates.slice(0, 2)
 
-  const factionSets: Array<{ faction: string; setNo: string | number | null }> = []
-  pickedSources.forEach((src) => {
-    if (src?.faction) {
-      const setNo = getDeckSet(src)
-      factionSets.push({ faction: src.faction, setNo: setNo || null })
-    }
-  })
-  if (factionSets.length === 0 && deck.faction) {
-    const deckSet = getDeckSet(deck)
-    factionSets.push({ faction: deck.faction, setNo: deckSet || null })
-  }
+  const deriveSetFromId = useCallback((id?: string | null): string | null => {
+    if (!id || typeof id !== 'string') return null
+    const lower = id.toLowerCase()
+    if (lower.startsWith('s1-')) return 'S1'
+    if (lower.startsWith('s2-')) return 'S2'
+    if (lower.startsWith('s3-')) return 'S3'
+    if (lower.startsWith('s4-')) return 'S4'
+    return null
+  }, [])
 
+  const factionSets: Array<{ faction: string; setNo: string | number | null }> = useMemo(() => {
+    const list: Array<{ faction: string; setNo: string | number | null }> = []
+    pickedSources.forEach((src) => {
+      if (src?.faction) {
+        let setNo = getDeckSet(src) || deriveSetFromId((src as any).id)
+        if (!setNo && src.id && allDecksMap.has(src.id)) {
+          const mapped = allDecksMap.get(src.id)
+          setNo = getDeckSet(mapped) || deriveSetFromId((mapped as any)?.id)
+        }
+        list.push({ faction: src.faction, setNo: setNo || null })
+      }
+    })
+    if (list.length === 0 && deck.faction) {
+      const deckSet = getDeckSet(deck) || deriveSetFromId(deck.id)
+      list.push({ faction: deck.faction, setNo: deckSet || null })
+    }
+    return list
+  }, [pickedSources, deck, deriveSetFromId, allDecksMap])
   // Collect cards for rarity counts and tags display
-  const aggregateCards = (): any[] => {
+  const aggregateCards = useCallback((): any[] => {
     const cards: any[] = []
 
     // 1) Try myDecks halves; if they lack cards, fill from allDecks by id
@@ -907,7 +979,30 @@ function FusedDeckCard({
     }
 
     return [...cards, ...solbindCards]
-  }
+  }, [deck, fusedDeckAny.myDecks, fusedDeckAny.fusedDeckIds, allDecksMap, pickedSources, extractCards])
+
+  const fusedSetLabels = useMemo(() => {
+    const setLabels = new Set<string>()
+    factionSets.forEach(item => {
+      if (item.setNo) {
+        const label = formatSetName(item.setNo)
+        if (label) setLabels.add(label)
+      }
+    })
+
+    if (setLabels.size === 0) {
+      const agg = aggregateCards()
+      const hasB1 = agg.some(card => isB1Card(card as any))
+      if (hasB1) setLabels.add(formatSetName('B1') || 'B1')
+      const parentSet = getDeckSet(deck)
+      if (parentSet) {
+        const label = formatSetName(parentSet)
+        if (label) setLabels.add(label)
+      }
+    }
+
+    return Array.from(setLabels)
+  }, [factionSets, aggregateCards, deck])
 
   const counts = (() => {
     const agg = aggregateCards()
@@ -915,18 +1010,69 @@ function FusedDeckCard({
       let creatures = 0
       let spells = 0
       let solbind = 0
+      const solbindIds = new Set<string>()
       agg.forEach((card: any, idx: number) => {
         const info = typeof card === 'string'
           ? getCardInfo(card)
           : getCardInfo(card.id || card.cardId || card.name || `card-${idx}`, card)
         const cardData = info as any
-        const cardType = (cardData.cardType || cardData.card_type || '').toLowerCase()
-        const isSpell = cardType.includes('spell') && !cardType.includes('creature')
-        const isSolbind = cardData.rarity && String(cardData.rarity).toLowerCase().includes('solbind')
-        if (isSolbind) solbind += 1
-        else if (isSpell) spells += 1
-        else creatures += 1
+
+        const cardTypeRaw = (cardData.cardType || cardData.card_type || '').toLowerCase()
+        const typeRaw = (cardData.type || '').toLowerCase()
+        const isForgeborn = cardTypeRaw.includes('forgeborn') || typeRaw.includes('forgeborn')
+        if (isForgeborn) return
+
+        const isParentSolbind =
+          (Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0) ||
+          !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
+
+        const isSpell = cardTypeRaw.includes('spell') && !cardTypeRaw.includes('creature')
+        const isSolbind =
+          !isParentSolbind &&
+          cardData.rarity &&
+          String(cardData.rarity).toLowerCase().includes('solbind')
+
+        // Collect solbind children from parent
+        if (isParentSolbind) {
+          // Parent Solbind cards still count toward their type (spell or creature)
+          if (isSpell) {
+            spells += 1
+          } else {
+            creatures += 1
+          }
+          if (Array.isArray(cardData.solbindCards)) {
+            cardData.solbindCards.forEach((sb: any) => {
+              const sid = sb?.id
+              if (sid) solbindIds.add(sid)
+            })
+          }
+          if (cardData.solbindId1) solbindIds.add(cardData.solbindId1)
+          if (cardData.solbindid1) solbindIds.add(cardData.solbindid1)
+          if (cardData.solbindId2) solbindIds.add(cardData.solbindId2)
+          if (cardData.solbindid2) solbindIds.add(cardData.solbindid2)
+          // Do not count parent Solbinds themselves as spells or Solbinds
+          return
+        }
+
+        if (isSolbind) {
+          solbindIds.add(cardData.id || cardData.cardId || cardData.name || `card-${idx}`)
+          return
+        }
+
+        if (isSpell) {
+          spells += 1
+        } else {
+          creatures += 1
+        }
       })
+
+      // Add any missing solbinds to counts
+      solbind += solbindIds.size
+
+      // If we only saw a single Solbind from partial data, assume a missing partner
+      if (solbind === 1) {
+        solbind = 2
+      }
       return { total: creatures + spells + solbind, creatures, spells, solbind }
     }
 
@@ -956,8 +1102,7 @@ function FusedDeckCard({
     const cards = aggregateCards()
     const counts = new Map<string, number>()
 
-    const solbindIds = new Set<string>()
-    let solbindByRarity = 0
+    let parentSolbindCount = 0
 
     cards.forEach((card: any, idx: number) => {
       const info =
@@ -967,26 +1112,11 @@ function FusedDeckCard({
       const rarity = (info as any)?.rarity
       const cardData = info as any
       const isParentSolbind = !!(cardData.solbindCards && Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0)
-      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-        cardData.solbindCards.forEach((sb: any) => {
-          if (sb?.id) solbindIds.add(sb.id)
-        })
-      }
-      // Also treat cards with Solbind rarity themselves
+      // Count Solbind rarity only on parent Solbind cards (children are ignored for rarity badges)
       const isSolbindRarity = rarity && typeof rarity === 'string' && rarity.toLowerCase().includes('solbind')
-      if (isSolbindRarity) {
-        const solbindId =
-          cardData.id ||
-          cardData.cardId ||
-          cardData.card_id ||
-          cardData.name ||
-          `card-${idx}`
-        if (solbindId) {
-          solbindIds.add(solbindId)
-          solbindByRarity += 1
-        }
+      if (isParentSolbind && isSolbindRarity) {
+        parentSolbindCount += 1
       }
-      // Не считаем родительскую Solbind‑карту в бейдж редкостей (считаем только дочерние Solbind)
       if (!isParentSolbind && rarity && typeof rarity === 'string') {
         let normalized = rarity.trim()
         if (normalized.includes('Common') && normalized.includes('Rare')) normalized = 'Common Rare'
@@ -997,19 +1127,58 @@ function FusedDeckCard({
         counts.set(normalized, (counts.get(normalized) || 0) + 1)
       }
     })
-    const solbindTotal = Math.max(solbindIds.size, solbindByRarity)
-    if (solbindTotal > 0) {
-      counts.set('Solbind', (counts.get('Solbind') || 0) + solbindTotal)
+    if (parentSolbindCount > 0) {
+      counts.set('Solbind', (counts.get('Solbind') || 0) + parentSolbindCount)
     }
     return counts
   })()
 
-  // Guarantee a Solbind rarity badge when solbind cards are present
-  if (counts.solbind > 0 && !rarityCounts.has('Solbind')) {
-    rarityCounts.set('Solbind', counts.solbind)
-  }
+  let { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
 
-  const { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
+  // Expire badge data (supports both regular and fused decks)
+  const isFusedDeck = String((deck as any).format || '').toLowerCase() === 'fused'
+
+  const { expireLabel, isExpired, isExpiring } = useMemo(() => {
+    const allDecksArr = Array.isArray(allDecks) ? allDecks : []
+    const computeFlags = (dateStr: string | null) => {
+      if (!dateStr) return { label: null, expired: false, expiring: false }
+      const ts = Date.parse(dateStr)
+      if (!Number.isFinite(ts)) return { label: null, expired: false, expiring: false }
+      const label = new Date(ts).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+      return { label, expired: ts < renderNow, expiring: ts >= renderNow }
+    }
+    if (isFusedDeck) {
+      const status = fusedExpiryResolver(deck, allDecksArr)
+      const { label, expired, expiring } = computeFlags(status.expireDate)
+      // Prioritize resolver flags (based on halves), fallback to parsed date flags
+      const expiredFlag = status.isExpired || expired
+      const expiringFlag = status.isExpiring || expiring
+      return { expireLabel: label, isExpired: expiredFlag, isExpiring: expiringFlag }
+    }
+    const ts = getExpiryTimestamp(deck)
+    if (ts === null) return { expireLabel: null, isExpired: false, isExpiring: false }
+    const { label, expired, expiring } = computeFlags(new Date(ts).toISOString())
+    return { expireLabel: label, isExpired: expired, isExpiring: expiring }
+  }, [deck, allDecks, renderNow, fusedExpiryResolver])
+
+  // Override border colors for fused decks based on expiry status
+  if (isFusedDeck) {
+    if (isExpired) {
+      borderColor = 'rgba(0, 0, 0, 1)'
+      hoverBorderColor = 'rgba(0, 0, 0, 1)'
+    } else if (isExpiring) {
+      borderColor = 'rgba(220, 38, 38, 0.8)'
+      hoverBorderColor = 'rgba(220, 38, 38, 1)'
+    }
+  }
+  const hasFactionSetBadges = useMemo(
+    () => factionSets.some(item => !!(item.setNo && formatSetName(item.setNo))),
+    [factionSets]
+  )
 
   return (
     <Grid.Col key={deck.id} span={{ base: 12, sm: 6, md: 4 }}>
@@ -1039,29 +1208,11 @@ function FusedDeckCard({
             </Title>
           </Group>
 
-          <Group gap={8}>
-            {(deck as any).deckRank && (
-              <Badge color="yellow" variant="light" size="sm">
-                Rank: {(deck as any).deckRank}
-              </Badge>
-            )}
-            {(deck as any).elo !== undefined && (
-              <Badge color="violet" variant="light" size="sm">
-                ELO: {(deck as any).elo}
-              </Badge>
-            )}
-          </Group>
-
-          <Group gap="xs">
-            <Badge color="blue" variant="light" size="sm">
-              Fused deck
-            </Badge>
-          </Group>
-
-          {factionSets.length > 0 && (
-            <Group gap={6} wrap="wrap">
-              {factionSets.map((item, idx) => (
-                <Group key={`${deck.id}-faction-${idx}`} gap={6} wrap="nowrap" align="center">
+          <Group gap="xs" wrap="wrap" align="center">
+            {factionSets.map((item, idx) => {
+              const setLabel = item.setNo ? formatSetName(item.setNo) : null
+              return (
+                <Group key={`${deck.id}-faction-${idx}`} gap="xs" align="center">
                   <Image
                     src={`/images/icons/${item.faction.toLowerCase()}.png`}
                     alt={item.faction}
@@ -1069,23 +1220,45 @@ function FusedDeckCard({
                     w="auto"
                     style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
                   />
-                  {item.setNo && (
+                  {setLabel && (
                     <Badge color="indigo" variant="light" size="sm">
-                      {formatSetName(item.setNo)}
+                      {setLabel}
                     </Badge>
                   )}
                 </Group>
+              )
+            })}
+            {!hasFactionSetBadges &&
+              fusedSetLabels.map(label => (
+                <Badge key={`${deck.id}-set-fallback-${label}`} color="indigo" variant="light" size="sm">
+                  {label}
+                </Badge>
               ))}
-            </Group>
-          )}
-
-          <Group gap="xs">
+            {expireLabel && (
+              <Badge
+                variant="filled"
+                size="sm"
+                radius="sm"
+                style={
+                  isExpired
+                    ? { backgroundColor: '#000', color: '#fff', border: '1px solid #000' }
+                    : { backgroundColor: '#b32626', color: '#fff', border: '1px solid #b32626' }
+                }
+              >
+                Expire: {expireLabel}
+              </Badge>
+            )}
             <Badge color="blue" variant="light" size="sm" leftSection={<IconCards size={12} />}>
               {pluralize(counts.total, 'card')}
             </Badge>
+            {(deck as any).deckRank && (
+              <Badge color="orange" variant="light" size="sm">
+                {(deck as any).deckRank}
+              </Badge>
+            )}
           </Group>
 
-          <Group gap="xs">
+          <Group gap="xs" wrap="wrap">
             <Badge color="green" variant="light" size="sm">
               {pluralize(counts.creatures, 'Creature')}
             </Badge>
@@ -1130,7 +1303,7 @@ function FusedDeckCard({
                       size="sm"
                       style={{ backgroundColor: getRarityColor(rarity), color: 'white', border: 'none' }}
                     >
-                      {count} {rarity}
+                      {pluralize(count, rarity)}
                     </Badge>
                   ))}
               </Group>
@@ -1138,39 +1311,62 @@ function FusedDeckCard({
           })()}
 
           {(() => {
-            const hasTags =
-              deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags) && Object.keys(deck.tags).length > 0
-            let tagsToDisplay: string[] = []
-            if (hasTags) {
-              tagsToDisplay = Object.entries(deck.tags)
-                .map(([key, value]) => {
-                  if (value === null || value === undefined || value === '') return null
-                  if (typeof value === 'string' && value.trim() === '') return null
-                  if (typeof value === 'string') return value.trim()
-                  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-                  if (key && key !== 'none' && !key.startsWith('tag_')) return key
-                  return null
-                })
-                .filter((t): t is string => !!t)
-            } else if (deckTagsMap && deckTagsMap[deck.id]?.length) {
-              tagsToDisplay = deckTagsMap[deck.id]
-            } else if (pickedSources.length > 0) {
-              // Union всех тегов из исходных колод
-              const tagSet = new Set<string>()
-              pickedSources.forEach(src => {
-                if (src?.tags && typeof src.tags === 'object' && !Array.isArray(src.tags)) {
-                  Object.entries(src.tags).forEach(([key, value]) => {
-                    if (value === null || value === undefined || value === '') return
-                    if (typeof value === 'string' && value.trim() === '') return
-                    if (typeof value === 'string') tagSet.add(value.trim())
-                    else if (typeof value === 'number' || typeof value === 'boolean') tagSet.add(String(value))
-                    else if (key && key !== 'none' && !key.startsWith('tag_')) tagSet.add(key)
-                  })
-                }
+            const receiptDate = (deck as any).updatedAt
+            if (!receiptDate) return null
+            return (
+              <Group gap="xs" className="text-gray-400 text-sm">
+                <IconCalendar size={14} />
+                <Text size="xs">
+                  Updated at:{' '}
+                  {new Date(receiptDate).toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </Text>
+              </Group>
+            )
+          })()}
+
+          {(() => {
+            const tagSet = new Set<string>()
+
+            // Tags on the fused deck itself
+            if (deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags)) {
+              Object.entries(deck.tags).forEach(([key, value]) => {
+                if (value === null || value === undefined || value === '') return
+                if (typeof value === 'string' && value.trim()) tagSet.add(value.trim())
+                else if (typeof value === 'number' || typeof value === 'boolean') tagSet.add(String(value))
+                else if (key && key !== 'none' && !key.startsWith('tag_')) tagSet.add(key)
               })
-              tagsToDisplay = Array.from(tagSet)
-            } else {
-              // Fallback: collect provides from aggregated cards (source decks)
+            }
+
+            // Precomputed tags for fused deck id
+            if (deckTagsMap && deckTagsMap[deck.id]?.length) {
+              deckTagsMap[deck.id].forEach((t: string) => {
+                if (t && typeof t === 'string' && t.trim()) tagSet.add(t.trim())
+              })
+            }
+
+            // Tags from source halves
+            pickedSources.forEach(src => {
+              if (src?.tags && typeof src.tags === 'object' && !Array.isArray(src.tags)) {
+                Object.entries(src.tags).forEach(([key, value]) => {
+                  if (value === null || value === undefined || value === '') return
+                  if (typeof value === 'string' && value.trim()) tagSet.add(value.trim())
+                  else if (typeof value === 'number' || typeof value === 'boolean') tagSet.add(String(value))
+                  else if (key && key !== 'none' && !key.startsWith('tag_')) tagSet.add(key)
+                })
+              }
+              if (src?.id && deckTagsMap && deckTagsMap[src.id]?.length) {
+                deckTagsMap[src.id].forEach((t: string) => {
+                  if (t && typeof t === 'string' && t.trim()) tagSet.add(t.trim())
+                })
+              }
+            })
+
+            // Fallback: collect provides from cards
+            if (tagSet.size === 0) {
               const providesSet = new Set<string>()
               aggregateCards().forEach((card: any) => {
                 if (card && typeof card === 'object') {
@@ -1192,8 +1388,10 @@ function FusedDeckCard({
                   }
                 }
               })
-              tagsToDisplay = Array.from(providesSet).sort()
+              providesSet.forEach(t => tagSet.add(t))
             }
+
+            const tagsToDisplay = Array.from(tagSet)
             if (tagsToDisplay.length === 0) return null
             return (
               <Group gap="xs" className="mt-2 flex-wrap">
@@ -1202,24 +1400,6 @@ function FusedDeckCard({
                     {tagText.toUpperCase()}
                   </Badge>
                 ))}
-              </Group>
-            )
-          })()}
-
-          {(() => {
-            const receiptDate = (deck as any).updatedAt
-            if (!receiptDate) return null
-            return (
-              <Group gap="xs" className="text-gray-400 text-sm">
-                <IconCalendar size={14} />
-                <Text size="xs">
-                  Updated at:{' '}
-                  {new Date(receiptDate).toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </Text>
               </Group>
             )
           })()}
@@ -1856,48 +2036,43 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     minExpiredDate: string | null
     minExpiringDate: string | null
   } => {
-    const currentTimeUTC = new Date().getTime()
+    const currentTimeUTC = Date.now()
     const [deck1, deck2] = getFusedDeckSourceDecks(fusedDeck, allDecks)
     
-    // Check expiry status for both decks
     const deckDates: Array<{ date: string; isExpired: boolean; isExpiring: boolean }> = []
-    
-    if (deck1?.created) {
-      const date1 = new Date(deck1.created).getTime()
-      const isExpired1 = date1 < currentTimeUTC
-      const isExpiring1 = date1 >= currentTimeUTC
-      deckDates.push({ date: deck1.created, isExpired: isExpired1, isExpiring: isExpiring1 })
+    const addDeckDate = (d: Deck | null) => {
+      if (!d) return
+      const ts = getExpiryTimestamp(d)
+      if (ts === null) return
+      const isExpired = ts < currentTimeUTC
+      const isExpiring = ts >= currentTimeUTC
+      deckDates.push({ date: new Date(ts).toISOString(), isExpired, isExpiring })
+    }
+
+    addDeckDate(deck1)
+    addDeckDate(deck2)
+
+    // If source decks missing expiry, fall back to fused deck expiry (if any)
+    if (deckDates.length === 0) {
+      const fusedTs = getExpiryTimestamp(fusedDeck)
+      if (fusedTs !== null) {
+        const isExpired = fusedTs < currentTimeUTC
+        const isExpiring = fusedTs >= currentTimeUTC
+        deckDates.push({ date: new Date(fusedTs).toISOString(), isExpired, isExpiring })
+      }
     }
     
-    if (deck2?.created) {
-      const date2 = new Date(deck2.created).getTime()
-      const isExpired2 = date2 < currentTimeUTC
-      const isExpiring2 = date2 >= currentTimeUTC
-      deckDates.push({ date: deck2.created, isExpired: isExpired2, isExpiring: isExpiring2 })
-    }
-    
-    // Fused deck is expired if at least one deck is expired
     const isExpired = deckDates.some(d => d.isExpired)
-    const isExpiring = deckDates.some(d => d.isExpiring) && !isExpired
+    const isExpiring = !isExpired && deckDates.some(d => d.isExpiring)
     
-    // Find minimum expired date (earliest date among expired decks)
     const expiredDates = deckDates.filter(d => d.isExpired).map(d => d.date)
     const minExpiredDate = expiredDates.length > 0 
-      ? expiredDates.reduce((min, date) => {
-          const dateTime = new Date(date).getTime()
-          const minTime = new Date(min).getTime()
-          return dateTime < minTime ? date : min
-        })
+      ? expiredDates.reduce((min, date) => (new Date(date).getTime() < new Date(min).getTime() ? date : min))
       : null
     
-    // Find minimum expiring date (earliest date among expiring decks) - for expiring fused decks
     const expiringDates = deckDates.filter(d => d.isExpiring).map(d => d.date)
     const minExpiringDate = expiringDates.length > 0 
-      ? expiringDates.reduce((min, date) => {
-          const dateTime = new Date(date).getTime()
-          const minTime = new Date(min).getTime()
-          return dateTime < minTime ? date : min
-        })
+      ? expiringDates.reduce((min, date) => (new Date(date).getTime() < new Date(min).getTime() ? date : min))
       : null
     
     return {
@@ -4221,6 +4396,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   handleDeckClick={handleDeckClick}
                                   deckTagsMap={deckTagsMap}
                                   allDecks={[...decks, ...fusedDecks]}
+                                  fusedExpiryResolver={getFusedDeckExpiryStatus}
                                 />
                               )
                             })}

@@ -296,16 +296,37 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set())
   const [imageLoadStatus, setImageLoadStatus] = useState<Record<string, boolean>>({})
   const [fullDeckData, setFullDeckData] = useState<Deck | null>(null) // Full deck data with forgeborn.solbindCards
+  const [fusedSourceDecks, setFusedSourceDecks] = useState<Deck[]>([])
   const [copied, setCopied] = useState(false)
   const levelManuallyChangedRef = useRef<boolean>(false)
   const lastSelectedCardIdRef = useRef<string | null>(null)
   const cardImagesRef = useRef<Record<string, Record<number, string>>>({})
   const loadingInFlightRef = useRef<Set<string>>(new Set())
   const imageRequestCacheRef = useRef<Map<string, Promise<string | null>>>(new Map())
+  const fusedSourceDecksRef = useRef<string>('') // Track last merged source IDs to avoid re-setting state
+  const fusedCardsMergedRef = useRef<boolean>(false) // Prevent repeated card merging for fused decks
 
   useEffect(() => {
     cardImagesRef.current = cardImages
   }, [cardImages])
+
+  // Reset fused-specific caches when a different deck is opened
+  useEffect(() => {
+    fusedCardsMergedRef.current = false
+    fusedSourceDecksRef.current = ''
+    setFusedSourceDecks([])
+    // Reset selection and loading state when switching to a different deck
+    setSelectedCard(null)
+    setSelectedLevel(1)
+    setLoadingLevels({})
+    setImageErrors(new Set())
+    setImageLoadStatus({})
+    setFullDeckData(null)
+    setCardImages({})
+    cardImagesRef.current = {}
+    loadingInFlightRef.current.clear()
+    imageRequestCacheRef.current.clear()
+  }, [deck?.id])
 
   const makeLoadingKey = useCallback((cardId: string, level: number) => `${cardId}-${level}`, [])
   const isInFlight = useCallback((cardId: string, level: number) => loadingInFlightRef.current.has(makeLoadingKey(cardId, level)), [makeLoadingKey])
@@ -351,9 +372,10 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
   // Helper function to get two source decks from fused deck
   const getFusedDeckSourceDecks = useMemo(() => {
-    if (!deck) return [null, null]
+    const deckWithData = fullDeckData || deck
+    if (!deckWithData) return [null, null]
     
-    const fusedDeckAny = deck as any
+    const fusedDeckAny = deckWithData as any
     
     let deck1: Deck | null = null
     let deck2: Deck | null = null
@@ -411,8 +433,12 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     
     // Return result - logging will be done in useEffect
     
+    // Fallback to already fetched halves if missing
+    if (!deck1 && fusedSourceDecks.length > 0) deck1 = fusedSourceDecks[0] || null
+    if (!deck2 && fusedSourceDecks.length > 1) deck2 = fusedSourceDecks[1] || null
+
     return [deck1, deck2]
-  }, [deck, allDecks])
+  }, [deck, fullDeckData, allDecks, fusedSourceDecks])
 
   const renderSourceDeckMeta = (sourceDeck: Deck | null) => {
     if (!sourceDeck) return null
@@ -501,7 +527,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           const updatedDeck = {
             ...deck,
             forgeborn: fullData.forgeborn || deck.forgeborn,
-            cards: fullData.cardList || fullData.cards || deck.cards
+            cards: fullData.cardList || fullData.cards || deck.cards,
+            myDecks: (fullData as any).myDecks || (deck as any).myDecks,
+            fusedDeckIds: (fullData as any).fusedDeckIds || (deck as any).fusedDeckIds
           } as Deck
           
           setFullDeckData(updatedDeck)
@@ -521,6 +549,15 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                 }))
               } : null
             })
+          }
+          
+          if ((deck as any).format === 'Fused' && Array.isArray((fullData as any).myDecks)) {
+            const newSources = (fullData as any).myDecks as Deck[]
+            const ids = newSources
+              .map((d, idx) => `${d?.id || `idx-${idx}`}:${Array.isArray(d?.cards) ? d.cards.length : 0}:${Array.isArray((d as any)?.cardList) ? (d as any).cardList.length : 0}`)
+              .join('|')
+            fusedSourceDecksRef.current = ids
+            setFusedSourceDecks(newSources)
           }
         }
       }).catch((error) => {
@@ -575,12 +612,118 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     })
   }, [deck, opened, getFusedDeckSourceDecks, allDecks, onDeckClick])
 
+  // Load source halves for fused decks when they lack card lists
+  const isFusedDeck = (d: any) => {
+    if (!d || !d.format) return false
+    return String(d.format).toLowerCase().includes('fused')
+  }
+
+  useEffect(() => {
+    if (!deck || !opened || !isFusedDeck(deck)) return
+    const deckAny = (fullDeckData || deck) as any
+    const combinedSources = [...getFusedDeckSourceDecks, ...fusedSourceDecks].filter(Boolean) as Deck[]
+    const uniqueMap = new Map<string, Deck>()
+    combinedSources.forEach((src, idx) => {
+      if (!src) return
+      const key = src.id || `idx-${idx}`
+      if (!uniqueMap.has(key)) uniqueMap.set(key, src)
+    })
+    let sources = Array.from(uniqueMap.values())
+
+    // If still empty but fusedDeckIds exist, try to seed placeholders to fetch
+    if (sources.length === 0 && Array.isArray(deckAny?.fusedDeckIds) && deckAny.fusedDeckIds.length >= 2) {
+      sources = deckAny.fusedDeckIds.map((id: string) => ({ id } as Deck))
+    }
+    if (sources.length === 0) return
+
+    const existingMap = new Map<string, Deck>()
+    fusedSourceDecks.forEach(d => d?.id && existingMap.set(d.id, d))
+
+    const baseList: Deck[] = []
+    sources.forEach(src => {
+      if (!src) return
+      const cached = src.id ? existingMap.get(src.id) : undefined
+      baseList.push(cached || src)
+    })
+
+    const needsFetch = baseList.filter(src => {
+      if (!src || !src.id) return false
+      const hasCardsArray = Array.isArray(src.cards) && src.cards.length > 0
+      const hasCardList = Array.isArray((src as any).cardList) && (src as any).cardList.length > 0
+      return !(hasCardsArray || hasCardList)
+    })
+
+    const finalize = (merged: Deck[]) => {
+      const ids = merged
+        .map((d, idx) => {
+          const cardsLen = Array.isArray(d?.cards) ? d.cards.length : 0
+          const cardListLen = Array.isArray((d as any)?.cardList) ? (d as any).cardList.length : 0
+          return `${d?.id || `idx-${idx}`}:${cardsLen}:${cardListLen}`
+        })
+        .join('|')
+      if (ids === fusedSourceDecksRef.current) return
+      fusedSourceDecksRef.current = ids
+      setFusedSourceDecks(merged.filter(Boolean) as Deck[])
+    }
+
+    if (needsFetch.length === 0) {
+      finalize(baseList)
+      return
+    }
+
+    Promise.all(
+      needsFetch.map(src => fetchDeckDetails(src!.id as string).catch(() => null))
+    ).then(fetched => {
+      const fetchedMap = new Map<string, Deck>()
+      fetched.forEach(d => {
+        if (d?.id) fetchedMap.set(d.id, d)
+      })
+      const merged = baseList.map(src => {
+        if (src?.id && fetchedMap.has(src.id)) return fetchedMap.get(src.id) as Deck
+        return src
+      })
+      finalize(merged)
+    })
+  }, [deck, opened, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks])
+
+  // If fused deck still has no cards but sources do, merge source cards into fullDeckData
+  useEffect(() => {
+    const deckToUse = fullDeckData || deck
+    if (!deckToUse || !opened || !isFusedDeck(deckToUse)) return
+    if (fusedCardsMergedRef.current) return
+    const hasCards =
+      (Array.isArray(deckToUse.cards) && deckToUse.cards.length > 0) ||
+      (Array.isArray((deckToUse as any).cardList) && (deckToUse as any).cardList.length > 0)
+    if (hasCards) return
+
+    const combinedCards: any[] = []
+    fusedSourceDecks.forEach(src => {
+      if (!src) return
+      if (Array.isArray(src.cards) && src.cards.length > 0) combinedCards.push(...src.cards)
+      else if (Array.isArray((src as any).cardList) && (src as any).cardList.length > 0) combinedCards.push(...(src as any).cardList)
+    })
+
+    if (combinedCards.length === 0) return
+
+    fusedCardsMergedRef.current = true
+    const mergedDeck = { ...(fullDeckData || deck), cards: combinedCards } as Deck
+    setFullDeckData(mergedDeck)
+  }, [deck, opened, fullDeckData, fusedSourceDecks, isFusedDeck])
+
   // Normalize cards with real names (memoized for stability)
   const normalizedCards: CardInfo[] = useMemo(() => {
     const deckToUse = fullDeckData || deck
     if (!deckToUse) return []
 
-    // Support cards as array, object with numeric keys, or cardList
+    const extractCardsFromDeck = (d: any): any[] => {
+      if (!d) return []
+      if (Array.isArray(d.cards)) return d.cards
+      if (d.cards && typeof d.cards === 'object') return Object.values(d.cards)
+      if (Array.isArray(d.cardList)) return d.cardList
+      return []
+    }
+
+    // Collect cards from fused deck itself
     let rawCards: any[] = []
     if (Array.isArray(deckToUse.cards)) {
       rawCards = deckToUse.cards
@@ -588,6 +731,35 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       rawCards = Object.values(deckToUse.cards)
     } else if (Array.isArray((deckToUse as any).cardList)) {
       rawCards = (deckToUse as any).cardList
+    }
+
+    // For fused decks prefer exact halves (prevents overcount if fused record has extra entries)
+    if (isFusedDeck(deckToUse)) {
+      const [src1, src2] = getFusedDeckSourceDecks
+      const sourceList = [src1, src2, ...fusedSourceDecks]
+      const seen = new Set<string>()
+      const combined: any[] = []
+
+      const addCards = (cardsArr: any[]) => {
+        cardsArr.forEach((c, idx) => {
+          const key = c?.id || c?.cardId || c?.name || `card-${combined.length + idx}`
+          if (seen.has(key)) return
+          seen.add(key)
+          combined.push(c)
+        })
+      }
+
+      sourceList.forEach(src => {
+        const extracted = extractCardsFromDeck(src)
+        if (extracted.length > 0) addCards(extracted)
+      })
+
+      // If we got cards from halves, use them; otherwise fall back to fused record cards
+      if (combined.length > 0) {
+        rawCards = combined
+      } else if (rawCards.length === 0) {
+        // As a last resort, keep rawCards empty (handled below)
+      }
     }
 
     if (rawCards.length === 0) return []
@@ -599,18 +771,63 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       } else if (typeof card === 'object' && card !== null) {
         // Preserve full card object with all its data (cardType, rarity, etc.)
         const cardId = card.id || card.cardId || card.name || `card-${index}`
-        return getCardInfo(cardId, card)
+        const info = getCardInfo(cardId, card)
+        // Make sure we keep embedded solbindCards (some helpers strip unknown props)
+        if (card.solbindCards) {
+          ;(info as any).solbindCards = card.solbindCards
+        }
+        return info
       }
       return getCardInfo(`card-${index}`)
     })
     
-    // Debug logging disabled for performance
-    // if (process.env.NODE_ENV === 'development' && cards.length > 0) {
-    //   logWithTimestamp('[DeckDetails] Card types:', cards.map(c => ({ id: c.id, name: c.name, type: c.type })))
-    // }
-    
     return cards
-  }, [deck, fullDeckData])
+  }, [deck, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks])
+
+  // Deduplicate normalized cards by id (or name fallback) to avoid double counting
+  const uniqueNormalizedCards: CardInfo[] = useMemo(() => {
+    const map = new Map<string, CardInfo>()
+    normalizedCards.forEach((card, idx) => {
+      const key = (card as any)?.id || (card as any)?.cardId || card.name || `idx-${idx}`
+      const existing = map.get(key)
+      if (!existing) {
+        map.set(key, card)
+        return
+      }
+
+      // Prefer the richer object (e.g., with solbindCards) when duplicates collide
+      const current = card as any
+      const stored = existing as any
+
+      const storedHasSolbind = Array.isArray(stored.solbindCards) && stored.solbindCards.length > 0
+      const currentHasSolbind = Array.isArray(current.solbindCards) && current.solbindCards.length > 0
+
+      // If the new card has solbind data and the stored one doesn't, replace
+      if (currentHasSolbind && !storedHasSolbind) {
+        map.set(key, card)
+        return
+      }
+
+      // If both have solbindCards but the new one has more entries, merge them
+      if (currentHasSolbind && storedHasSolbind) {
+        const mergedIds = new Set<string>()
+        const mergedList: any[] = []
+        ;[...(stored.solbindCards as any[]), ...(current.solbindCards as any[])].forEach((c) => {
+          const cid = c?.id || c?.cardId || c?.name
+          const dedupKey = cid || JSON.stringify(c)
+          if (dedupKey && mergedIds.has(dedupKey)) return
+          mergedIds.add(dedupKey)
+          mergedList.push(c)
+        })
+        const merged = { ...stored, solbindCards: mergedList }
+        map.set(key, merged as CardInfo)
+        return
+      }
+
+      // Otherwise keep the first occurrence
+    })
+    return Array.from(map.values())
+  }, [normalizedCards])
 
   const markLevelsLoading = useCallback((cardId: string, levels: number[]) => {
     setLoadingLevels(prev => {
@@ -657,20 +874,34 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       })
     }
     
-    // Add Solbind cards from solbindCards arrays in normalizedCards
-    normalizedCards.forEach(card => {
+    // Add Solbind cards from solbindCards arrays in normalizedCards (prefer richer data if available)
+    uniqueNormalizedCards.forEach(card => {
       const cardData = card as any
-      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-        cardData.solbindCards.forEach((solbindCard: any) => {
-          if (solbindCard && solbindCard.id) {
-            ids.add(solbindCard.id)
-          }
-        })
-      }
+      const solbindList =
+        Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0
+          ? cardData.solbindCards
+          : (() => {
+              // Fallback: try to read solbindCards from stored card info (for string-only entries)
+              const fallbackInfo = getCardInfo(card.id || cardData.cardId || cardData.name)
+              const list = (fallbackInfo as any)?.solbindCards
+              return Array.isArray(list) ? list : []
+            })()
+
+      solbindList.forEach((solbindCard: any) => {
+        if (solbindCard && solbindCard.id) {
+          ids.add(solbindCard.id)
+        }
+      })
+
+      // Also respect solbindId1/solbindId2 hints on the parent card
+      const id1 = cardData.solbindId1 || cardData.solbindid1
+      const id2 = cardData.solbindId2 || cardData.solbindid2
+      if (id1) ids.add(id1)
+      if (id2) ids.add(id2)
     })
     
     // Also add cards that have rarity === 'Solbind' directly in normalizedCards
-    normalizedCards.forEach(card => {
+    uniqueNormalizedCards.forEach(card => {
       const cardData = card as any
       // Skip if this card has solbindCards (it's the parent, not the solbind itself)
       if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
@@ -687,7 +918,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
     
     return ids
-  }, [normalizedCards, deck, fullDeckData])
+  }, [uniqueNormalizedCards, deck, fullDeckData])
   
   // Create a stable string representation for use in dependencies
   const solbindCardIdsKey = useMemo(() => {
@@ -702,7 +933,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
     const solbindIds = solbindCardIdsSet
 
-    normalizedCards.forEach((card, idx) => {
+    uniqueNormalizedCards.forEach((card, idx) => {
       const cardData = card as any
 
       // Skip parent Solbind cards (they are containers)
@@ -742,7 +973,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     })
 
     return summary
-  }, [normalizedCards, solbindCardIdsSet])
+  }, [uniqueNormalizedCards, solbindCardIdsSet])
 
   // Helper function to load images in parallel with a concurrency limit
   const loadImagesInParallel = async (
@@ -1439,6 +1670,35 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         }
       })
 
+      // Remove Solbinds from spells list if any slipped through (e.g., missing rarity/type data)
+      if (spellCardsList.length > 0) {
+        const solbindIds = new Set(solbindCardsList.map(sb => sb.id).filter(Boolean))
+        const cleanedSpells: CardInfo[] = []
+        spellCardsList.forEach(card => {
+          const cardData = card as any
+      const isParentSolbind =
+        (Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0) ||
+        !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
+          const isSolbindById = !isParentSolbind && solbindIds.has(card.id)
+          const isSolbindByRarity =
+            !isParentSolbind &&
+            typeof cardData.rarity === 'string' &&
+            cardData.rarity.toLowerCase().includes('solbind')
+          if (isSolbindById || isSolbindByRarity) {
+            // Ensure it is listed in solbind cards
+            if (!solbindCardsList.some(sb => sb.id === card.id)) {
+              solbindCardsList.push(card)
+              solbindIds.add(card.id || '')
+            }
+            return
+          }
+          cleanedSpells.push(card)
+        })
+        // Replace list with cleaned version
+        spellCardsList.length = 0
+        cleanedSpells.forEach(c => spellCardsList.push(c))
+      }
+
       logWithTimestamp(`[DeckDetails] 📋 Image loading order: Forgeborn(${forgebornCardsList.length}) -> Creatures(${creatureCardsList.length})/Spells(${spellCardsList.length}) L1 -> L2 -> L3 -> Solbind(${solbindCardsList.length})`)
 
       // 1. Load Forgeborn first
@@ -1965,6 +2225,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     
     // Extract Solbind cards from solbindCards arrays in other cards
     const solbindCardObjects: CardInfo[] = []
+    const parentSolbindIds = new Set<string>()
     
     // First, check forgeborn.solbindCards (solbind cards attached to forgeborn)
     if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.solbindCards && Array.isArray(deckForUse.forgeborn.solbindCards)) {
@@ -1984,29 +2245,55 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
     
     // Second, find all cards that have solbindCards array and extract those cards
-    normalizedCards.forEach(card => {
+    uniqueNormalizedCards.forEach(card => {
       const cardData = card as any
-      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-        cardData.solbindCards.forEach((solbindCard: any) => {
-          if (solbindCard && solbindCard.id) {
-            // Create CardInfo from solbind card data
-            if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-              solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-            }
+
+      const solbindList =
+        Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0
+          ? cardData.solbindCards
+          : (() => {
+              const fallbackInfo = getCardInfo(card.id || cardData.cardId || cardData.name)
+              const list = (fallbackInfo as any)?.solbindCards
+              return Array.isArray(list) ? list : []
+            })()
+
+      const hasSolbindChildren =
+        solbindList.length > 0 ||
+        !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
+
+      if (hasSolbindChildren && card.id) parentSolbindIds.add(card.id)
+
+      solbindList.forEach((solbindCard: any) => {
+        if (solbindCard && solbindCard.id) {
+          // Create CardInfo from solbind card data
+          if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+            solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
           }
-        })
-      }
+        }
+      })
+
+      // Also add by solbindId1/solbindId2 if provided
+      const id1 = cardData.solbindId1 || cardData.solbindid1
+      const id2 = cardData.solbindId2 || cardData.solbindid2
+      ;[id1, id2].forEach(id => {
+        if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+          solbindCardObjects.push(getCardInfo(id))
+        }
+      })
     })
     
     // Also check for cards in normalizedCards that are solbind cards
-    normalizedCards.forEach(card => {
+    uniqueNormalizedCards.forEach(card => {
       if (forgebornCards.includes(card)) return
       
       const cardData = card as any
       const cardId = card.id
+      const hasSolbindChildren =
+        (Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0) ||
+        !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
       
       // Skip if this card has solbindCards (it's the parent, not the solbind itself)
-      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+      if (hasSolbindChildren) {
         return
       }
       
@@ -2028,12 +2315,28 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
     })
     
-    if (process.env.NODE_ENV === 'development' && solbindCardObjects.length > 0) {
-      // logWithTimestamp(`[DeckDetails] Total Solbind cards found: ${solbindCardObjects.length}`)
-    }
+    // Fallback: ensure all known Solbind IDs are represented
+    const existingIds = new Set(solbindCardObjects.map(sb => sb.id).filter(Boolean) as string[])
+    solbindCardIdsSet.forEach(id => {
+      if (!id) return
+      if (parentSolbindIds.has(id)) return
+      if (!existingIds.has(id)) {
+        solbindCardObjects.push(getCardInfo(id))
+        existingIds.add(id)
+      }
+    })
     
-    return solbindCardObjects
-  }, [normalizedCards, forgebornCards, solbindCardIdsSet, deck, fullDeckData])
+    // Deduplicate by id to be safe
+    const dedupMap = new Map<string, CardInfo>()
+    solbindCardObjects.forEach((sb, idx) => {
+      const key = sb.id || sb.cardId || sb.name || `solbind-${idx}`
+      if (!dedupMap.has(key)) {
+        dedupMap.set(key, { ...sb, id: sb.id || key })
+      }
+    })
+    
+    return Array.from(dedupMap.values())
+  }, [uniqueNormalizedCards, forgebornCards, solbindCardIdsSet, deck, fullDeckData])
 
   // Merge rarity summary with Solbind count (make sure Solbind shows up if we have Solbind cards)
   const displayRaritySummary = useMemo(() => {
@@ -2282,11 +2585,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
   const spellCards: CardInfo[] = useMemo(() => {
     if (!deck) return []
-    return normalizedCards.filter(card => {
+    return uniqueNormalizedCards.filter(card => {
       if (forgebornCards.includes(card)) return false
-      
-      // Check if this card is a solbind card (from solbindCards array)
-      if (solbindCardIdsSet.has(card.id)) return false
       
       const cardData = card as any
       const name = card.name?.toLowerCase() || ''
@@ -2296,7 +2596,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       const lowerCardType = cardType.toLowerCase()
       return lowerCardType.includes('spell') && !lowerCardType.includes('creature')
     })
-  }, [normalizedCards, forgebornCards, solbindCardIdsSet, deck])
+  }, [uniqueNormalizedCards, forgebornCards, solbindCardIdsSet, deck])
 
   const creatureCards: CardInfo[] = useMemo(() => {
     if (!deck) return []
@@ -2305,8 +2605,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     const spellIds = new Set(spellCards.map(sp => sp.id).filter(Boolean))
     const solbindIds = new Set(solbindCards.map(sb => sb.id).filter(Boolean))
     
-    return normalizedCards.filter(card => {
-      if (!card.id) return true
+    return uniqueNormalizedCards.filter(card => {
+      if (!card.id) return false
       const cardData = card as any
       const cardTypeLower = (cardData.cardType || cardData.type || '').toLowerCase()
       // Check if card is forgeborn by ID (handles variants like s2nn1cercee324 vs s2nn1cercee431)
@@ -2320,7 +2620,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         cardTypeLower.includes('forgeborn')
       return !isForgeborn && !spellIds.has(card.id) && !solbindIds.has(card.id)
     })
-  }, [normalizedCards, forgebornCards, spellCards, solbindCards, deck])
+  }, [uniqueNormalizedCards, forgebornCards, spellCards, solbindCards, deck])
 
   const getFactionColor = useCallback((faction?: string) => {
     switch (faction) {

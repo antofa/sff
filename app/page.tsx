@@ -230,11 +230,11 @@ export default function Home() {
             </Title>
           </div>
 
-          <Paper
-            p="xl"
-            className="w-full max-w-2xl bg-slate-800/60 backdrop-blur-md border border-sf-primary/30 rounded-xl shadow-2xl"
-            style={{ backgroundColor: 'rgba(30, 41, 59, 0.6)' }}
-          >
+        <Paper
+          p="lg"
+          className="w-full max-w-2xl bg-slate-800/60 backdrop-blur-md border border-sf-primary/30 rounded-xl shadow-2xl"
+          style={{ backgroundColor: 'rgba(30, 41, 59, 0.6)' }}
+        >
             <Stack gap="md">
               <TextInput
                 size="lg"
