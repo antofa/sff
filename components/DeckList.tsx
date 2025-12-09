@@ -1163,7 +1163,7 @@ function FusedDeckCard({
     if (ts === null) return { expireLabel: null, isExpired: false, isExpiring: false }
     const { label, expired, expiring } = computeFlags(new Date(ts).toISOString())
     return { expireLabel: label, isExpired: expired, isExpiring: expiring }
-  }, [deck, allDecks, renderNow, fusedExpiryResolver])
+  }, [deck, allDecks, renderNow, fusedExpiryResolver, isFusedDeck])
 
   // Override border colors for fused decks based on expiry status
   if (isFusedDeck) {

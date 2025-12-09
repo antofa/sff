@@ -8,8 +8,7 @@ import { logWithTimestamp } from './logger'
 
 // Base URL for SolForge Fusion API (from Apps Script)
 const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
-const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
-
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day
 type CacheEntry<T> = { expiresAt: number; data: T }
 const regularDeckCache = new Map<string, CacheEntry<ApiDeck[]>>()
 const fusedDeckCache = new Map<string, CacheEntry<ApiDeck[]>>()
@@ -26,6 +25,31 @@ const getCached = (cache: Map<string, CacheEntry<ApiDeck[]>>, key: string) => {
 
 const setCached = (cache: Map<string, CacheEntry<ApiDeck[]>>, key: string, data: ApiDeck[]) => {
   cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, data })
+}
+
+const appendDeckSearchLog = async (message: string) => {
+  // Skip file logging in browser/runtime without fs and in production
+  if (typeof window !== 'undefined') return
+  if (process.env.NODE_ENV === 'production') return
+  const timestamp = new Date().toISOString()
+  const line = `${timestamp} [fused] ${message}\n`
+  try {
+    const { default: fs } = await import('fs/promises')
+    const { default: path } = await import('path')
+    const LOG_DIR = path.join(process.cwd(), 'logs')
+    const fileName = `deck-search-${timestamp.slice(0, 10)}.log`
+    const fullPath = path.join(LOG_DIR, fileName)
+    await fs.mkdir(LOG_DIR, { recursive: true })
+    await fs.appendFile(fullPath, line, 'utf8')
+  } catch (err) {
+    // Swallow file logging errors to avoid breaking the flow
+    console.warn('[logger] appendDeckSearchLog failed:', err)
+  }
+}
+
+const fusedLog = async (message: string) => {
+  logWithTimestamp(message)
+  await appendDeckSearchLog(message)
 }
 
 export interface ApiDeck {
@@ -213,6 +237,7 @@ async function fetchDecksFromAPI(
   playerName: string,
   options?: {
     onPage?: (info: DeckPageProgress) => void
+    force?: boolean
   }
 ): Promise<DeckFetchResult> {
   const encodedName = encodeURIComponent(playerName.toLowerCase())
@@ -237,15 +262,23 @@ async function fetchDecksFromAPI(
     // First request
     let response: Response
     try {
-      response = await fetch(url, {
+      const force = options?.force ?? false
+      const fetchOptions: RequestInit = {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
           'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
         },
-        next: { revalidate: 3600 },
-        // Allow background-throttled tabs more time
         signal: AbortSignal.timeout(60000),
+      }
+      if (force) {
+        fetchOptions.cache = 'no-store'
+        ;(fetchOptions as any).next = { revalidate: 0 }
+      } else {
+        ;(fetchOptions as any).next = { revalidate: 3600 }
+      }
+      response = await fetch(url, {
+        ...fetchOptions,
       })
     } catch (fetchError) {
       console.error(`[API] Fetch error:`, fetchError)
@@ -630,31 +663,55 @@ export function getCardInfo(cardId: string, cardData?: any): CardInfo {
  * @param playerName - player nickname
  * @returns array of fused deck data
  */
-export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDeck[]> {
+export async function fetchFusedDecksFromAPI(
+  playerName: string,
+  options?: { force?: boolean; onPage?: (info: { page: number; received: number; totalSoFar: number; pageSize?: number }) => void }
+): Promise<ApiDeck[]> {
+  const startedAt = Date.now()
+  // Build a quick lookup of regular decks by id from cache to avoid extra network calls
+  const cachedRegularById = new Map<string, ApiDeck>()
+  for (const [, entry] of regularDeckCache) {
+    entry.data.forEach(deck => {
+      if (deck.id) {
+        cachedRegularById.set(deck.id, deck)
+      }
+    })
+  }
   const cacheKey = playerName.trim().toLowerCase()
-  const cached = getCached(fusedDeckCache, cacheKey)
+  const force = options?.force ?? false
+  const cached = force ? null : getCached(fusedDeckCache, cacheKey)
   if (cached) {
     logWithTimestamp(`[API] Returning fused decks from cache for ${playerName} (${cached.length})`)
     return cached
+  }
+  if (force) {
+    fusedDeckCache.delete(cacheKey)
   }
 
   const encodedName = encodeURIComponent(playerName.toLowerCase())
   const pageSize = 200
   const url = `${API_BASE_URL}/fuseddeck/app?pageSize=${pageSize}&username=${encodedName}`
   
-  logWithTimestamp(`[API] Requesting fused decks for player: ${playerName}`)
-  logWithTimestamp(`[API] URL: ${url}`)
+  await fusedLog(`[API] Requesting fused decks for player: ${playerName}`)
+  await fusedLog(`[API] URL: ${url}`)
 
   try {
-    const response = await fetch(url, {
+    const fetchOptions: RequestInit = {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
       },
-      next: { revalidate: 3600 }, // Cache for 1 hour
       signal: AbortSignal.timeout(60000),
-    })
+    }
+    if (force) {
+      fetchOptions.cache = 'no-store'
+      ;(fetchOptions as any).next = { revalidate: 0 }
+    } else {
+      ;(fetchOptions as any).next = { revalidate: 3600 }
+    }
+
+    const response = await fetch(url, fetchOptions)
 
     if (!response.ok) {
       if (response.status === 404) {
@@ -665,13 +722,23 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
     }
 
     const responseText = await response.text()
-    logWithTimestamp(`[API] Fused decks response received, length: ${responseText.length} characters`)
+    await fusedLog(`[API] Fused decks response received, length: ${responseText.length} characters`)
     const pageData = JSON.parse(responseText)
+    const parsedAt = Date.now()
+    await fusedLog(`[API] Fused decks parsed in ${parsedAt - startedAt}ms`)
     
     // Extract fused decks from response
     const fusedDecks: any[] = []
     if (pageData.Items && Array.isArray(pageData.Items)) {
-      logWithTimestamp(`[API] Received ${pageData.Items.length} fused decks`)
+      await fusedLog(`[API] Received ${pageData.Items.length} fused decks`)
+      if (options?.onPage) {
+        options.onPage({
+          page: pageData.page ?? 1,
+          pageSize: pageData.pageSize ?? pageData.Items.length,
+          received: pageData.Items.length,
+          totalSoFar: pageData.total ?? pageData.Items.length,
+        })
+      }
       
       // Normalize each fused deck
       for (const fusedDeck of pageData.Items) {
@@ -722,6 +789,11 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
     // This is similar to how we handle regular decks
     const fusedDecksWithCards: ApiDeck[] = []
     let decksNeedingFetch = 0
+    let embeddedCardDecks = 0
+    let fallbackFetched = 0
+    let fallbackFailed = 0
+    let fallbackDurationMs = 0
+    let cachedRegularHits = 0
 
     // Helper to collect cards from an embedded deck object without network
     const collectCards = (deckObj: any): any[] => {
@@ -731,6 +803,12 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
       if (Array.isArray(deckObj.cardIds) && deckObj.cardIds.length > 0) return deckObj.cardIds
       if (deckObj.cards && typeof deckObj.cards === 'object') return Object.values(deckObj.cards)
       return []
+    }
+    const collectCardsFromCachedRegular = (deckId?: string): any[] => {
+      if (!deckId) return []
+      const cached = cachedRegularById.get(deckId)
+      if (!cached || !Array.isArray(cached.cards) || cached.cards.length === 0) return []
+      return cached.cards
     }
 
     for (const fusedDeck of fusedDecks) {
@@ -747,17 +825,45 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
 
         for (const d of fusedDeck.myDecks) {
           const cards = collectCards(d)
+          let cardSource = 'embedded'
           if (cards.length > 0) {
             allCards.push(...cards)
+          } else if (d?.id) {
+            const cachedCards = collectCardsFromCachedRegular(d.id)
+            if (cachedCards.length > 0) {
+              allCards.push(...cachedCards)
+              cachedRegularHits++
+              cardSource = 'cached'
+            }
           }
+        }
+        if (allCards.length > 0) {
+          embeddedCardDecks++
+        }
+      }
+
+      // Try cached regular decks by fusedDeckIds if still empty
+      if (allCards.length === 0 && Array.isArray(fusedDeck.fusedDeckIds)) {
+        for (const id of fusedDeck.fusedDeckIds) {
+          const cachedCards = collectCardsFromCachedRegular(id)
+          if (cachedCards.length > 0) {
+            allCards.push(...cachedCards)
+            cachedRegularHits++
+          }
+        }
+        if (allCards.length > 0) {
+          embeddedCardDecks++
         }
       }
 
       // If still no cards, fetch fused deck details from API as fallback (even when fusedDeckIds are absent)
       if (allCards.length === 0) {
         decksNeedingFetch++
+        const fetchStarted = Date.now()
         const details = await fetchDeckDetails(String(fusedDeck.id))
+        fallbackDurationMs += Date.now() - fetchStarted
         if (details) {
+          fallbackFetched++
           const detailedCards = collectCards(details)
           if (detailedCards.length > 0) {
             allCards.push(...detailedCards)
@@ -772,6 +878,14 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
           if (!fusedDeck.tags && details.tags) {
             fusedDeck.tags = details.tags
           }
+        } else {
+          fallbackFailed++
+        }
+
+        if (fallbackFetched > 0 && fallbackFetched % 25 === 0) {
+          await fusedLog(
+            `[API] Fused fallback progress: fetched ${fallbackFetched} of ${decksNeedingFetch} (failed ${fallbackFailed}), time ${fallbackDurationMs}ms`
+          )
         }
       }
       
@@ -810,8 +924,14 @@ export async function fetchFusedDecksFromAPI(playerName: string): Promise<ApiDec
     }
 
     if (decksNeedingFetch > 0) {
-      logWithTimestamp(`[API] Fused decks missing embedded cards: ${decksNeedingFetch} (fallback fetch attempted via detail API)`)
+      await fusedLog(`[API] Fused decks missing embedded cards: ${decksNeedingFetch} (fallback fetch attempted via detail API)`)
+      await fusedLog(
+        `[API] Fused fallback summary: embedded=${embeddedCardDecks}, cachedRegular=${cachedRegularHits}, fetched=${fallbackFetched}, failed=${fallbackFailed}, duration=${fallbackDurationMs}ms`
+      )
     }
+    await fusedLog(
+      `[API] Fused decks normalization finished in ${Date.now() - startedAt}ms (total=${fusedDecksWithCards.length})`
+    )
     
     return fusedDecksWithCards
   } catch (error) {
@@ -832,6 +952,7 @@ export async function getPlayerDecks(
   playerName: string,
   options?: {
     onPage?: (info: DeckPageProgress) => void
+    force?: boolean
   }
 ): Promise<DeckFetchResult> {
   if (!playerName || !playerName.trim()) {
@@ -840,7 +961,8 @@ export async function getPlayerDecks(
 
   const trimmedName = playerName.trim()
   const cacheKey = trimmedName.toLowerCase()
-  const cached = getCached(regularDeckCache, cacheKey)
+  const force = options?.force ?? false
+  const cached = force ? null : getCached(regularDeckCache, cacheKey)
   if (cached) {
     logWithTimestamp(`[API] Returning regular decks from cache for ${trimmedName} (${cached.length})`)
     options?.onPage?.({
@@ -856,12 +978,15 @@ export async function getPlayerDecks(
       },
     }
   }
+  if (force) {
+    regularDeckCache.delete(cacheKey)
+  }
 
   logWithTimestamp(`[API] ===== Starting deck search for player: ${trimmedName} =====`)
 
   try {
     // Use real API endpoint from Apps Script
-    const { decks, meta } = await fetchDecksFromAPI(trimmedName, { onPage: options?.onPage })
+    const { decks, meta } = await fetchDecksFromAPI(trimmedName, { onPage: options?.onPage, force })
     
     if (decks.length > 0) {
       logWithTimestamp(`[API] ===== SUCCESS: Found ${decks.length} decks =====`)

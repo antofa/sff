@@ -1,11 +1,12 @@
 'use client'
 
-import { use, useEffect, useMemo, useState } from 'react'
+import { use, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Accordion,
   ActionIcon,
   Badge,
   Button,
+  Checkbox,
   Container,
   Divider,
   Group,
@@ -173,9 +174,22 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
   } | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
-  const { decks, fusedDecks, loading: decksLoading, error: decksError, fetchDecks, clearDecks } = useDeckStore()
+  const { decks, fusedDecks, loading: decksLoading, error: decksError, fetchDecks, clearDecks, progress } =
+    useDeckStore()
   const [hasFetchedDecks, setHasFetchedDecks] = useState(false)
   const [deckSectionCollapsed, setDeckSectionCollapsed] = useState(true)
+  const [progressVisible, setProgressVisible] = useState(false)
+  const [elapsedMs, setElapsedMs] = useState(0)
+  const [forceRefresh, setForceRefresh] = useState(false)
+  const isMountedRef = useRef(true)
+  const activeUsernameRef = useRef(username)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     const load = async () => {
@@ -198,14 +212,14 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
           })
           .then((data) => {
             if (!data) return
-          const first = data?.players?.[0]
-          if (first) {
-            setPlayerProfileMeta({
-              player_name: first.player_name,
-              display_name: first.display_name,
-              discord_name: first.discord_name || null,
-            })
-          }
+            const first = data?.players?.[0]
+            if (first) {
+              setPlayerProfileMeta({
+                player_name: first.player_name,
+                display_name: first.display_name,
+                discord_name: first.discord_name || null,
+              })
+            }
           })
           .catch(() => {
             /* ignore meta errors */
@@ -223,26 +237,86 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
   }, [username])
 
   useEffect(() => {
-    if (!username) return
-    let active = true
-
+    activeUsernameRef.current = username
     setHasFetchedDecks(false)
     clearDecks()
-    fetchDecks(username)
-      .catch((err) => {
-        console.error('[PlayerProfile] Failed to load decks:', err)
-      })
-      .finally(() => {
-        if (active) {
-          setHasFetchedDecks(true)
-        }
-      })
-
     return () => {
-      active = false
       clearDecks()
     }
-  }, [username, fetchDecks, clearDecks])
+  }, [username, clearDecks])
+
+  // Progress timers (re-use logic from search page)
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null
+    if (progress.status === 'running' && progress.startedAt) {
+      const tick = () => {
+        setElapsedMs(Date.now() - (progress.startedAt || Date.now()))
+      }
+      tick()
+      timer = setInterval(tick, 400)
+    } else if (progress.startedAt && progress.finishedAt) {
+      setTimeout(() => setElapsedMs((progress.finishedAt || 0) - (progress.startedAt || 0)), 0)
+    } else {
+      setTimeout(() => setElapsedMs(0), 0)
+    }
+
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }, [progress.finishedAt, progress.startedAt, progress.status])
+
+  useEffect(() => {
+    let showTimer: ReturnType<typeof setTimeout> | null = null
+    let hideTimer: ReturnType<typeof setTimeout> | null = null
+    const status = progress.status
+    if (status === 'running' || status === 'error') {
+      showTimer = setTimeout(() => setProgressVisible(true), 0)
+    } else if (status === 'done' || status === 'cached') {
+      showTimer = setTimeout(() => setProgressVisible(true), 0)
+      hideTimer = setTimeout(() => setProgressVisible(false), 2000)
+    } else if (status === 'idle') {
+      hideTimer = setTimeout(() => setProgressVisible(false), 0)
+    }
+    return () => {
+      if (showTimer) clearTimeout(showTimer)
+      if (hideTimer) clearTimeout(hideTimer)
+    }
+  }, [progress.status])
+
+  const handleLoadDecks = async () => {
+    if (!username || decksLoading) return
+    const requestUsername = username
+    setDeckSectionCollapsed(false)
+    setHasFetchedDecks(false)
+    clearDecks()
+    try {
+      await fetchDecks(username, { force: forceRefresh })
+    } catch (err) {
+      console.error('[PlayerProfile] Failed to load decks:', err)
+    } finally {
+      if (isMountedRef.current && activeUsernameRef.current === requestUsername) {
+        setHasFetchedDecks(true)
+      }
+    }
+  }
+
+  const formatDuration = (ms: number) => {
+    const totalSeconds = Math.max(0, Math.round(ms / 1000))
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    if (minutes > 0) return `${minutes}m ${seconds.toString().padStart(2, '0')}s`
+    return `${seconds}s`
+  }
+
+  const totalSteps = progress.totalSteps || progress.steps.length || 1
+  const completedSteps = progress.steps.filter((s) => s.status === 'done').length
+  const progressValue = Math.min(100, Math.round((completedSteps / totalSteps) * 100))
+  const activeStep =
+    progress.steps.find((s) => s.status === 'active') ||
+    progress.steps.find((s) => s.status === 'running') ||
+    progress.steps.find((s) => s.status === 'waiting') ||
+    progress.steps[progress.steps.length - 1]
+  const activeLabel = progress.message || activeStep?.label || 'Working...'
 
   const factionStats = useMemo(() => (profile ? getFactionAmounts(profile) : []), [profile])
   const rarityStats = useMemo(() => (profile ? getRarityBands(profile) : []), [profile])
@@ -402,9 +476,28 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
                   <Group justify="space-between" align="center">
                     <div>
                       <Title order={4} className="text-white" style={{ marginBottom: 0 }}>
-                        Decks (auto-loaded)
+                        Decks
                       </Title>
                     </div>
+                  <Group gap="xs">
+                    <Button
+                      size="xs"
+                      variant="light"
+                      loading={decksLoading}
+                      onClick={handleLoadDecks}
+                    >
+                        Load player decks
+                    </Button>
+                    <Checkbox
+                      size="sm"
+                      checked={forceRefresh}
+                      onChange={(event) => setForceRefresh(event.currentTarget.checked)}
+                      label={
+                        <Text size="sm" className="text-gray-200">
+                          Force refresh (ignore 24h cache)
+                        </Text>
+                      }
+                    />
                     <ActionIcon
                       variant="light"
                       color="gray"
@@ -415,14 +508,107 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
                       {deckSectionCollapsed ? <IconChevronDown size={16} /> : <IconChevronUp size={16} />}
                     </ActionIcon>
                   </Group>
+                </Group>
 
-                  {!deckSectionCollapsed && (
-                    <>
-                      {decksError && (
-                        <Paper p="md" className="bg-slate-800/70 border border-red-500/40 rounded-lg">
-                          <Text className="text-red-300">
-                            Failed to load decks: {decksError}
-                          </Text>
+                {!deckSectionCollapsed && (
+                  <>
+                    {progressVisible && (
+                      <Paper p="md" className="bg-slate-800/70 border border-sf-primary/30 rounded-lg">
+                        <Stack gap="xs">
+                          <Group justify="space-between" align="center">
+                            <Stack gap={2}>
+                              <Text fw={600} className="text-white">
+                                Searching decks for {username}
+                              </Text>
+                              <Text size="sm" className="text-gray-300">
+                                {activeLabel}
+                              </Text>
+                            </Stack>
+                            <Badge color="blue" variant="light">
+                              Step {progress.currentStepIndex + 1} / {totalSteps}
+                            </Badge>
+                          </Group>
+                          <Progress value={progressValue} striped animated />
+                          <Group gap="lg">
+                            <div>
+                              <Text size="sm" className="text-gray-400">
+                                Elapsed
+                              </Text>
+                              <Text fw={600} className="text-white">
+                                {formatDuration(elapsedMs)}
+                              </Text>
+                            </div>
+                            <div>
+                              <Text size="sm" className="text-gray-400">
+                                ETA
+                              </Text>
+                              <Text fw={600} className="text-white">
+                                {progress.status === 'done' || progress.status === 'cached'
+                                  ? '—'
+                                  : 'Estimating...'}
+                              </Text>
+                            </div>
+                          </Group>
+                          <Stack gap={4}>
+                            {progress.steps.map((step) => {
+                              const state = step.status
+                              const duration =
+                                step.startedAt && step.finishedAt
+                                  ? formatDuration(step.finishedAt - step.startedAt)
+                                  : state === 'running' || state === 'active'
+                                    ? formatDuration(Date.now() - (step.startedAt || progress.startedAt || Date.now()))
+                                    : '0s'
+                              return (
+                                <Group
+                                  key={step.key}
+                                  justify="space-between"
+                                  className="bg-slate-900/60 border border-sf-primary/20 rounded px-2 py-1"
+                                >
+                                  <Group gap="xs">
+                                    {state === 'done' ? (
+                                      <IconCheck size={16} color="#22c55e" />
+                                    ) : state === 'running' || state === 'active' ? (
+                                      <Loader size="xs" />
+                                    ) : (
+                                      <IconCircleDashed size={16} color="#94a3b8" />
+                                    )}
+                                    <Text className="text-white" size="sm">
+                                      {step.label}
+                                    </Text>
+                                  </Group>
+                                  <Group gap="xs">
+                                    <Badge color="gray" variant="light">
+                                      {duration}
+                                    </Badge>
+                                    <Badge
+                                      color={
+                                        state === 'done'
+                                          ? 'teal'
+                                          : state === 'active' || state === 'running'
+                                            ? 'blue'
+                                            : 'gray'
+                                      }
+                                      variant="light"
+                                    >
+                                      {state === 'done'
+                                        ? 'done'
+                                        : state === 'active' || state === 'running'
+                                          ? 'in progress'
+                                          : 'waiting'}
+                                    </Badge>
+                                  </Group>
+                                </Group>
+                              )
+                            })}
+                          </Stack>
+                        </Stack>
+                      </Paper>
+                    )}
+                    {decksError && (
+                      <Paper p="md" className="bg-slate-800/70 border border-red-500/40 rounded-lg">
+                        <Text className="text-red-300">
+                          Failed to load decks: {decksError}
+                        </Text>
                         </Paper>
                       )}
                       {decksLoading && (

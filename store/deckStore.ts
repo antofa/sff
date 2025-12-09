@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { z } from 'zod'
 
-const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour client-side cache
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day client-side cache
 
 type DeckCacheEntry = {
   decks: Deck[]
@@ -72,7 +72,7 @@ const DecksResponseSchema = z.array(DeckSchema)
 
 export type Deck = z.infer<typeof DeckSchema>
 
-type ProgressStepKey = 'prepare' | 'cache-check' | 'fetch' | 'tags' | 'validate' | 'finalize'
+type ProgressStepKey = 'prepare' | 'fetchRegular' | 'fetchFused' | 'tags' | 'finalize'
 type ProgressStepStatus = 'pending' | 'active' | 'done' | 'error'
 
 type ProgressStep = {
@@ -104,12 +104,11 @@ export type FetchProgress = {
 }
 
 const PROGRESS_TEMPLATE: Array<Omit<ProgressStep, 'status'>> = [
-  { key: 'prepare', label: 'Preparing request' },
-  { key: 'cache-check', label: 'Checking cached results' },
-  { key: 'fetch', label: 'Requesting decks' },
+  { key: 'prepare', label: 'Preparing request & cache check' },
+  { key: 'fetchRegular', label: 'Requesting regular decks' },
+  { key: 'fetchFused', label: 'Requesting fused decks' },
   { key: 'tags', label: 'Collecting tags' },
-  { key: 'validate', label: 'Validating data' },
-  { key: 'finalize', label: 'Finalizing' },
+  { key: 'finalize', label: 'Validating & finalizing' },
 ]
 
 const createIdleProgress = (): FetchProgress => ({
@@ -293,8 +292,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     }
 
     // Start with prepare
-    updateSteps('prepare', 'running', `Preparing request for ${normalizedName}...`)
-    updateSteps('cache-check', 'running', 'Checking local cache...')
+    updateSteps('prepare', 'running', `Preparing request and checking cache for ${normalizedName}...`)
 
     // Cache check
     const cached = forceRefresh ? undefined : get().playerCache[normalizedPlayer]
@@ -317,8 +315,9 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         fusedPages: cached.fusedDecks.length > 0 ? 1 : 0,
         tagCount: (cached.tagIndex || []).length,
       })
-      updateSteps('fetch', 'done', 'Loaded from cache')
-      updateSteps('validate', 'done')
+      updateSteps('fetchRegular', 'done', 'Loaded from cache')
+      updateSteps('fetchFused', 'done')
+      updateSteps('tags', 'done')
       updateSteps('finalize', 'done')
       finishProgress('Loaded from cache', 'cached')
       return
@@ -335,11 +334,13 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       })
     }
 
-    // Switch to fetch step
-    updateSteps('fetch', 'running', 'Requesting decks...')
+    // Switch to regular fetch step
+    updateSteps('fetchRegular', 'running', 'Requesting regular decks...')
 
     return new Promise<void>((resolve, reject) => {
-      const es = new EventSource(`/api/decks/stream?player=${encodeURIComponent(normalizedName)}`)
+      const es = new EventSource(
+        `/api/decks/stream?player=${encodeURIComponent(normalizedName)}${forceRefresh ? '&force=1' : ''}`
+      )
       let regularDecks: any[] = []
       let fusedDecks: any[] = []
       let meta: any = {}
@@ -368,10 +369,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             totalCount: (data.totalSoFar ?? 0) + currentFused,
             regularPages: data.page ? Math.max(prevPages, data.page) : prevPages,
           })
-          setProgressState({
-            message: data.message || progressMsg || 'Fetching decks...',
-            status: 'running',
-          })
+          updateSteps('fetchRegular', 'running', data.message || progressMsg || 'Fetching regular decks...')
         } catch (err) {
           console.warn('[Store] Failed to parse progress event:', err)
         }
@@ -386,9 +384,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             totalCount: (data.regularCount ?? get().progress.counters?.regularCount ?? 0) + currentFused,
             regularPages: data.regularPages ?? get().progress.counters?.regularPages,
           })
-          setProgressState({
-            message: 'Regular decks loaded. Fetching fused decks...',
-          })
+          updateSteps('fetchRegular', 'done', 'Regular decks loaded. Fetching fused decks...')
+          updateSteps('fetchFused', 'running', 'Requesting fused decks...')
         } catch (err) {
           console.warn('[Store] Failed to parse regular-complete event:', err)
         }
@@ -398,10 +395,23 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         try {
           const data = JSON.parse((event as MessageEvent).data || '{}')
           const currentRegular = get().progress.counters?.regularCount ?? 0
+          const prevFusedPages = get().progress.counters?.fusedPages ?? 0
+          const pageLabel = data.page
+            ? `Fused page ${data.page}${data.pageSize ? ` (${data.pageSize} decks)` : ''}`
+            : undefined
+          const countLabel = data.totalSoFar !== undefined ? `total fused: ${data.totalSoFar}` : undefined
+          const progressMsg = [pageLabel, countLabel].filter(Boolean).join(' · ')
+          const fusedPagesNext = data.page
+            ? Math.max(prevFusedPages, data.page)
+            : data.totalSoFar
+              ? Math.max(prevFusedPages, 1)
+              : prevFusedPages
           setProgressCounters({
-            fusedCount: data.fusedCount ?? 0,
-            totalCount: currentRegular + (data.fusedCount ?? 0),
+            fusedCount: data.totalSoFar ?? data.fusedCount ?? 0,
+            totalCount: currentRegular + (data.totalSoFar ?? data.fusedCount ?? 0),
+            fusedPages: fusedPagesNext,
           })
+          updateSteps('fetchFused', 'running', data.message || progressMsg || 'Fetching fused decks...')
         } catch (err) {
           console.warn('[Store] Failed to parse fused event:', err)
         }
@@ -418,22 +428,89 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           setProgressCounters({
             tagCount: tagsPayload.uniqueTags?.length ?? 0,
           })
-          updateSteps('tags', 'running', 'Collecting tags on server...')
-          setProgressState({
-            message: 'Tags prepared on server',
-            status: 'running',
-          })
-          updateSteps('tags', 'done')
+          const processed = data.processedDecks
+          const totalDecks = data.totalDecks
+          const tagMsg =
+            processed && totalDecks
+              ? `Collecting tags... ${processed}/${totalDecks}`
+              : 'Collecting tags...'
+          updateSteps('tags', 'running', tagMsg)
         } catch (err) {
           console.warn('[Store] Failed to parse tags event:', err)
+        }
+      })
+
+      es.addEventListener('fused-complete', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data || '{}')
+          const fusedCount = data.fusedCount ?? get().progress.counters?.fusedCount ?? 0
+          const fusedPages = data.fusedPages ?? (fusedCount > 0 ? 1 : 0)
+          const currentRegular = get().progress.counters?.regularCount ?? 0
+          setProgressCounters({
+            fusedCount,
+            fusedPages,
+            totalCount: currentRegular + fusedCount,
+          })
+          updateSteps('fetchFused', 'done')
+        } catch (err) {
+          console.warn('[Store] Failed to parse fused-complete event:', err)
+        }
+      })
+
+      es.addEventListener('decks-ready', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data || '{}')
+          regularDecks = data.regular || []
+          fusedDecks = data.fused || []
+          const metaLocal = data.meta || {}
+
+          setProgressCounters({
+            regularCount: regularDecks.length,
+            fusedCount: fusedDecks.length,
+            totalCount: regularDecks.length + fusedDecks.length,
+            regularPages: metaLocal.regularPages ?? metaLocal.pages,
+            fusedPages: metaLocal.fusedPages ?? (fusedDecks.length > 0 ? 1 : 0),
+          })
+
+          updateSteps('fetchFused', 'done', 'Received all decks')
+          updateSteps('tags', 'running', 'Collecting tags...')
+
+          const owner = playerName.trim()
+          const taggedRegular = Array.isArray(regularDecks)
+            ? regularDecks.map(deck => ({ ...deck, playerName: owner }))
+            : []
+          const taggedFused = Array.isArray(fusedDecks)
+            ? fusedDecks.map(deck => ({ ...deck, playerName: owner }))
+            : []
+
+          const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
+          const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
+
+          set({
+            decks: validatedRegularDecks,
+            fusedDecks: validatedFusedDecks,
+          })
+        } catch (err) {
+          console.warn('[Store] Failed to parse decks-ready event:', err)
+          // Even if validation fails, unblock progress so the flow can continue
+          updateSteps('fetchFused', 'done', 'Received decks (unvalidated)')
+          updateSteps('tags', 'running', 'Collecting tags...')
+          const prevCounters = get().progress.counters || {}
+          setProgressCounters({
+            regularCount: prevCounters.regularCount ?? 0,
+            fusedCount: prevCounters.fusedCount ?? 0,
+            totalCount: (prevCounters.regularCount ?? 0) + (prevCounters.fusedCount ?? 0),
+            regularPages: prevCounters.regularPages,
+            fusedPages: prevCounters.fusedPages ?? (prevCounters.fusedCount ? 1 : 0),
+          })
         }
       })
 
       es.addEventListener('done', (event) => {
         try {
           const data = JSON.parse((event as MessageEvent).data || '{}')
-          regularDecks = data.regular || []
-          fusedDecks = data.fused || []
+          regularDecks = data.regular || regularDecks
+          fusedDecks = data.fused || fusedDecks
           meta = data.meta || {}
           if (data.tags) {
             tagsPayload = {
@@ -454,10 +531,18 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           fusedCount: fusedDecks.length,
           totalCount: regularDecks.length + fusedDecks.length,
           regularPages: meta.regularPages ?? meta.pages,
-          fusedPages: meta.fusedPages ?? (meta.fusedCount ? 1 : 0),
+          fusedPages: (() => {
+            if (meta.fusedPages !== undefined) return meta.fusedPages
+            if (meta.fusedCount) return 1
+            const prev = get().progress.counters?.fusedPages
+            if (prev !== undefined) return prev
+            return fusedDecks.length > 0 ? 1 : 0
+          })(),
         })
 
-        updateSteps('validate', 'running', 'Validating response...')
+        updateSteps('tags', 'done', 'Tags prepared')
+
+        updateSteps('finalize', 'running', 'Validating response...')
 
         const owner = playerName.trim()
         const taggedRegular = Array.isArray(regularDecks)
@@ -523,7 +608,6 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           }
         }
 
-        updateSteps('validate', 'done')
         updateSteps('finalize', 'done', 'Decks loaded (server tags)')
         finishProgress('Decks loaded', 'done')
         cleanup()

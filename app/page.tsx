@@ -19,10 +19,11 @@ export default function Home() {
   const lastSearchRef = useRef<string>('')
   const [elapsedMs, setElapsedMs] = useState(0)
   const [progressVisible, setProgressVisible] = useState(false)
+  const [lastNonTagMessage, setLastNonTagMessage] = useState('')
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null
-    if ((progress.status === 'running' || progress.status === 'cached') && progress.startedAt) {
+    if (progress.status === 'running' && progress.startedAt) {
       const tick = () => {
         setElapsedMs(Date.now() - (progress.startedAt || Date.now()))
       }
@@ -42,23 +43,23 @@ export default function Home() {
   }, [progress.finishedAt, progress.startedAt, progress.status])
 
   useEffect(() => {
+    let showTimer: ReturnType<typeof setTimeout> | null = null
     let hideTimer: ReturnType<typeof setTimeout> | null = null
 
     if (progress.status === 'running' || progress.status === 'error') {
-      setTimeout(() => setProgressVisible(true), 0)
-    } else if ((progress.status === 'done' || progress.status === 'cached') && progress.startedAt && progress.finishedAt) {
-      setTimeout(() => setProgressVisible(true), 0)
-      hideTimer = setTimeout(() => setProgressVisible(false), 1400)
+      showTimer = setTimeout(() => setProgressVisible(true), 0)
+    } else if (progress.status === 'done' || progress.status === 'cached') {
+      showTimer = setTimeout(() => setProgressVisible(true), 0)
+      hideTimer = setTimeout(() => setProgressVisible(false), 2000)
     } else if (progress.status === 'idle') {
-      setTimeout(() => setProgressVisible(false), 0)
+      hideTimer = setTimeout(() => setProgressVisible(false), 0)
     }
 
     return () => {
-      if (hideTimer) {
-        clearTimeout(hideTimer)
-      }
+      if (showTimer) clearTimeout(showTimer)
+      if (hideTimer) clearTimeout(hideTimer)
     }
-  }, [progress.status, progress.startedAt, progress.finishedAt])
+  }, [progress.status])
 
   const formatDuration = useCallback((ms: number) => {
     const totalSeconds = Math.max(0, Math.round(ms / 1000))
@@ -69,6 +70,8 @@ export default function Home() {
     }
     return `${seconds}s`
   }, [])
+
+  const stackGap = progressVisible ? 'lg' : 'xl'
 
   const totalSteps = progress.totalSteps || progress.steps.length || 1
   const completedSteps = progress.steps.filter((step) => step.status === 'done').length
@@ -108,6 +111,34 @@ export default function Home() {
   const counters = progress.counters || {}
   const showProgress = progressVisible
   const [lastSearchedName, setLastSearchedName] = useState('')
+  const activeStepForMessage =
+    progress.steps.find((step) => step.status === 'active') ||
+    progress.steps.find((step) => step.status === 'pending')
+
+  useEffect(() => {
+    const msg = progress.message?.trim()
+    if (msg && !msg.toLowerCase().includes('tag')) {
+      setTimeout(() => setLastNonTagMessage(msg), 0)
+    }
+  }, [progress.message])
+
+  const primaryMessage = (() => {
+    const msg = progress.message?.trim()
+
+    if (activeStepForMessage && ['fetchRegular', 'fetchFused'].includes(activeStepForMessage.key)) {
+      if (msg && !msg.toLowerCase().includes('tag')) {
+        return msg
+      }
+      return lastNonTagMessage || activeStepForMessage.label || 'Requesting decks'
+    }
+
+    if (activeStepForMessage?.key === 'tags' && msg) {
+      return msg
+    }
+    if (activeStepForMessage?.label) return activeStepForMessage.label
+    if (msg) return msg
+    return progress.status === 'error' ? 'Something went wrong' : 'Working on it...'
+  })()
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value
@@ -205,7 +236,7 @@ export default function Home() {
       <BackgroundElements />
       <Header />
       <Container size="xl" className="relative z-10 py-6">
-        <Stack gap="xl" align="center">
+        <Stack gap={stackGap} align="center">
           <div className="text-center space-y-4">
             <Title
               order={1}
@@ -266,9 +297,9 @@ export default function Home() {
                 <div className="flex-1 flex justify-end">
                   <Checkbox
                     label={
-                      <div className="leading-tight text-white text-right">
-                        <div>Force refresh</div>
-                        <div className="text-xs text-gray-300">(ignore cache)</div>
+                      <div className="leading-tight text-white text-center">
+                        <div>Force refresh  </div>
+                        <div className="text-xs text-gray-300">(ignore 24h cache)</div>
                       </div>
                     }
                     checked={forceRefresh}
@@ -295,7 +326,7 @@ export default function Home() {
                         : `Searching decks${lastSearchedName ? ` for ${lastSearchedName}` : ''}`}
                     </Text>
                     <Text size="sm" className="text-gray-300">
-                      {progress.message || (progress.status === 'error' ? 'Something went wrong' : 'Working on it...')}
+                      {primaryMessage}
                     </Text>
                   </div>
                   <Badge color="blue" variant="light">
@@ -336,6 +367,19 @@ export default function Home() {
 
                 <Stack gap={6}>
                   {progress.steps.map((step) => {
+                    const durationLabel = (() => {
+                      if (step.finishedAt && step.startedAt) {
+                        const ms = step.finishedAt - step.startedAt
+                        const secs = Math.max(0, Math.round(ms / 1000))
+                        if (secs >= 60) {
+                          const mins = Math.floor(secs / 60)
+                          const rem = secs % 60
+                          return `${mins}m ${rem}s`
+                        }
+                        return `${secs}s`
+                      }
+                      return null
+                    })()
                     return (
                       <Group
                         key={step.key}
@@ -356,9 +400,16 @@ export default function Home() {
                             {step.label}
                           </Text>
                         </Group>
-                        <Badge color={statusColors[step.status]} variant="light" size="sm">
+                        <Group gap={6} align="center">
+                          {durationLabel && (
+                            <Text size="xs" className="text-gray-300 whitespace-nowrap">
+                              {durationLabel}
+                            </Text>
+                          )}
+                          <Badge color={statusColors[step.status]} variant="light" size="sm">
                           {statusLabels[step.status]}
-                        </Badge>
+                          </Badge>
+                        </Group>
                       </Group>
                     )
                   })}
@@ -368,7 +419,7 @@ export default function Home() {
                   <Text size="xs" className="text-gray-400 uppercase tracking-wide">
                     Deck progress
                   </Text>
-                  <Group gap="md" wrap="wrap">
+                  <Group gap={6} wrap="wrap">
                     <Badge color="teal" variant="light">
                       Total decks: {counters.totalCount ?? '—'}
                     </Badge>

@@ -1,3 +1,5 @@
+import { appendFile, mkdir } from 'fs/promises'
+import path from 'path'
 import { NextRequest } from 'next/server'
 import { fetchFusedDecksFromAPI, getPlayerDecks, getCardInfo } from '@/lib/api'
 import { logWithTimestamp } from '@/lib/logger'
@@ -96,9 +98,33 @@ const buildTagPayload = (decks: any[], fused: any[]) => {
 
 export async function GET(request: NextRequest) {
   const playerName = request.nextUrl.searchParams.get('player')
+  const force = request.nextUrl.searchParams.get('force') === '1' || request.nextUrl.searchParams.get('force') === 'true'
 
   if (!playerName || !playerName.trim()) {
     return new Response('Player parameter is required', { status: 400 })
+  }
+
+  const t0 = Date.now()
+  const elapsed = () => `${Date.now() - t0}ms`
+
+  const logFilePath = path.join(process.cwd(), 'logs', `deck-search-${new Date().toISOString().slice(0, 10)}.log`)
+  const logToFile = async (message: string) => {
+    const line = `${new Date().toISOString()} [stream] player=${playerName} ${message} (elapsed=${elapsed()})\n`
+    try {
+      await appendFile(logFilePath, line)
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') {
+        await mkdir(path.dirname(logFilePath), { recursive: true })
+        await appendFile(logFilePath, line)
+      } else {
+        console.error('[stream] failed to write log file', error)
+      }
+    }
+  }
+
+  const logStage = (msg: string) => {
+    logWithTimestamp(`[stream] player=${playerName} ${msg} (elapsed=${elapsed()})`)
+    void logToFile(msg)
   }
 
   // Incremental tag aggregation state
@@ -108,9 +134,15 @@ export async function GET(request: NextRequest) {
     perDeck: {} as Record<string, string[]>,
     seenDecks: new Set<string>(),
     queue: Promise.resolve(),
+    processedDecks: 0,
+    totalDecks: undefined as number | undefined,
   }
 
-  const processDeckBatch = async (decks: any[], includePerDeck: boolean) => {
+  const processDeckBatch = async (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    decks: any[],
+    includePerDeck: boolean
+  ) => {
     const batchSize = 25
     for (let i = 0; i < decks.length; i += batchSize) {
       const slice = decks.slice(i, i + batchSize)
@@ -139,6 +171,15 @@ export async function GET(request: NextRequest) {
             }
           })
         }
+        tagState.processedDecks += 1
+      })
+      // Emit incremental progress for tags
+      writeEvent(controller, 'tags', {
+        phase: 'partial',
+        processedDecks: tagState.processedDecks,
+        totalDecks: tagState.totalDecks,
+        uniqueTags: Array.from(tagState.uniqueTags),
+        uniqueCardNames: Array.from(tagState.uniqueCardNames),
       })
       await new Promise<void>((resolve) => {
         if (typeof setImmediate !== 'undefined') {
@@ -152,7 +193,7 @@ export async function GET(request: NextRequest) {
 
   const enqueueTags = (decks: any[], options: { includePerDeck: boolean; onDone?: () => void }) => {
     tagState.queue = tagState.queue
-      .then(() => processDeckBatch(decks, options.includePerDeck))
+      .then(() => processDeckBatch(controllerRef, decks, options.includePerDeck))
       .then(() => {
         options.onDone?.()
       })
@@ -161,9 +202,14 @@ export async function GET(request: NextRequest) {
       })
   }
 
+  // Controller ref to use inside tag queue
+  let controllerRef: ReadableStreamDefaultController<Uint8Array>
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      controllerRef = controller
       writeEvent(controller, 'start', { player: playerName })
+      logStage('stream start')
 
       try {
         let totalSoFar = 0
@@ -186,6 +232,9 @@ export async function GET(request: NextRequest) {
 
             // Incremental tag aggregation per page (counts only to keep payload light)
             if (items && Array.isArray(items)) {
+              if (meta?.total !== undefined) {
+                tagState.totalDecks = (meta.total || 0) + (tagState.totalDecks || 0)
+              }
               enqueueTags(items, {
                 includePerDeck: false,
                 onDone: () => {
@@ -194,14 +243,20 @@ export async function GET(request: NextRequest) {
                     page,
                     uniqueTags: Array.from(tagState.uniqueTags),
                     uniqueCardNames: Array.from(tagState.uniqueCardNames),
+                    processedDecks: tagState.processedDecks,
+                    totalDecks: tagState.totalDecks,
                     // perDeck omitted in partial to reduce payload size
                   })
                 },
               })
             }
           },
+          force,
         })
 
+        logStage(`regular fetch done count=${regular.length} pages=${meta.pages ?? meta.regularPages ?? 1}`)
+
+        tagState.totalDecks = (tagState.totalDecks || 0) + (regular?.length || 0)
         writeEvent(controller, 'regular-complete', {
           regularCount: regular.length,
           regularPages: meta.pages ?? meta.regularPages ?? 1,
@@ -227,26 +282,42 @@ export async function GET(request: NextRequest) {
           totalSoFar,
         })
 
-        const fused = await fetchFusedDecksFromAPI(playerName).then((result) => {
+        let fusedTotalSoFar = 0
+        const fusedProgress = (info: { page?: number; received?: number; totalSoFar?: number; pageSize?: number }) => {
+          fusedTotalSoFar = info.totalSoFar ?? fusedTotalSoFar
           writeEvent(controller, 'fused', {
-            fusedCount: result.length,
+            page: info.page,
+            pageSize: info.pageSize,
+            received: info.received,
+            totalSoFar: fusedTotalSoFar,
+            message:
+              info.page !== undefined && info.received !== undefined
+                ? `Fused page ${info.page} (${info.received} decks)`
+                : undefined,
           })
+        }
+
+        const fused = await fetchFusedDecksFromAPI(playerName, {
+          force,
+          onPage: ({ page, received, totalSoFar: running, pageSize }) => {
+            fusedProgress({ page, received, totalSoFar: running, pageSize })
+          },
+        }).then((result) => {
+          fusedProgress({ totalSoFar: result.length })
+          tagState.totalDecks = (tagState.totalDecks || 0) + result.length
           enqueueTags(result, {
             includePerDeck: true,
           })
+          writeEvent(controller, 'fused-complete', {
+            fusedCount: result.length,
+            fusedPages: result.length > 0 ? 1 : 0,
+          })
+          logStage(`fused fetch done count=${result.length}`)
           return result
         })
 
-        // Final tag payload with both regular and fused decks
-        await tagState.queue
-        const tagPayload = {
-          uniqueTags: Array.from(tagState.uniqueTags).sort(),
-          uniqueCardNames: Array.from(tagState.uniqueCardNames).sort(),
-          perDeck: tagState.perDeck,
-        }
-        writeEvent(controller, 'tags', { ...tagPayload, phase: 'final' })
-
-        writeEvent(controller, 'done', {
+        // Send decks immediately so fetch step can complete on client
+        writeEvent(controller, 'decks-ready', {
           regular,
           fused,
           meta: {
@@ -255,11 +326,34 @@ export async function GET(request: NextRequest) {
             regularPages: meta.pages ?? meta.regularPages ?? 1,
             fusedPages: fused.length > 0 ? 1 : 0,
           },
+        })
+        logStage('decks-ready emitted to client')
+
+        // Final tag payload with both regular and fused decks
+        logStage('tag aggregation waiting for queue to finish')
+        await tagState.queue
+        const tagPayload = {
+          uniqueTags: Array.from(tagState.uniqueTags).sort(),
+          uniqueCardNames: Array.from(tagState.uniqueCardNames).sort(),
+          perDeck: tagState.perDeck,
+        }
+        writeEvent(controller, 'tags', { ...tagPayload, phase: 'final' })
+        logStage(`tag aggregation done tags=${tagPayload.uniqueTags.length} cards=${tagPayload.uniqueCardNames.length}`)
+
+        writeEvent(controller, 'done', {
+          meta: {
+            ...meta,
+            fusedCount: fused.length,
+            regularPages: meta.pages ?? meta.regularPages ?? 1,
+            fusedPages: fused.length > 0 ? 1 : 0,
+          },
           tags: tagPayload,
         })
+        logStage('done emitted')
         controller.close()
       } catch (error) {
         console.error('[API /decks/stream] Error:', error)
+        logStage('stream error')
         writeEvent(controller, 'error', {
           message: error instanceof Error ? error.message : 'Unknown error',
         })

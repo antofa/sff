@@ -613,10 +613,10 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   }, [deck, opened, getFusedDeckSourceDecks, allDecks, onDeckClick])
 
   // Load source halves for fused decks when they lack card lists
-  const isFusedDeck = (d: any) => {
+  const isFusedDeck = useCallback((d: any) => {
     if (!d || !d.format) return false
     return String(d.format).toLowerCase().includes('fused')
-  }
+  }, [])
 
   useEffect(() => {
     if (!deck || !opened || !isFusedDeck(deck)) return
@@ -684,7 +684,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       })
       finalize(merged)
     })
-  }, [deck, opened, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks])
+  }, [deck, opened, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks, isFusedDeck])
 
   // If fused deck still has no cards but sources do, merge source cards into fullDeckData
   useEffect(() => {
@@ -782,7 +782,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     })
     
     return cards
-  }, [deck, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks])
+  }, [deck, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks, isFusedDeck])
 
   // Deduplicate normalized cards by id (or name fallback) to avoid double counting
   const uniqueNormalizedCards: CardInfo[] = useMemo(() => {
@@ -919,11 +919,13 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     
     return ids
   }, [uniqueNormalizedCards, deck, fullDeckData])
-  
+
   // Create a stable string representation for use in dependencies
   const solbindCardIdsKey = useMemo(() => {
     return Array.from(solbindCardIdsSet).sort().join(',')
   }, [solbindCardIdsSet])
+
+  const solbindCardIdsArray = useMemo(() => Array.from(solbindCardIdsSet).sort(), [solbindCardIdsSet])
 
   // Rarity summary (including Solbind) for badges in header
   const raritySummary = useMemo(() => {
@@ -2596,7 +2598,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       const lowerCardType = cardType.toLowerCase()
       return lowerCardType.includes('spell') && !lowerCardType.includes('creature')
     })
-  }, [uniqueNormalizedCards, forgebornCards, solbindCardIdsSet, deck])
+  }, [uniqueNormalizedCards, forgebornCards, deck])
 
   const creatureCards: CardInfo[] = useMemo(() => {
     if (!deck) return []

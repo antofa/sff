@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const playerName = searchParams.get('player')
     const type = searchParams.get('type') // 'regular', 'fused', or undefined (both)
+    const force = searchParams.get('force') === '1' || searchParams.get('force') === 'true'
 
     if (!playerName) {
       return NextResponse.json(
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     if (type === 'fused') {
       // Fetch only fused decks
-      const fusedDecks = await fetchFusedDecksFromAPI(playerName)
+      const fusedDecks = await fetchFusedDecksFromAPI(playerName, { force })
       logWithTimestamp(`[API Route] Received ${fusedDecks.length} fused decks for player: ${playerName}`)
       return NextResponse.json({
         fused: fusedDecks,
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
       })
     } else if (type === 'regular') {
       // Fetch only regular decks
-      const { decks, meta } = await getPlayerDecks(playerName)
+      const { decks, meta } = await getPlayerDecks(playerName, { force })
       logWithTimestamp(`[API Route] Received ${decks.length} regular decks for player: ${playerName}`)
       return NextResponse.json({
         regular: decks,
@@ -43,8 +44,8 @@ export async function GET(request: NextRequest) {
     } else {
       // Fetch both regular and fused decks
       const [{ decks: regularDecks, meta }, fusedDecks] = await Promise.all([
-        getPlayerDecks(playerName),
-        fetchFusedDecksFromAPI(playerName)
+        getPlayerDecks(playerName, { force }),
+        fetchFusedDecksFromAPI(playerName, { force })
       ])
       
       logWithTimestamp(`[API Route] Received ${regularDecks.length} regular and ${fusedDecks.length} fused decks for player: ${playerName}`)
