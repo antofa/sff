@@ -1,13 +1,498 @@
 import { create } from 'zustand'
 import { z } from 'zod'
+import { getCardInfo, type CardInfo } from '@/lib/api'
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day client-side cache
+
+export type DeckComputed = {
+  expiryTs: number | null
+  deckSet?: string | null
+  counts?: { total: number; creatures: number; spells: number; solbind: number }
+  rarityCounts?: Record<string, number>
+  displayTags?: string[]
+}
+
+// Cache card info to avoid expensive recomputation on every render
+const cardInfoCache = new Map<string, CardInfo>()
+
+const getCardInfoCached = (cardId: string, cardData?: any): CardInfo => {
+  if (!cardId) return getCardInfo(cardId, cardData)
+  const cached = cardInfoCache.get(cardId)
+  if (cached && !cardData) return cached
+  const mergedData = cached && cardData ? { ...cached, ...cardData } : cardData
+  const info = getCardInfo(cardId, mergedData)
+  cardInfoCache.set(cardId, info)
+  return info
+}
+
+const isB1Card = (card: any): boolean => {
+  if (!card) return false
+  if (typeof card === 'string') return /^b1_/i.test(card)
+  if (typeof card === 'object') {
+    const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
+    const cardId = card.id || card.cardId || card.name
+    if (cardSetId && String(cardSetId).toLowerCase() === 'b1') return true
+    if (cardId && /^b1_/i.test(cardId)) return true
+  }
+  return false
+}
+
+// Resolve expiry timestamp (ms) for a deck
+const getExpiryTimestamp = (deck: Deck): number | null => {
+  const deckAny = deck as any
+  const expireRaw =
+    deckAny?.expireAt ??
+    deckAny?.expire ??
+    deckAny?.expire_at ??
+    deckAny?.expireDate ??
+    deckAny?.expire_date ??
+    deckAny?.pExpiry ??
+    null
+  if (!expireRaw) return null
+  const ts = new Date(expireRaw).getTime()
+  return Number.isNaN(ts) ? null : ts
+}
+
+const deriveSetFromId = (id?: string | null): string | null => {
+  if (!id || typeof id !== 'string') return null
+  const lower = id.toLowerCase()
+  if (lower.startsWith('s1-')) return 'S1'
+  if (lower.startsWith('s2-')) return 'S2'
+  if (lower.startsWith('s3-')) return 'S3'
+  if (lower.startsWith('s4-')) return 'S4'
+  return null
+}
+
+// Determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
+const getDeckSetComputed = (deck: Deck): string | null => {
+  if (!deck) return null
+  const deckAny = deck as any
+
+  if (deckAny.format === 'Fused' && (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0)) {
+    if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
+      for (const sourceDeck of deckAny.myDecks) {
+        if (!sourceDeck) continue
+        const explicitSet = sourceDeck.cardSetNo || sourceDeck.cardSetId || deriveSetFromId(sourceDeck.id)
+        if (explicitSet) return explicitSet
+        if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
+          const hasB1Card = sourceDeck.cards.some((card: any) => isB1Card(card))
+          if (hasB1Card) return 'B1'
+        }
+      }
+    }
+    const derivedParentSet = deckAny.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id)
+    if (derivedParentSet) return derivedParentSet
+    return null
+  }
+
+  if (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0) {
+    return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
+  }
+
+  const hasB1Card = deck.cards.some((card: any) => isB1Card(card))
+  if (hasB1Card) return 'B1'
+  return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
+}
+
+// Count cards as sum of creatures + spells + solbind (excluding Forgeborn)
+const countPlayableCards = (deck: Deck): { total: number; creatures: number; spells: number; solbind: number } => {
+  const deckAny = deck as any
+  const extractCards = (d: any): any[] => {
+    if (!d) return []
+    if (Array.isArray(d.cardList)) return d.cardList
+    if (Array.isArray(d.cards)) return d.cards
+    if (d.cards && typeof d.cards === 'object') return Object.values(d.cards)
+    return []
+  }
+
+  let rawCards: any[] = extractCards(deckAny)
+
+  if (deckAny.format === 'Fused' && Array.isArray(deckAny.myDecks) && deckAny.myDecks.length >= 2) {
+    const combined: any[] = []
+    const seen = new Set<string>()
+    const addCards = (cardsArr: any[]) => {
+      cardsArr.forEach((c, idx) => {
+        const key = c?.id || c?.cardId || c?.name || `card-${combined.length + idx}`
+        if (seen.has(key)) return
+        seen.add(key)
+        combined.push(c)
+      })
+    }
+    deckAny.myDecks.forEach((src: any) => addCards(extractCards(src)))
+    if (combined.length > 0) rawCards = combined
+  }
+
+  if (!rawCards || rawCards.length === 0) return { total: 0, creatures: 0, spells: 0, solbind: 0 }
+
+  const normalizedCards = rawCards.map((card: any, index: number) => {
+    if (typeof card === 'string') return getCardInfoCached(card)
+    if (typeof card === 'object' && card !== null) {
+      const cardId = card.id || card.cardId || card.name || `card-${index}`
+      return getCardInfoCached(cardId, card)
+    }
+    return getCardInfoCached(`card-${index}`)
+  })
+
+  const solbindCardIds = new Set<string>()
+  let solbindCount = 0
+  normalizedCards.forEach(card => {
+    const cardData = card as any
+    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+      solbindCount += cardData.solbindCards.length
+      cardData.solbindCards.forEach((solbindCard: any, sbIdx: number) => {
+        if (!solbindCard) return
+        const sbId = solbindCard.id || solbindCard.cardId || solbindCard.name || `solbind-${card.id || 'card'}-${sbIdx}`
+        if (sbId) solbindCardIds.add(sbId)
+      })
+    }
+  })
+
+  if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
+    solbindCount += (deck as any).forgeborn.solbindCards.length
+    ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any, sbIdx: number) => {
+      if (!solbindCard) return
+      const sbId = solbindCard.id || solbindCard.cardId || solbindCard.name || `solbind-forgeborn-${sbIdx}`
+      if (sbId) solbindCardIds.add(sbId)
+    })
+  }
+
+  const forgebornId = deck.forgebornId
+  const forgebornCards: any[] = []
+  if (forgebornId) {
+    const forgeborn = normalizedCards.find(card =>
+      card.id === forgebornId ||
+      (card.id && forgebornId && card.id.includes(forgebornId)) ||
+      (forgebornId && card.id && forgebornId.includes(card.id))
+    )
+    if (forgeborn) forgebornCards.push(forgeborn)
+  }
+  if (forgebornCards.length === 0) {
+    const forgebornByType = normalizedCards.find(card =>
+      card.type?.toLowerCase().includes('forgeborn') ||
+      (card as any).cardType?.toLowerCase().includes('forgeborn')
+    )
+    if (forgebornByType) forgebornCards.push(forgebornByType)
+  }
+
+  const solbindCardObjects: any[] = []
+  normalizedCards.forEach(card => {
+    const cardData = card as any
+    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+      cardData.solbindCards.forEach((solbindCard: any, sbIdx: number) => {
+        if (!solbindCard) return
+        const sbId = solbindCard.id || solbindCard.cardId || solbindCard.name || `solbind-${card.id || 'card'}-${sbIdx}`
+        if (!solbindCardObjects.some(sb => sb.id === sbId)) {
+          solbindCardObjects.push(getCardInfoCached(sbId, { ...solbindCard, id: sbId }))
+        }
+      })
+    }
+  })
+
+  if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
+    ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any, sbIdx: number) => {
+      if (!solbindCard) return
+      const sbId = solbindCard.id || solbindCard.cardId || solbindCard.name || `solbind-forgeborn-${sbIdx}`
+      if (!sbId) return
+      if (!solbindCardObjects.some(sb => sb.id === sbId)) {
+        solbindCardObjects.push(getCardInfoCached(sbId, { ...solbindCard, id: sbId }))
+      }
+    })
+  }
+
+  normalizedCards.forEach(card => {
+    if (forgebornCards.includes(card)) return
+    const cardData = card as any
+    const cardId = card.id
+    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) return
+    if (solbindCardIds.has(cardId)) {
+      if (!solbindCardObjects.some(sb => sb.id === cardId)) solbindCardObjects.push(card)
+      return
+    }
+    if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+      if (!solbindCardObjects.some(sb => sb.id === cardId)) solbindCardObjects.push(card)
+    }
+  })
+
+  const solbindFallbackIds = new Set<string>()
+  normalizedCards.forEach(card => {
+    const cardData = card as any
+    const rarity = (cardData.rarity || '').toString().toLowerCase()
+    const hasChildren = Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0
+    if (rarity.includes('solbind') && !hasChildren) {
+      const baseId = card.id || card.cardId || cardData.name || 'solbind-parent'
+      solbindFallbackIds.add(`${baseId}-sb1`)
+      solbindFallbackIds.add(`${baseId}-sb2`)
+    }
+  })
+  solbindFallbackIds.forEach(id => solbindCardIds.add(id))
+  solbindCount += solbindFallbackIds.size
+
+  const solbindUniqueMap = new Map<string, any>()
+  solbindCardObjects.forEach(sb => {
+    if (sb?.id && !solbindUniqueMap.has(sb.id)) {
+      solbindUniqueMap.set(sb.id, sb)
+    }
+  })
+  const solbindCardsUnique = Array.from(solbindUniqueMap.values())
+
+  let creatures = 0
+  let spells = 0
+  const forgebornIdSet = new Set<string>()
+  if (deck.forgebornId) forgebornIdSet.add(deck.forgebornId)
+  normalizedCards.forEach(card => {
+    const cardData = card as any
+    const ct = (cardData.cardType || cardData.type || '').toLowerCase()
+    if (ct.includes('forgeborn') && card.id) {
+      forgebornIdSet.add(card.id)
+    }
+  })
+
+  normalizedCards.forEach(card => {
+    const cardData = card as any
+    const isForgeborn =
+      forgebornIdSet.has(card.id) ||
+      cardData.type?.toLowerCase().includes('forgeborn') ||
+      cardData.cardType?.toLowerCase().includes('forgeborn')
+    if (isForgeborn) return
+
+    const isSolbindCard =
+      solbindCardsUnique.some(sb => sb.id === card.id) ||
+      (typeof cardData.rarity === 'string' && cardData.rarity.toLowerCase().includes('solbind'))
+
+    const originalCard = deck.cards && Array.isArray(deck.cards)
+      ? deck.cards.find((c: any, idx: number) => {
+          if (typeof c === 'string') return c === card.id
+          const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
+          return cId === card.id
+        })
+      : null
+
+    const originalCardType = originalCard && typeof originalCard === 'object'
+      ? (originalCard.cardType || (originalCard as any).card_type || (originalCard as any).type || '')
+      : ''
+    const cardType = cardData.cardType || cardData.card_type || cardData.type || originalCardType || ''
+    const lowerCardType = cardType.toLowerCase()
+    const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+
+    if (isSpell) spells++
+    else creatures++
+    if (isSolbindCard) solbindCount += 1
+  })
+
+  const total = normalizedCards.filter(card => {
+    const cardData = card as any
+    const isForgeborn =
+      forgebornIdSet.has(card.id) ||
+      cardData.type?.toLowerCase().includes('forgeborn') ||
+      cardData.cardType?.toLowerCase().includes('forgeborn')
+    return !isForgeborn
+  }).length
+
+  return { total, creatures, spells, solbind: Math.max(solbindCardIds.size, solbindCardsUnique.length, solbindCount) }
+}
+
+const computeRarityCounts = (deck: Deck): Record<string, number> => {
+  const rarityCounts = new Map<string, number>()
+  if (!deck.cards || !Array.isArray(deck.cards)) return {}
+  const normalizedCards = deck.cards.map((card: any, index: number) => {
+    if (typeof card === 'string') return getCardInfoCached(card)
+    if (typeof card === 'object' && card !== null) {
+      const cardId = card.id || card.cardId || card.name || `card-${index}`
+      return getCardInfoCached(cardId, card)
+    }
+    return getCardInfoCached(`card-${index}`)
+  })
+
+  const solbindCardIds = new Set<string>()
+  normalizedCards.forEach(card => {
+    const cardData = card as any
+    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+      cardData.solbindCards.forEach((solbindCard: any) => {
+        if (solbindCard && solbindCard.id) solbindCardIds.add(solbindCard.id)
+      })
+    }
+  })
+
+  normalizedCards.forEach((card, idx) => {
+    const cardData = card as any
+    if (solbindCardIds.has(card.id)) return
+    const originalCardForType = Array.isArray(deck.cards)
+      ? deck.cards.find((c: any, i: number) => {
+          const cId = typeof c === 'string' ? c : (c?.id || c?.cardId || c?.name || `card-${i}`)
+          return cId === card.id
+        })
+      : undefined
+    const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+      ? (originalCardForType.cardType || originalCardForType.card_type || '')
+      : ''
+    const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+    const lowerCardType = cardType.toLowerCase()
+    const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+    const rarityRaw = cardData.rarity
+    if (rarityRaw && typeof rarityRaw === 'string') {
+      let normalizedRarity = rarityRaw.trim()
+      const lower = normalizedRarity.toLowerCase()
+      if (lower.includes('solbind')) {
+        normalizedRarity = 'Solbind'
+        solbindCardIds.add(card.id || `card-${idx}`)
+      } else if (lower.includes('common') && lower.includes('rare')) {
+        normalizedRarity = 'Common Rare'
+      } else if (lower.includes('common')) {
+        normalizedRarity = 'Common'
+      } else if (lower.includes('rare')) {
+        normalizedRarity = 'Rare'
+      } else if (lower.includes('ls') || lower.includes('legendary')) {
+        normalizedRarity = 'LS'
+      }
+      if (normalizedRarity !== 'Solbind' || !cardData.solbindCards) {
+        const currentCount = rarityCounts.get(normalizedRarity) || 0
+        rarityCounts.set(normalizedRarity, currentCount + 1)
+      }
+      if (normalizedRarity === 'Solbind' && cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+        rarityCounts.set('Solbind', (rarityCounts.get('Solbind') || 0) + 1)
+      }
+    }
+    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+      cardData.solbindCards.forEach((solbindCard: any) => {
+        const sbId = solbindCard?.id
+        if (sbId) solbindCardIds.add(sbId)
+      })
+    }
+    void isSpell
+  })
+
+  if (solbindCardIds.size > 0 && !rarityCounts.has('Solbind')) {
+    rarityCounts.set('Solbind', solbindCardIds.size)
+  }
+
+  return Object.fromEntries(rarityCounts)
+}
+
+const buildDisplayTags = (deck: Deck): string[] => {
+  const tagsToDisplay: string[] = []
+  if (deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags)) {
+    Object.entries(deck.tags).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === '') return
+      if (key === 'none' && (!value || value === '')) return
+      if (typeof value === 'string' && value.trim() === '') return
+      let tagText: string | null = null
+      if (typeof value === 'string' && value.trim() !== '') {
+        tagText = value.trim()
+      } else if (typeof value === 'number' || typeof value === 'boolean') {
+        tagText = String(value)
+      } else if (key && key !== 'none' && !key.startsWith('tag_')) {
+        tagText = key
+      } else if (key && key.startsWith('tag_')) {
+        return
+      }
+      if (tagText && tagText.trim() !== '') tagsToDisplay.push(tagText.trim())
+    })
+  } else if (deck.cards && Array.isArray(deck.cards)) {
+    const providesSet = new Set<string>()
+    deck.cards.forEach((card: any) => {
+      if (card && typeof card === 'object') {
+        const provides = card.provides || card.Provides
+        if (provides) {
+          if (typeof provides === 'string') {
+            provides.split(',').forEach((p: string) => {
+              const trimmed = p.trim()
+              if (trimmed) providesSet.add(trimmed)
+            })
+          } else if (Array.isArray(provides)) {
+            provides.forEach((p: string) => {
+              if (p && typeof p === 'string') {
+                const trimmed = p.trim()
+                if (trimmed) providesSet.add(trimmed)
+              }
+            })
+          }
+        }
+      }
+    })
+    tagsToDisplay.push(...Array.from(providesSet).sort())
+  }
+  return tagsToDisplay
+}
+
+const attachComputed = (decks: Deck[]): Deck[] => {
+  return decks.map((deck) => {
+    const computed: DeckComputed = {
+      expiryTs: getExpiryTimestamp(deck),
+      deckSet: getDeckSetComputed(deck),
+      counts: countPlayableCards(deck),
+      rarityCounts: computeRarityCounts(deck),
+      displayTags: buildDisplayTags(deck),
+    }
+    return { ...deck, computed }
+  })
+}
+
+const getForgebornNameFromDeck = (deck: Deck): string | null => {
+  if (deck.forgeborn && typeof deck.forgeborn === 'object' && (deck.forgeborn as any).id) {
+    const info = getCardInfoCached((deck.forgeborn as any).id, deck.forgeborn)
+    if (info.name) return info.name
+  }
+
+  if (deck.forgeborn && typeof deck.forgeborn === 'object') {
+    const name = (deck.forgeborn as any).title || (deck.forgeborn as any).name
+    if (name) return name
+  }
+
+  if (deck.cards && Array.isArray(deck.cards)) {
+    const normalizedCards = deck.cards.map((card: any, index: number) => {
+      if (typeof card === 'string') return getCardInfoCached(card)
+      if (typeof card === 'object' && card !== null) {
+        const cardId = card.id || card.cardId || card.name || `card-${index}`
+        return getCardInfoCached(cardId, card)
+      }
+      return getCardInfoCached(`card-${index}`)
+    })
+
+    if (deck.forgebornId) {
+      const forgeborn = normalizedCards.find(card =>
+        card.id === deck.forgebornId ||
+        (card.id && deck.forgebornId && card.id.includes(deck.forgebornId)) ||
+        (deck.forgebornId && card.id && deck.forgebornId.includes(card.id))
+      )
+      if (forgeborn?.name) return forgeborn.name
+    }
+
+    const forgebornByType = normalizedCards.find(card =>
+      card.type?.toLowerCase().includes('forgeborn') ||
+      (card as any).cardType?.toLowerCase().includes('forgeborn')
+    )
+    if (forgebornByType?.name) return forgebornByType.name
+  }
+
+  return null
+}
+
+const buildNameIndexes = (regularDecks: Deck[], fusedDecks: Deck[]) => {
+  const deckNames = new Set<string>()
+  const forgebornNames = new Set<string>()
+  const allDecks = [...regularDecks, ...fusedDecks]
+
+  allDecks.forEach(deck => {
+    if (deck.name && deck.name.trim()) {
+      deckNames.add(deck.name.trim())
+    }
+    const fb = getForgebornNameFromDeck(deck)
+    if (fb) forgebornNames.add(fb)
+  })
+
+  return {
+    deckNameIndex: Array.from(deckNames).sort(),
+    forgebornNameIndex: Array.from(forgebornNames).sort(),
+  }
+}
 
 type DeckCacheEntry = {
   decks: Deck[]
   fusedDecks: Deck[]
   tagIndex?: string[]
   cardNameIndex?: string[]
+  deckNameIndex?: string[]
+  forgebornNameIndex?: string[]
   deckTags?: Record<string, string[]>
   expiresAt: number
 }
@@ -70,7 +555,7 @@ const DeckSchema = z.preprocess(
 
 const DecksResponseSchema = z.array(DeckSchema)
 
-export type Deck = z.infer<typeof DeckSchema>
+export type Deck = z.infer<typeof DeckSchema> & { computed?: DeckComputed }
 
 type ProgressStepKey = 'prepare' | 'fetchRegular' | 'fetchFused' | 'tags' | 'finalize'
 type ProgressStepStatus = 'pending' | 'active' | 'done' | 'error'
@@ -185,6 +670,8 @@ interface DeckStore {
   progress: FetchProgress
   tagIndex: string[]
   cardNameIndex: string[]
+  deckNameIndex: string[]
+  forgebornNameIndex: string[]
   deckTags: Record<string, string[]>
   fetchDecks: (playerName: string, options?: { force?: boolean }) => Promise<void>
   clearDecks: () => void
@@ -199,6 +686,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   progress: createIdleProgress(),
   tagIndex: [],
   cardNameIndex: [],
+  deckNameIndex: [],
+  forgebornNameIndex: [],
   deckTags: {},
   fetchDecks: async (playerName: string, options?: { force?: boolean }) => {
     const forceRefresh = options?.force ?? false
@@ -298,21 +787,26 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     const cached = forceRefresh ? undefined : get().playerCache[normalizedPlayer]
     const now = Date.now()
     if (cached && cached.expiresAt > now) {
+      const cachedRegular = attachComputed(cached.decks)
+      const cachedFused = attachComputed(cached.fusedDecks)
+      const names = buildNameIndexes(cachedRegular, cachedFused)
       set({
-        decks: cached.decks,
-        fusedDecks: cached.fusedDecks,
+        decks: cachedRegular,
+        fusedDecks: cachedFused,
         loading: false,
         error: null,
         tagIndex: cached.tagIndex || [],
         cardNameIndex: cached.cardNameIndex || [],
+        deckNameIndex: cached.deckNameIndex || names.deckNameIndex,
+        forgebornNameIndex: cached.forgebornNameIndex || names.forgebornNameIndex,
         deckTags: cached.deckTags || {},
       })
       setProgressCounters({
-        regularCount: cached.decks.length,
-        fusedCount: cached.fusedDecks.length,
-        totalCount: cached.decks.length + cached.fusedDecks.length,
+        regularCount: cachedRegular.length,
+        fusedCount: cachedFused.length,
+        totalCount: cachedRegular.length + cachedFused.length,
         regularPages: 1,
-        fusedPages: cached.fusedDecks.length > 0 ? 1 : 0,
+        fusedPages: cachedFused.length > 0 ? 1 : 0,
         tagCount: (cached.tagIndex || []).length,
       })
       updateSteps('fetchRegular', 'done', 'Loaded from cache')
@@ -338,8 +832,9 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     updateSteps('fetchRegular', 'running', 'Requesting regular decks...')
 
     return new Promise<void>((resolve, reject) => {
+      const cacheBust = forceRefresh ? `&_=${Date.now()}` : ''
       const es = new EventSource(
-        `/api/decks/stream?player=${encodeURIComponent(normalizedName)}${forceRefresh ? '&force=1' : ''}`
+        `/api/decks/stream?player=${encodeURIComponent(normalizedName)}${forceRefresh ? '&force=1' : ''}${cacheBust}`
       )
       let regularDecks: any[] = []
       let fusedDecks: any[] = []
@@ -485,10 +980,15 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
 
           const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
           const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
+          const enhancedRegular = attachComputed(validatedRegularDecks)
+          const enhancedFused = attachComputed(validatedFusedDecks)
+          const names = buildNameIndexes(enhancedRegular, enhancedFused)
 
           set({
-            decks: validatedRegularDecks,
-            fusedDecks: validatedFusedDecks,
+            decks: enhancedRegular,
+            fusedDecks: enhancedFused,
+            deckNameIndex: names.deckNameIndex,
+            forgebornNameIndex: names.forgebornNameIndex,
           })
         } catch (err) {
           console.warn('[Store] Failed to parse decks-ready event:', err)
@@ -555,20 +1055,27 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         try {
           const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
           const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
+          const enhancedRegular = attachComputed(validatedRegularDecks)
+          const enhancedFused = attachComputed(validatedFusedDecks)
+          const names = buildNameIndexes(enhancedRegular, enhancedFused)
           set((state) => ({
-            decks: validatedRegularDecks,
-            fusedDecks: validatedFusedDecks,
+            decks: enhancedRegular,
+            fusedDecks: enhancedFused,
             loading: false,
             tagIndex: tagsPayload.uniqueTags || [],
             cardNameIndex: tagsPayload.uniqueCardNames || [],
+            deckNameIndex: names.deckNameIndex,
+            forgebornNameIndex: names.forgebornNameIndex,
             deckTags: tagsPayload.perDeck || {},
             playerCache: {
               ...state.playerCache,
               [normalizedPlayer]: {
-                decks: validatedRegularDecks,
-                fusedDecks: validatedFusedDecks,
+                decks: enhancedRegular,
+                fusedDecks: enhancedFused,
                 tagIndex: tagsPayload.uniqueTags || [],
                 cardNameIndex: tagsPayload.uniqueCardNames || [],
+                deckNameIndex: names.deckNameIndex,
+                forgebornNameIndex: names.forgebornNameIndex,
                 deckTags: tagsPayload.perDeck || {},
                 expiresAt: Date.now() + CACHE_TTL_MS,
               },
@@ -578,14 +1085,17 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           console.error('[Store] Data validation error:', validationError)
           if ((Array.isArray(regularDecks) && regularDecks.length > 0) || (Array.isArray(fusedDecks) && fusedDecks.length > 0)) {
             console.warn('[Store] Using unvalidated data')
-          const fallbackRegular = Array.isArray(regularDecks) ? regularDecks : []
-          const fallbackFused = Array.isArray(fusedDecks) ? fusedDecks : []
+          const fallbackRegular = attachComputed(Array.isArray(regularDecks) ? regularDecks : [])
+          const fallbackFused = attachComputed(Array.isArray(fusedDecks) ? fusedDecks : [])
+          const names = buildNameIndexes(fallbackRegular, fallbackFused)
             set((state) => ({
               decks: fallbackRegular,
               fusedDecks: fallbackFused,
               loading: false,
               tagIndex: tagsPayload.uniqueTags || [],
               cardNameIndex: tagsPayload.uniqueCardNames || [],
+              deckNameIndex: names.deckNameIndex,
+              forgebornNameIndex: names.forgebornNameIndex,
               deckTags: tagsPayload.perDeck || {},
               playerCache: {
                 ...state.playerCache,
@@ -594,6 +1104,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
                   fusedDecks: fallbackFused,
                   tagIndex: tagsPayload.uniqueTags || [],
                   cardNameIndex: tagsPayload.uniqueCardNames || [],
+                  deckNameIndex: names.deckNameIndex,
+                  forgebornNameIndex: names.forgebornNameIndex,
                   deckTags: tagsPayload.perDeck || {},
                   expiresAt: Date.now() + CACHE_TTL_MS,
                 },
@@ -615,6 +1127,13 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       })
 
       es.addEventListener('error', (event) => {
+        // Ignore errors if stream already closed or progress finished
+        const progressState = get().progress.status
+        if (es.readyState === EventSource.CLOSED || ['done', 'cached'].includes(progressState)) {
+          cleanup()
+          return
+        }
+
         console.error('[Store] SSE error event:', event)
         cleanup()
         set({
@@ -628,5 +1147,5 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       })
     })
   },
-  clearDecks: () => set({ decks: [], fusedDecks: [], error: null, progress: createIdleProgress(), tagIndex: [], cardNameIndex: [], deckTags: {} }),
+  clearDecks: () => set({ decks: [], fusedDecks: [], error: null, progress: createIdleProgress(), tagIndex: [], cardNameIndex: [], deckNameIndex: [], forgebornNameIndex: [], deckTags: {} }),
 }))

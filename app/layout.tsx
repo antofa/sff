@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import { MantineProvider } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -8,8 +7,6 @@ import { ErrorHandler } from './error-handler'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin', 'cyrillic'] })
 
 export const metadata: Metadata = {
   title: 'SolForge Fusion - Deck Viewer',
@@ -24,7 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head />
-      <body className={inter.className}>
+      <body>
         <script
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
@@ -65,4 +62,3 @@ export default function RootLayout({
     </html>
   )
 }
-

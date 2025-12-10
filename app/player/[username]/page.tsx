@@ -313,8 +313,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
   const progressValue = Math.min(100, Math.round((completedSteps / totalSteps) * 100))
   const activeStep =
     progress.steps.find((s) => s.status === 'active') ||
-    progress.steps.find((s) => s.status === 'running') ||
-    progress.steps.find((s) => s.status === 'waiting') ||
+    progress.steps.find((s) => s.status === 'pending') ||
     progress.steps[progress.steps.length - 1]
   const activeLabel = progress.message || activeStep?.label || 'Working...'
 
@@ -555,7 +554,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
                               const duration =
                                 step.startedAt && step.finishedAt
                                   ? formatDuration(step.finishedAt - step.startedAt)
-                                  : state === 'running' || state === 'active'
+                                  : state === 'active'
                                     ? formatDuration(Date.now() - (step.startedAt || progress.startedAt || Date.now()))
                                     : '0s'
                               return (
@@ -567,7 +566,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
                                   <Group gap="xs">
                                     {state === 'done' ? (
                                       <IconCheck size={16} color="#22c55e" />
-                                    ) : state === 'running' || state === 'active' ? (
+                                    ) : state === 'active' ? (
                                       <Loader size="xs" />
                                     ) : (
                                       <IconCircleDashed size={16} color="#94a3b8" />
@@ -584,7 +583,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
                                       color={
                                         state === 'done'
                                           ? 'teal'
-                                          : state === 'active' || state === 'running'
+                                          : state === 'active'
                                             ? 'blue'
                                             : 'gray'
                                       }
@@ -592,7 +591,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
                                     >
                                       {state === 'done'
                                         ? 'done'
-                                        : state === 'active' || state === 'running'
+                                        : state === 'active'
                                           ? 'in progress'
                                           : 'waiting'}
                                     </Badge>

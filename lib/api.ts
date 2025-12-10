@@ -219,6 +219,8 @@ export async function fetchDeckDetails(deckId: string): Promise<any> {
 type DeckFetchMeta = {
   total: number
   pages: number
+  regularPages?: number
+  fusedPages?: number
 }
 
 type DeckFetchResult = {
@@ -296,7 +298,7 @@ async function fetchDecksFromAPI(
     if (!response.ok) {
       if (response.status === 404) {
         logWithTimestamp(`[API] Player not found: ${playerName}`)
-        return []
+        return { decks: [], meta: { total: 0, pages: 0 } }
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`)
     }
@@ -385,11 +387,11 @@ async function fetchDecksFromAPI(
       }
     }
 
-    logWithTimestamp(`[API] Total ${allDecks.length} decks received over ${pageCount + 1} page(s)`)
+    logWithTimestamp(`[API] Total ${allDecks.length} decks received over ${pageCount + 1} page(s)`)    
     
     if (allDecks.length === 0) {
       logWithTimestamp(`[API] No decks found for player: ${playerName}`)
-      return []
+      return { decks: [], meta: { total: 0, pages: pageCount + 1 } }
     }
     
     // Normalize decks, filtering invalid ones (avoid per-deck detail fetches)

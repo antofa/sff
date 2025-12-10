@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "./run-with-nvm.sh npx next dev",
-    "build": "./run-with-nvm.sh npx next build",
+    "build": "TURBOPACK=1 NEXT_DISABLE_TURBOPACK=0 NEXT_EXPERIMENTAL_TURBOPACK=0 ./run-with-nvm.sh npx next build",
     "start": "./run-with-nvm.sh npx next start",
     "lint": "./run-with-nvm.sh npx eslint ."
   },

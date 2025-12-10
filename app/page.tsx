@@ -15,7 +15,7 @@ export default function Home() {
   const [isTyping, setIsTyping] = useState(false)
   const [forceRefresh, setForceRefresh] = useState(false)
   const searchedNameRef = useRef<string>('')
-  const { decks, fusedDecks, loading, fetchDecks, progress, tagIndex, cardNameIndex, deckTags } = useDeckStore()
+  const { decks, fusedDecks, loading, fetchDecks, progress, tagIndex, cardNameIndex, deckNameIndex, forgebornNameIndex, deckTags } = useDeckStore()
   const lastSearchRef = useRef<string>('')
   const [elapsedMs, setElapsedMs] = useState(0)
   const [progressVisible, setProgressVisible] = useState(false)
@@ -447,6 +447,8 @@ export default function Home() {
               fusedDecks={fusedDecks}
               precomputedTags={tagIndex}
               precomputedCardNames={cardNameIndex}
+              precomputedDeckNames={deckNameIndex}
+              precomputedForgebornNames={forgebornNameIndex}
               deckTagsMap={deckTags}
             />
           )}

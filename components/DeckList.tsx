@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef, useLayoutEffect, useTransition, useCallback } from 'react'
+import { useState, useMemo, useEffect, useRef, useLayoutEffect, useTransition, useCallback, memo } from 'react'
 import { pluralize } from '@/lib/pluralize'
 import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
 import { useDebouncedValue, useResizeObserver } from '@mantine/hooks'
-import { useVirtualizer, useWindowVirtualizer } from '@tanstack/react-virtual'
+import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import type { Deck } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo } from '@/lib/api'
@@ -66,6 +66,9 @@ function isB1Card(card: any): boolean {
 
 // Helper to resolve expiry timestamp (ms) for a deck: expireAt/expire_date/created fallback
 function getExpiryTimestamp(deck: Deck): number | null {
+  if ((deck as any)?.computed && (deck as any).computed.expiryTs !== undefined) {
+    return (deck as any).computed.expiryTs as number | null
+  }
   const deckAny = deck as any
   const expireRaw =
     deckAny?.expireAt ??
@@ -99,6 +102,9 @@ function getBorderColors(deck: Deck, now: number) {
 
 // Helper function to determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
 function getDeckSet(deck: Deck): string | null {
+  if ((deck as any)?.computed && (deck as any).computed.deckSet !== undefined) {
+    return (deck as any).computed.deckSet as string | null
+  }
   if (!deck) return null
   
   const deckAny = deck as any
@@ -157,6 +163,7 @@ function getDeckSet(deck: Deck): string | null {
 
 // Helper function to count cards as sum of creatures + spells + solbind (excluding Forgeborn)
 function countPlayableCards(deck: Deck): { total: number; creatures: number; spells: number; solbind: number } {
+  if (deck.computed?.counts) return deck.computed.counts
   const deckAny = deck as any
   const extractCards = (d: any): any[] => {
     if (!d) return []
@@ -406,7 +413,7 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
 }
 
 // Shared deck card renderers (used by virtualized rows)
-function RegularDeckCard({
+const RegularDeckCard = memo(function RegularDeckCard({
   deck,
   handleDeckClick,
 }: {
@@ -414,6 +421,7 @@ function RegularDeckCard({
   handleDeckClick: (deck: Deck) => void
 }) {
   const [renderNow] = useState(() => Date.now())
+  const computedCounts = deck.computed?.counts
   const expiryTs = getExpiryTimestamp(deck)
   const isExpired = expiryTs !== null && expiryTs < renderNow
   const { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
@@ -424,13 +432,13 @@ function RegularDeckCard({
         data-deck-id={deck.id}
         p="lg"
         onClick={() => handleDeckClick(deck)}
-        className="h-full backdrop-blur-md border rounded-xl transition-all cursor-pointer hover:shadow-xl hover:shadow-sf-primary/20 hover:scale-[1.02]"
+        className="h-full border rounded-xl cursor-pointer"
         style={{
           backgroundColor: 'rgba(30, 41, 59, 0.5)',
           borderColor,
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(74, 144, 226, 0.1)',
-          minHeight: '200px',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.12)',
+          minHeight: '520px',
+          transition: 'border-color 0.1s ease',
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.borderColor = hoverBorderColor
@@ -508,9 +516,9 @@ function RegularDeckCard({
                 ) : null
               })()}
             </Group>
-            {deck.cards && Array.isArray(deck.cards) && (
+            {deck.cards && Array.isArray(deck.cards) && computedCounts && (
               <Badge color="blue" variant="light" size="sm" leftSection={<IconCards size={12} />}>
-                {countPlayableCards(deck).total} cards
+                {computedCounts.total} cards
               </Badge>
             )}
             {deck.deckRank && deck.deckRank !== 'Unranked' && (
@@ -548,146 +556,32 @@ function RegularDeckCard({
             )}
           </Group>
 
-          {deck.cards && Array.isArray(deck.cards) && (() => {
-            const counts = countPlayableCards(deck)
-            const rarityCounts = new Map<string, number>()
-            const normalizedCards = deck.cards.map((card: any, index: number) => {
-              if (typeof card === 'string') {
-                return getCardInfo(card)
-              } else if (typeof card === 'object' && card !== null) {
-                const cardId = card.id || card.cardId || card.name || `card-${index}`
-                return getCardInfo(cardId, card)
-              }
-              return getCardInfo(`card-${index}`)
-            })
-            const solbindCardIds = new Set<string>()
-            normalizedCards.forEach(card => {
-              const cardData = card as any
-              if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                cardData.solbindCards.forEach((solbindCard: any) => {
-                  if (solbindCard && solbindCard.id) {
-                    solbindCardIds.add(solbindCard.id)
-                  }
-                })
-              }
-            })
-            const forgebornId = deck.forgebornId
-            const forgebornCards: any[] = []
-            if (forgebornId) {
-              const forgeborn = normalizedCards.find(card =>
-                card.id === forgebornId ||
-                (card.id && forgebornId && card.id.includes(forgebornId)) ||
-                (forgebornId && card.id && forgebornId.includes(card.id))
-              )
-              if (forgeborn) {
-                forgebornCards.push(forgeborn)
-              }
-            }
-            if (forgebornCards.length === 0) {
-              const forgebornByType = normalizedCards.find(card =>
-                card.type?.toLowerCase().includes('forgeborn') ||
-                (card as any).cardType?.toLowerCase().includes('forgeborn')
-              )
-              if (forgebornByType) {
-                forgebornCards.push(forgebornByType)
-              }
-            }
-            const solbindCardObjects: any[] = []
-            normalizedCards.forEach(card => {
-              const cardData = card as any
-              if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                cardData.solbindCards.forEach((solbindCard: any) => {
-                  if (solbindCard && solbindCard.id) {
-                    if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-                      solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-                    }
-                  }
-                })
-              }
-            })
-  normalizedCards.forEach(card => {
-    if (forgebornCards.includes(card)) return
-    const cardData = card as any
-    const cardId = card.id
-    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-      return
-    }
-    if (solbindCardIds.has(cardId)) {
-      if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-        solbindCardObjects.push(card)
-      }
-      return
-    }
-    // Do not treat parents with rarity Solbind as Solbind cards themselves
-  })
-            normalizedCards.forEach(card => {
-              if (forgebornCards.includes(card)) return
-              const cardData = card as any
-              const isSolbindCard = solbindCardObjects.some(sb => sb.id === card.id)
-              if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
-                return
-              }
-              const originalCardForType = deck.cards && Array.isArray(deck.cards)
-                ? deck.cards.find((c: any, idx: number) => {
-                    if (typeof c === 'string') {
-                      return c === card.id
-                    }
-                    const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
-                    return cId === card.id
-                  })
-                : null
-              const originalCardType = originalCardForType && typeof originalCardForType === 'object'
-                ? (originalCardForType.cardType || originalCardForType.card_type || '')
-                : ''
-              const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
-              const lowerCardType = cardType.toLowerCase()
-              const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
-              const rarity = cardData.rarity
-              if (rarity && typeof rarity === 'string') {
-                let normalizedRarity = rarity.trim()
-                const lower = normalizedRarity.toLowerCase()
-                if (lower.includes('solbind')) {
-                  normalizedRarity = 'Solbind'
-                  if (card.id) solbindCardIds.add(card.id)
-                } else if (normalizedRarity.includes('Common') && normalizedRarity.includes('Rare')) {
-                  normalizedRarity = 'Common Rare'
-                } else if (lower.includes('common')) {
-                  normalizedRarity = 'Common'
-                } else if (lower.includes('rare')) {
-                  normalizedRarity = 'Rare'
-                } else if (lower.includes('ls') || lower.includes('legendary')) {
-                  normalizedRarity = 'LS'
-                }
-                const currentCount = rarityCounts.get(normalizedRarity) || 0
-                rarityCounts.set(normalizedRarity, currentCount + 1)
-              }
-            })
-            // Ensure Solbind rarity badge if we have Solbind cards
-            if (solbindCardIds.size > 0 && !rarityCounts.has('Solbind')) {
-              rarityCounts.set('Solbind', solbindCardIds.size)
-            }
+          {(() => {
+            const counts = deck.computed?.counts
+            const rarityEntries = deck.computed?.rarityCounts ? Object.entries(deck.computed.rarityCounts) : []
+            if (!counts && rarityEntries.length === 0) return null
             return (
               <Stack gap="xs">
                 <Group gap="xs">
-                  {counts.creatures > 0 && (
+                  {counts?.creatures ? (
                     <Badge color="green" variant="light" size="sm">
                       {pluralize(counts.creatures, 'Creature')}
                     </Badge>
-                  )}
-                  {counts.spells > 0 && (
+                  ) : null}
+                  {counts?.spells ? (
                     <Badge color="pink" variant="light" size="sm">
                       {pluralize(counts.spells, 'Spell')}
                     </Badge>
-                  )}
-                  {counts.solbind > 0 && (
+                  ) : null}
+                  {counts?.solbind ? (
                     <Badge color="orange" variant="light" size="sm">
                       {pluralize(counts.solbind, 'Solbind')}
                     </Badge>
-                  )}
+                  ) : null}
                 </Group>
-                {Array.from(rarityCounts.entries()).length > 0 && (
+                {rarityEntries.length > 0 && (
                   <Group gap="xs">
-                    {Array.from(rarityCounts.entries())
+                    {rarityEntries
                       .sort(([a], [b]) => {
                         const order: Record<string, number> = {
                           Common: 1,
@@ -811,9 +705,9 @@ function RegularDeckCard({
       </Paper>
     </Grid.Col>
   )
-}
+})
 
-function FusedDeckCard({
+const FusedDeckCard = memo(function FusedDeckCard({
   deck,
   sourceDecks,
   handleDeckClick,
@@ -897,7 +791,9 @@ function FusedDeckCard({
         let setNo = getDeckSet(src) || deriveSetFromId((src as any).id)
         if (!setNo && src.id && allDecksMap.has(src.id)) {
           const mapped = allDecksMap.get(src.id)
-          setNo = getDeckSet(mapped) || deriveSetFromId((mapped as any)?.id)
+          if (mapped) {
+            setNo = getDeckSet(mapped) || deriveSetFromId((mapped as any)?.id)
+          }
         }
         list.push({ faction: src.faction, setNo: setNo || null })
       }
@@ -981,6 +877,9 @@ function FusedDeckCard({
     return [...cards, ...solbindCards]
   }, [deck, fusedDeckAny.myDecks, fusedDeckAny.fusedDeckIds, allDecksMap, pickedSources, extractCards])
 
+  // Memoize aggregated cards to avoid recomputation across derived calculations
+  const aggregatedCards = useMemo(() => aggregateCards(), [aggregateCards])
+
   const fusedSetLabels = useMemo(() => {
     const setLabels = new Set<string>()
     factionSets.forEach(item => {
@@ -991,8 +890,7 @@ function FusedDeckCard({
     })
 
     if (setLabels.size === 0) {
-      const agg = aggregateCards()
-      const hasB1 = agg.some(card => isB1Card(card as any))
+      const hasB1 = aggregatedCards.some(card => isB1Card(card as any))
       if (hasB1) setLabels.add(formatSetName('B1') || 'B1')
       const parentSet = getDeckSet(deck)
       if (parentSet) {
@@ -1004,14 +902,14 @@ function FusedDeckCard({
     return Array.from(setLabels)
   }, [factionSets, aggregateCards, deck])
 
-  const counts = (() => {
-    const agg = aggregateCards()
-    if (agg.length > 0) {
+  const counts = useMemo(() => {
+    if (deck.computed?.counts) return deck.computed.counts
+    if (aggregatedCards.length > 0) {
       let creatures = 0
       let spells = 0
       let solbind = 0
       const solbindIds = new Set<string>()
-      agg.forEach((card: any, idx: number) => {
+      aggregatedCards.forEach((card: any, idx: number) => {
         const info = typeof card === 'string'
           ? getCardInfo(card)
           : getCardInfo(card.id || card.cardId || card.name || `card-${idx}`, card)
@@ -1032,9 +930,7 @@ function FusedDeckCard({
           cardData.rarity &&
           String(cardData.rarity).toLowerCase().includes('solbind')
 
-        // Collect solbind children from parent
         if (isParentSolbind) {
-          // Parent Solbind cards still count toward their type (spell or creature)
           if (isSpell) {
             spells += 1
           } else {
@@ -1050,7 +946,6 @@ function FusedDeckCard({
           if (cardData.solbindid1) solbindIds.add(cardData.solbindid1)
           if (cardData.solbindId2) solbindIds.add(cardData.solbindId2)
           if (cardData.solbindid2) solbindIds.add(cardData.solbindid2)
-          // Do not count parent Solbinds themselves as spells or Solbinds
           return
         }
 
@@ -1066,10 +961,8 @@ function FusedDeckCard({
         }
       })
 
-      // Add any missing solbinds to counts
       solbind += solbindIds.size
 
-      // If we only saw a single Solbind from partial data, assume a missing partner
       if (solbind === 1) {
         solbind = 2
       }
@@ -1096,10 +989,14 @@ function FusedDeckCard({
       return countPlayableCards(deck)
     }
     return { total: 0, creatures: 0, spells: 0, solbind: 0 }
-  })()
+  }, [aggregateCards, deck, pickedSources])
 
-  const rarityCounts = (() => {
-    const cards = aggregateCards()
+  const rarityCounts = useMemo(() => {
+    if (deck.computed?.rarityCounts) {
+      return new Map(Object.entries(deck.computed.rarityCounts))
+    }
+
+    const cards = aggregatedCards
     const counts = new Map<string, number>()
 
     let parentSolbindCount = 0
@@ -1112,7 +1009,6 @@ function FusedDeckCard({
       const rarity = (info as any)?.rarity
       const cardData = info as any
       const isParentSolbind = !!(cardData.solbindCards && Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0)
-      // Count Solbind rarity only on parent Solbind cards (children are ignored for rarity badges)
       const isSolbindRarity = rarity && typeof rarity === 'string' && rarity.toLowerCase().includes('solbind')
       if (isParentSolbind && isSolbindRarity) {
         parentSolbindCount += 1
@@ -1131,7 +1027,7 @@ function FusedDeckCard({
       counts.set('Solbind', (counts.get('Solbind') || 0) + parentSolbindCount)
     }
     return counts
-  })()
+  }, [aggregateCards, deck.computed])
 
   let { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
 
@@ -1186,13 +1082,13 @@ function FusedDeckCard({
         data-deck-id={deck.id}
         p="lg"
         onClick={() => handleDeckClick(deck)}
-        className="h-full backdrop-blur-md border border-sf-primary/20 rounded-xl hover:border-sf-primary/50 transition-all cursor-pointer hover:shadow-xl hover:shadow-sf-primary/20 hover:scale-[1.02]"
+        className="h-full border border-sf-primary/20 rounded-xl cursor-pointer"
         style={{
           backgroundColor: 'rgba(30, 41, 59, 0.5)',
           borderColor,
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(74, 144, 226, 0.1)',
-          minHeight: '200px',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.12)',
+          minHeight: '520px',
+          transition: 'border-color 0.1s ease',
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.borderColor = hoverBorderColor
@@ -1368,7 +1264,7 @@ function FusedDeckCard({
             // Fallback: collect provides from cards
             if (tagSet.size === 0) {
               const providesSet = new Set<string>()
-              aggregateCards().forEach((card: any) => {
+              aggregatedCards.forEach((card: any) => {
                 if (card && typeof card === 'object') {
                   const provides = card.provides || card.Provides
                   if (provides) {
@@ -1407,13 +1303,15 @@ function FusedDeckCard({
       </Paper>
     </Grid.Col>
   )
-}
+})
 
 interface DeckListProps {
   decks: Deck[]
   fusedDecks?: Deck[]
   precomputedTags?: string[]
   precomputedCardNames?: string[]
+  precomputedDeckNames?: string[]
+  precomputedForgebornNames?: string[]
   deckTagsMap?: Record<string, string[]>
 }
 
@@ -1449,7 +1347,7 @@ interface FilterState {
 
 type ViewMode = 'decks' | 'fused' | 'both'
 
-export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, deckTagsMap = {} }: DeckListProps) {
+export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {} }: DeckListProps) {
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null)
   const [detailsOpened, setDetailsOpened] = useState(false)
   const [parentFusedDeck, setParentFusedDeck] = useState<Deck | null>(null)
@@ -1492,6 +1390,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   
   // Ref to store scroll position and first visible deck ID
   const scrollPositionRef = useRef<number>(0)
+  // Track only scroll position; skip expensive DOM scans for first visible card
   const firstVisibleDeckIdRef = useRef<string | null>(null)
   const shouldRestoreScrollRef = useRef<boolean>(false)
   const contentHeightRef = useRef<number>(0)
@@ -1501,43 +1400,37 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   // Collect all unique card names from all decks for the dropdown
   const allCardNames = useMemo(() => {
     if (precomputedCardNames && precomputedCardNames.length > 0) {
-      return [...precomputedCardNames].sort()
+      return precomputedCardNames
     }
 
     const cardNamesSet = new Set<string>()
-    
     decks.forEach(deck => {
       if (deck.cards && Array.isArray(deck.cards)) {
         deck.cards.forEach((card: any) => {
-          const cardInfo = typeof card === 'string' 
+          const cardInfo = typeof card === 'string'
             ? getCardInfo(card)
             : getCardInfo(card.id || card.cardId || card.name || '', card)
-          
           if (cardInfo.name && cardInfo.name.trim()) {
             cardNamesSet.add(cardInfo.name)
           }
         })
       }
     })
-    
     return Array.from(cardNamesSet).sort()
   }, [decks, precomputedCardNames])
   
   // Collect all unique deck names from all decks for the dropdown
   const allDeckNames = useMemo(() => {
+    if (precomputedDeckNames && precomputedDeckNames.length > 0) return precomputedDeckNames
     const deckNamesSet = new Set<string>()
-    
-    // Process both regular decks and fused decks
     const allDecks = [...decks, ...fusedDecks]
-    
     allDecks.forEach(deck => {
       if (deck.name && deck.name.trim()) {
         deckNamesSet.add(deck.name.trim())
       }
     })
-    
     return Array.from(deckNamesSet).sort()
-  }, [decks, fusedDecks])
+  }, [decks, fusedDecks, precomputedDeckNames])
   
   // Helper function to extract Forgeborn name from a deck
   const getForgebornNameFromDeck = (deck: Deck): string | null => {
@@ -1596,26 +1489,18 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   
   // Collect all unique Forgeborn names from all decks (regular + fused) for the dropdown
   const allForgebornNames = useMemo(() => {
+    if (precomputedForgebornNames && precomputedForgebornNames.length > 0) return precomputedForgebornNames
     const forgebornNamesSet = new Set<string>()
-    
-    // Collect from regular decks
     decks.forEach(deck => {
       const forgebornName = getForgebornNameFromDeck(deck)
-      if (forgebornName) {
-        forgebornNamesSet.add(forgebornName)
-      }
+      if (forgebornName) forgebornNamesSet.add(forgebornName)
     })
-    
-    // Collect from fused decks
     fusedDecks.forEach(deck => {
       const forgebornName = getForgebornNameFromDeck(deck)
-      if (forgebornName) {
-        forgebornNamesSet.add(forgebornName)
-      }
+      if (forgebornName) forgebornNamesSet.add(forgebornName)
     })
-    
     return Array.from(forgebornNamesSet).sort()
-  }, [decks, fusedDecks])
+  }, [decks, fusedDecks, precomputedForgebornNames])
   
   // Collect all unique tags from all decks for the dropdown
   const allTags = useMemo(() => {
@@ -1885,27 +1770,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       }
     }
     
-    // Find first visible deck card
-    const deckCards = document.querySelectorAll('[data-deck-id]')
-    for (const card of deckCards) {
-      const rect = card.getBoundingClientRect()
-      if (rect.top >= 0 && rect.top < window.innerHeight) {
-        firstVisibleDeckIdRef.current = card.getAttribute('data-deck-id')
-        break
-      }
-    }
-    
+    // No DOM scans; rely only on saved scroll position
+    firstVisibleDeckIdRef.current = null
     shouldRestoreScrollRef.current = true
-    
-    // Prevent scroll during state update
-    const currentScroll = scrollPositionRef.current
-    
-    // Immediately restore scroll to prevent any intermediate scrolling
-    requestAnimationFrame(() => {
-      document.documentElement.scrollTop = currentScroll
-      document.body.scrollTop = currentScroll
-      window.scrollTo(0, currentScroll)
-    })
   }, [debouncedFilters])
   
   // Disable scroll restoration on mount
@@ -1918,7 +1785,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   // Use transition for non-blocking UI updates when opening deck details
   const [, startTransition] = useTransition()
   
-  const handleDeckClick = (deck: Deck, parentFused?: Deck | null) => {
+  const handleDeckClick = useCallback((deck: Deck, parentFused?: Deck | null) => {
     // Set deck data first
     setSelectedDeck(deck)
     // Only set parentFusedDeck if the deck being opened is NOT the parent itself
@@ -1931,7 +1798,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     startTransition(() => {
       setDetailsOpened(true)
     })
-  }
+  }, [startTransition])
   
   const clearFilters = () => {
     const emptyFilters = {
@@ -3278,19 +3145,20 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     if (width < 960) return 2
     return 3
   }, [fusedRect.width])
-  const estimatedRowHeight = 360
+  // Use a slightly larger estimate to avoid overlap before measurement kicks in
+  const estimatedRowHeight = 540
   const regularRowCount = Math.ceil(filteredHalfDecks.length / columnCount)
   const regularVirtualizer = useWindowVirtualizer({
     count: regularRowCount,
     estimateSize: () => estimatedRowHeight,
-    overscan: 6,
+    overscan: 2,
     measureElement: (el) => el.getBoundingClientRect().height,
   })
   const fusedRowCount = Math.ceil(filteredFusedDecks.length / fusedColumnCount)
   const fusedVirtualizer = useWindowVirtualizer({
     count: fusedRowCount,
     estimateSize: () => estimatedRowHeight,
-    overscan: 6,
+    overscan: 2,
     measureElement: (el) => el.getBoundingClientRect().height,
   })
 
@@ -3323,73 +3191,14 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     if (shouldRestoreScrollRef.current) {
       const savedScroll = scrollPositionRef.current
       const totalFilteredDecks = filteredHalfDecks.length + filteredFusedDecks.length
-      
-      // If no results after filtering, maintain minimum height to prevent scroll jump
       if (totalFilteredDecks === 0) {
-        // Don't restore scroll, but keep the minimum height set above
         shouldRestoreScrollRef.current = false
         firstVisibleDeckIdRef.current = null
         return
       }
-      
-      // Restore scroll position immediately to prevent intermediate scrolling
-      const restoreScroll = () => {
-        // Try to restore by first visible deck ID first
-        if (firstVisibleDeckIdRef.current && totalFilteredDecks > 0) {
-          const targetElement = document.querySelector(`[data-deck-id="${firstVisibleDeckIdRef.current}"]`)
-          if (targetElement) {
-            const elementTop = targetElement.getBoundingClientRect().top
-            const currentScroll = window.scrollY || window.pageYOffset || document.documentElement.scrollTop
-            const newScroll = Math.max(0, currentScroll + elementTop - 100) // 100px offset from top
-            
-            // Force scroll - use direct assignment
-            if (document.documentElement) {
-              document.documentElement.scrollTop = newScroll
-            }
-            if (document.body) {
-              document.body.scrollTop = newScroll
-            }
-            if (window.scrollTo) {
-              window.scrollTo(0, newScroll)
-            }
-            
-            shouldRestoreScrollRef.current = false
-            firstVisibleDeckIdRef.current = null
-            return
-          }
-        }
-        
-        // Fallback to saved scroll position
-        if (document.documentElement) {
-          document.documentElement.scrollTop = savedScroll
-        }
-        if (document.body) {
-          document.body.scrollTop = savedScroll
-        }
-        if (window.scrollTo) {
-          window.scrollTo(0, savedScroll)
-        }
-        
-        shouldRestoreScrollRef.current = false
-        firstVisibleDeckIdRef.current = null
-      }
-      
-      // Restore immediately and repeatedly to prevent intermediate scrolling
-      restoreScroll()
-      
-      // Also restore after React render cycles
-      requestAnimationFrame(() => {
-        restoreScroll()
-        requestAnimationFrame(() => {
-          restoreScroll()
-          // Continue restoring to catch any late scroll events
-          setTimeout(() => {
-            restoreScroll()
-            setTimeout(restoreScroll, 50)
-            setTimeout(restoreScroll, 100)
-          }, 10)
-        })
-      })
+      shouldRestoreScrollRef.current = false
+      firstVisibleDeckIdRef.current = null
+      window.scrollTo(0, savedScroll)
     }
   }, [filteredHalfDecks.length, filteredFusedDecks.length]) // Only depend on length to avoid unnecessary runs
 
@@ -3482,19 +3291,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       option: { color: 'white' }
                     }}
                     disabled={allDeckNames.length === 0}
-                    onFocus={() => {
-                      // Save scroll position when opening dropdown
-                      scrollPositionRef.current = window.scrollY || window.pageYOffset || document.documentElement.scrollTop
-                    }}
-                    onBlur={() => {
-                      // Restore scroll position when closing dropdown
-                      requestAnimationFrame(() => {
-                        const savedScroll = scrollPositionRef.current
-                        document.documentElement.scrollTop = savedScroll
-                        document.body.scrollTop = savedScroll
-                        window.scrollTo(0, savedScroll)
-                      })
-                    }}
                   />
                 </Grid.Col>
                 
@@ -3534,19 +3330,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
                       option: { color: 'white' }
                     }}
-                    onFocus={() => {
-                      // Save scroll position when opening dropdown
-                      scrollPositionRef.current = window.scrollY || window.pageYOffset || document.documentElement.scrollTop
-                    }}
-                    onBlur={() => {
-                      // Restore scroll position when closing dropdown
-                      requestAnimationFrame(() => {
-                        const savedScroll = scrollPositionRef.current
-                        document.documentElement.scrollTop = savedScroll
-                        document.body.scrollTop = savedScroll
-                        window.scrollTo(0, savedScroll)
-                      })
-                    }}
                   />
                 </Grid.Col>
                 
@@ -3560,17 +3343,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       scrollPositionRef.current = window.scrollY || window.pageYOffset || document.documentElement.scrollTop
                       shouldRestoreScrollRef.current = true
                       setFilters({ ...filters, cardName: value })
-                    }}
-                    onFocus={(e) => {
-                      // Prevent automatic scroll to input on focus
-                      e.preventDefault()
-                      const savedScroll = window.scrollY || window.pageYOffset || document.documentElement.scrollTop
-                      scrollPositionRef.current = savedScroll
-                      
-                      // Restore scroll position after focus
-                      requestAnimationFrame(() => {
-                        window.scrollTo(0, savedScroll)
-                      })
                     }}
                     data={allCardNames.map(name => ({ value: name, label: name }))}
                     searchable
@@ -4308,6 +4080,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               minHeight: minContentHeight > 0 
                 ? `${minContentHeight}px` 
                 : '100vh', // Maintain minimum height to prevent scroll jump
+              willChange: 'transform',
+              scrollBehavior: 'auto',
             }}
           >
             {/* Half Decks Section */}
