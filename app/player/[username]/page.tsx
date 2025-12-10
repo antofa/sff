@@ -311,11 +311,14 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
   const totalSteps = progress.totalSteps || progress.steps.length || 1
   const completedSteps = progress.steps.filter((s) => s.status === 'done').length
   const progressValue = Math.min(100, Math.round((completedSteps / totalSteps) * 100))
-  const activeStep =
-    progress.steps.find((s) => s.status === 'active') ||
+  const stepForMessage =
+    progress.steps.find((s) => s.status !== 'done') ||
     progress.steps.find((s) => s.status === 'pending') ||
     progress.steps[progress.steps.length - 1]
-  const activeLabel = progress.message || activeStep?.label || 'Working...'
+  const trimmedProgressMessage = progress.message?.trim()
+  const progressMessageIsTag = !!trimmedProgressMessage && trimmedProgressMessage.toLowerCase().includes('tag')
+  const activeLabel =
+    (!progressMessageIsTag && trimmedProgressMessage) || stepForMessage?.label || 'Working...'
 
   const factionStats = useMemo(() => (profile ? getFactionAmounts(profile) : []), [profile])
   const rarityStats = useMemo(() => (profile ? getRarityBands(profile) : []), [profile])

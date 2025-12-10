@@ -585,6 +585,8 @@ export type FetchProgress = {
     regularPages?: number
     fusedPages?: number
     tagCount?: number
+    tagProcessed?: number
+    tagTotal?: number
   }
 }
 
@@ -844,6 +846,19 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         uniqueCardNames?: string[]
         perDeck?: Record<string, string[]>
       } = {}
+      let latestTagMessage: string | undefined
+
+      const deckPhaseDone = () => {
+        const regularStatus = progressSteps.find((s) => s.key === 'fetchRegular')?.status
+        const fusedStatus = progressSteps.find((s) => s.key === 'fetchFused')?.status
+        return regularStatus === 'done' && fusedStatus === 'done'
+      }
+
+      const activateTagsIfReady = (fallbackMsg?: string) => {
+        if (!deckPhaseDone()) return
+        const msg = latestTagMessage || fallbackMsg || 'Collecting tags...'
+        updateSteps('tags', 'running', msg)
+      }
 
       const cleanup = () => {
         es.close()
@@ -929,7 +944,27 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             processed && totalDecks
               ? `Collecting tags... ${processed}/${totalDecks}`
               : 'Collecting tags...'
-          updateSteps('tags', 'running', tagMsg)
+
+          latestTagMessage = tagMsg
+          // Keep the latest tag message in progress for when tags become the active step.
+          setProgressState({ message: tagMsg })
+
+          const stepsState = get().progress.steps || []
+          const fetchRegularStatus = stepsState.find((s) => s.key === 'fetchRegular')?.status
+          const fetchFusedStatus = stepsState.find((s) => s.key === 'fetchFused')?.status
+          const deckPhaseInFlight = [fetchRegularStatus, fetchFusedStatus].includes('active')
+
+          setProgressCounters({
+            tagProcessed: processed,
+            tagTotal: totalDecks ?? get().progress.counters?.totalCount,
+          })
+
+          if (deckPhaseInFlight) {
+            // While decks are still loading, avoid switching the active step to tags.
+            return
+          } else {
+            updateSteps('tags', 'running', tagMsg)
+          }
         } catch (err) {
           console.warn('[Store] Failed to parse tags event:', err)
         }
@@ -941,12 +976,14 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           const fusedCount = data.fusedCount ?? get().progress.counters?.fusedCount ?? 0
           const fusedPages = data.fusedPages ?? (fusedCount > 0 ? 1 : 0)
           const currentRegular = get().progress.counters?.regularCount ?? 0
-          setProgressCounters({
-            fusedCount,
-            fusedPages,
-            totalCount: currentRegular + fusedCount,
-          })
+        setProgressCounters({
+          fusedCount,
+          fusedPages,
+          totalCount: currentRegular + fusedCount,
+          tagTotal: currentRegular + fusedCount,
+        })
           updateSteps('fetchFused', 'done')
+          activateTagsIfReady(latestTagMessage)
         } catch (err) {
           console.warn('[Store] Failed to parse fused-complete event:', err)
         }
@@ -959,13 +996,14 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           fusedDecks = data.fused || []
           const metaLocal = data.meta || {}
 
-          setProgressCounters({
-            regularCount: regularDecks.length,
-            fusedCount: fusedDecks.length,
-            totalCount: regularDecks.length + fusedDecks.length,
-            regularPages: metaLocal.regularPages ?? metaLocal.pages,
-            fusedPages: metaLocal.fusedPages ?? (fusedDecks.length > 0 ? 1 : 0),
-          })
+        setProgressCounters({
+          regularCount: regularDecks.length,
+          fusedCount: fusedDecks.length,
+          totalCount: regularDecks.length + fusedDecks.length,
+          tagTotal: regularDecks.length + fusedDecks.length,
+          regularPages: metaLocal.regularPages ?? metaLocal.pages,
+          fusedPages: metaLocal.fusedPages ?? (fusedDecks.length > 0 ? 1 : 0),
+        })
 
           updateSteps('fetchFused', 'done', 'Received all decks')
           updateSteps('tags', 'running', 'Collecting tags...')
@@ -1030,6 +1068,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           regularCount: regularDecks.length,
           fusedCount: fusedDecks.length,
           totalCount: regularDecks.length + fusedDecks.length,
+          tagTotal: regularDecks.length + fusedDecks.length,
           regularPages: meta.regularPages ?? meta.pages,
           fusedPages: (() => {
             if (meta.fusedPages !== undefined) return meta.fusedPages

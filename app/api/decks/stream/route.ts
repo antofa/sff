@@ -141,7 +141,8 @@ export async function GET(request: NextRequest) {
   const processDeckBatch = async (
     controller: ReadableStreamDefaultController<Uint8Array>,
     decks: any[],
-    includePerDeck: boolean
+    includePerDeck: boolean,
+    countProgress: boolean = true
   ) => {
     const batchSize = 25
     for (let i = 0; i < decks.length; i += batchSize) {
@@ -149,10 +150,11 @@ export async function GET(request: NextRequest) {
       slice.forEach((deck) => {
         if (!deck || typeof deck !== 'object') return
         const id = deck.id || deck.deckId
-        if (id && tagState.seenDecks.has(id)) {
+        const isDuplicate = countProgress && id && tagState.seenDecks.has(id)
+        if (isDuplicate) {
           return
         }
-        if (id) tagState.seenDecks.add(id)
+        if (countProgress && id) tagState.seenDecks.add(id)
 
         const deckTags = collectTags(deck)
         if (includePerDeck && id) {
@@ -171,16 +173,24 @@ export async function GET(request: NextRequest) {
             }
           })
         }
-        tagState.processedDecks += 1
+        if (countProgress) {
+          tagState.processedDecks += 1
+        }
       })
-      // Emit incremental progress for tags
-      writeEvent(controller, 'tags', {
-        phase: 'partial',
-        processedDecks: tagState.processedDecks,
-        totalDecks: tagState.totalDecks,
-        uniqueTags: Array.from(tagState.uniqueTags),
-        uniqueCardNames: Array.from(tagState.uniqueCardNames),
-      })
+      if (countProgress) {
+        // Emit incremental progress for tags
+        const processedForDisplay =
+          tagState.totalDecks !== undefined
+            ? Math.min(tagState.processedDecks, tagState.totalDecks)
+            : tagState.processedDecks
+        writeEvent(controller, 'tags', {
+          phase: 'partial',
+          processedDecks: processedForDisplay,
+          totalDecks: tagState.totalDecks,
+          uniqueTags: Array.from(tagState.uniqueTags),
+          uniqueCardNames: Array.from(tagState.uniqueCardNames),
+        })
+      }
       await new Promise<void>((resolve) => {
         if (typeof setImmediate !== 'undefined') {
           setImmediate(resolve)
@@ -191,9 +201,12 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const enqueueTags = (decks: any[], options: { includePerDeck: boolean; onDone?: () => void }) => {
+  const enqueueTags = (
+    decks: any[],
+    options: { includePerDeck: boolean; countProgress?: boolean; onDone?: () => void }
+  ) => {
     tagState.queue = tagState.queue
-      .then(() => processDeckBatch(controllerRef, decks, options.includePerDeck))
+      .then(() => processDeckBatch(controllerRef, decks, options.includePerDeck, options.countProgress ?? true))
       .then(() => {
         options.onDone?.()
       })
@@ -213,6 +226,8 @@ export async function GET(request: NextRequest) {
 
       try {
         let totalSoFar = 0
+        type PlayerDecksResult = Awaited<ReturnType<typeof getPlayerDecks>>
+        let meta: PlayerDecksResult['meta'] | undefined
         writeEvent(controller, 'progress', {
           message: 'Requesting decks...',
           page: 0,
@@ -220,7 +235,7 @@ export async function GET(request: NextRequest) {
           totalSoFar,
         })
 
-        const { decks: regular, meta } = await getPlayerDecks(playerName, {
+        const { decks: regular, meta: fetchedMeta } = await getPlayerDecks(playerName, {
           onPage: ({ page, received, totalSoFar: running, items }) => {
             totalSoFar = running
             writeEvent(controller, 'progress', {
@@ -232,11 +247,9 @@ export async function GET(request: NextRequest) {
 
             // Incremental tag aggregation per page (counts only to keep payload light)
             if (items && Array.isArray(items)) {
-              if (meta?.total !== undefined) {
-                tagState.totalDecks = (meta.total || 0) + (tagState.totalDecks || 0)
-              }
               enqueueTags(items, {
                 includePerDeck: false,
+                countProgress: false, // partial per-page tag hints; do not advance progress counter
                 onDone: () => {
                   writeEvent(controller, 'tags', {
                     phase: 'partial',
@@ -254,9 +267,14 @@ export async function GET(request: NextRequest) {
           force,
         })
 
+        meta = fetchedMeta
+        if (!meta) {
+          throw new Error('Missing metadata from getPlayerDecks')
+        }
+
         logStage(`regular fetch done count=${regular.length} pages=${meta.pages ?? meta.regularPages ?? 1}`)
 
-        tagState.totalDecks = (tagState.totalDecks || 0) + (regular?.length || 0)
+        tagState.totalDecks = regular?.length || 0
         writeEvent(controller, 'regular-complete', {
           regularCount: regular.length,
           regularPages: meta.pages ?? meta.regularPages ?? 1,
@@ -304,7 +322,7 @@ export async function GET(request: NextRequest) {
           },
         }).then((result) => {
           fusedProgress({ totalSoFar: result.length })
-          tagState.totalDecks = (tagState.totalDecks || 0) + result.length
+          tagState.totalDecks = (regular?.length || 0) + result.length
           enqueueTags(result, {
             includePerDeck: true,
           })

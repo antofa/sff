@@ -86,6 +86,7 @@ export default function Home() {
     100,
     Math.round(((completedSteps + (progress.status === 'running' && hasActiveStep ? 0.35 : 0)) / totalSteps) * 100)
   )
+
   const etaMs =
     progress.status === 'running' && (completedSteps > 0 || hasActiveStep)
       ? Math.max(
@@ -112,7 +113,7 @@ export default function Home() {
   const showProgress = progressVisible
   const [lastSearchedName, setLastSearchedName] = useState('')
   const activeStepForMessage =
-    progress.steps.find((step) => step.status === 'active') ||
+    progress.steps.find((step) => step.status !== 'done') ||
     progress.steps.find((step) => step.status === 'pending')
 
   useEffect(() => {
@@ -124,19 +125,31 @@ export default function Home() {
 
   const primaryMessage = (() => {
     const msg = progress.message?.trim()
+    const isTagMsg = !!msg && msg.toLowerCase().includes('tag')
+    const deckStageFallback =
+      lastNonTagMessage ||
+      progress.steps.find((s) => s.key === 'fetchFused' && s.status === 'active')?.label ||
+      progress.steps.find((s) => s.key === 'fetchRegular' && s.status === 'active')?.label ||
+      progress.steps.find((s) => s.key === 'fetchFused')?.label ||
+      progress.steps.find((s) => s.key === 'fetchRegular')?.label ||
+      'Requesting decks'
 
     if (activeStepForMessage && ['fetchRegular', 'fetchFused'].includes(activeStepForMessage.key)) {
-      if (msg && !msg.toLowerCase().includes('tag')) {
+      if (msg && !isTagMsg) {
         return msg
       }
-      return lastNonTagMessage || activeStepForMessage.label || 'Requesting decks'
+      return deckStageFallback || activeStepForMessage.label || 'Requesting decks'
     }
 
-    if (activeStepForMessage?.key === 'tags' && msg) {
-      return msg
+    if (activeStepForMessage?.key === 'tags') {
+      // В фазе тегов показываем текущее сообщение по тегам или метку шага,
+      // не подменяя его прошлым статусом загрузки колод.
+      if (msg) return msg
+      return activeStepForMessage.label || 'Collecting tags'
     }
+
+    if (msg && !isTagMsg) return msg
     if (activeStepForMessage?.label) return activeStepForMessage.label
-    if (msg) return msg
     return progress.status === 'error' ? 'Something went wrong' : 'Working on it...'
   })()
 
