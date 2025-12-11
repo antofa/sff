@@ -3483,11 +3483,15 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                 className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
                 style={{ 
                   backgroundColor: 'rgba(30, 41, 59, 0.6)',
-                  minHeight: '400px',
+                  minHeight: '60vh',
+                  maxHeight: '70vh',
+                  width: 'min(60vw, 900px)',
+                  minWidth: '520px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  height: '100%',
+                  boxSizing: 'border-box',
+                  overflow: 'hidden',
                 }}
               >
                 <div className="text-center w-full">
@@ -3518,9 +3522,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                     const hasAllLevels = availableLevels.length === 3 && availableLevels.includes(1) && availableLevels.includes(2) && availableLevels.includes(3)
                     const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
                     
-                    const imageWidth = isForgeborn ? 400 : 300
-                    const imageHeight = isForgeborn ? 600 : 450
-                    const aspectRatio = '2 / 3'
+                    const frameWidthPx = 340
+                    const frameHeightPx = 510
 
                     const imageKey = effectiveImageUrl ? `${selectedCard.id}-${effectiveLevel}-${effectiveImageUrl}` : ''
                     const isImageReady = !!(imageKey && imageLoadStatus[imageKey])
@@ -3530,8 +3533,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                         <div
                           className="relative w-full flex items-center justify-center"
                           style={{
-                            maxWidth: `${imageWidth}px`,
-                            aspectRatio,
+                            width: `min(${frameWidthPx}px, 70vw)`,
+                            height: `min(${frameHeightPx}px, 70vh)`,
                           }}
                         >
                           {effectiveImageUrl && (
@@ -3542,7 +3545,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                               fill
                               unoptimized
                               className="object-contain"
-                              sizes="(max-width: 1024px) 80vw, 400px"
+                              sizes="(max-width: 1024px) 80vw, 420px"
                               style={{
                                 transform: isForgeborn ? 'rotate(-90deg)' : 'none',
                                 opacity: isImageReady ? 1 : 0,

@@ -1346,7 +1346,7 @@ interface FilterState {
   scoreValue: number | null
 }
 
-type ViewMode = 'decks' | 'fused' | 'both'
+type ViewMode = 'decks' | 'fused'
 
 export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {} }: DeckListProps) {
   const PAGE_SIZE = 300
@@ -2001,7 +2001,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     
     // Count regular decks (respecting expiryFilter)
     let regularDecksCount = 0
-    if (viewMode === 'decks' || viewMode === 'both') {
+    if (viewMode === 'decks') {
       regularDecksCount = decks.filter(deck => {
         const expiry = getExpiryTimestamp(deck)
         if (expiry === null) {
@@ -2029,7 +2029,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     
     // Count fused decks (respecting expiryFilter)
     let fusedDecksCount = 0
-    if (viewMode === 'fused' || viewMode === 'both') {
+    if (viewMode === 'fused') {
       fusedDecksCount = fusedDecks.filter(fusedDeck => {
         const expiryStatus = getFusedDeckExpiryStatus(fusedDeck, decks)
         
@@ -2052,8 +2052,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   }, [decks, fusedDecks, viewMode, debouncedFilters.expiryFilter, getFusedDeckExpiryStatus])
   
   // Determine which decks to show based on view mode
-  const showHalfDecks = viewMode === 'decks' || viewMode === 'both'
-  const showFusedDecks = viewMode === 'fused' || viewMode === 'both'
+  const showHalfDecks = viewMode === 'decks'
+  const showFusedDecks = viewMode === 'fused'
   
   // Helper function to filter a deck array based on filter criteria
   const filterDeckArray = useCallback((deckArray: Deck[]) => {
@@ -3254,7 +3254,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
           <Title order={2} className="text-white">
             Found Decks (
               {showHalfDecks ? `Decks: ${filteredHalfDecks.length}` : ''}
-              {showHalfDecks && showFusedDecks ? ', ' : ''}
               {showFusedDecks ? `Fused: ${filteredFusedDecks.length}` : ''}
               {hasActiveFilters ? ` / Total: ${totalDecksCount}` : ''}
             )
@@ -3276,14 +3275,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                 color={viewMode === 'fused' ? 'blue' : 'gray'}
               >
                 Fused ({filteredFusedDecks.length})
-              </Button>
-              <Button
-                variant={viewMode === 'both' ? 'filled' : 'outline'}
-                onClick={() => setViewMode('both')}
-                size="sm"
-                color={viewMode === 'both' ? 'blue' : 'gray'}
-              >
-                Both
               </Button>
             </Group>
             <Button
@@ -4125,7 +4116,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       Decks ({filteredHalfDecks.length})
                     </Title>
                     {regularPageCount > 1 && (
-                    <Group gap="xs" align="center">
+                    <Group gap="xs" align="center" justify="center">
                       <Text size="sm" className="text-gray-300">
                         Page
                       </Text>
@@ -4161,7 +4152,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         Next
                       </Button>
                     </Group>
-                  )}
+                    )}
                 </Group>
                 <div ref={regularListRef} style={{ position: 'relative' }}>
                   {regularRows.map((rowDecks, idx) => (
@@ -4174,6 +4165,44 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     </div>
                   ))}
                 </div>
+                {regularPageCount > 1 && (
+                  <Group gap="xs" align="center" justify="center">
+                    <Text size="sm" className="text-gray-300">
+                      Page
+                    </Text>
+                    <NumberInput
+                      size="xs"
+                      value={regularPage}
+                      min={1}
+                      max={regularPageCount}
+                      onChange={handleRegularPageChange}
+                      hideControls
+                      styles={{
+                        input: { width: 60, textAlign: 'center' },
+                      }}
+                    />
+                    <Text size="sm" className="text-gray-300">
+                      of {regularPageCount} ({PAGE_SIZE} per page)
+                    </Text>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={regularPage <= 1}
+                      onClick={() => setRegularPage((p) => Math.max(1, p - 1))}
+                    >
+                      Prev
+                    </Button>
+                    {renderPageButtons(regularPage, regularPageCount, (p) => setRegularPage(p))}
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={regularPage >= regularPageCount}
+                      onClick={() => setRegularPage((p) => Math.min(regularPageCount, p + 1))}
+                    >
+                      Next
+                    </Button>
+                  </Group>
+                )}
               </Stack>
             )}
             
@@ -4185,7 +4214,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       Fused ({filteredFusedDecks.length})
                     </Title>
                     {fusedPageCount > 1 && (
-                    <Group gap="xs" align="center">
+                    <Group gap="xs" align="center" justify="center">
                       <Text size="sm" className="text-gray-300">
                         Page
                       </Text>
@@ -4245,6 +4274,44 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     </div>
                   ))}
                 </div>
+                {fusedPageCount > 1 && (
+                  <Group gap="xs" align="center" justify="center">
+                    <Text size="sm" className="text-gray-300">
+                      Page
+                    </Text>
+                    <NumberInput
+                      size="xs"
+                      value={fusedPage}
+                      min={1}
+                      max={fusedPageCount}
+                      onChange={handleFusedPageChange}
+                      hideControls
+                      styles={{
+                        input: { width: 60, textAlign: 'center' },
+                      }}
+                    />
+                    <Text size="sm" className="text-gray-300">
+                      of {fusedPageCount} ({PAGE_SIZE} per page)
+                    </Text>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={fusedPage <= 1}
+                      onClick={() => setFusedPage((p) => Math.max(1, p - 1))}
+                    >
+                      Prev
+                    </Button>
+                    {renderPageButtons(fusedPage, fusedPageCount, (p) => setFusedPage(p))}
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={fusedPage >= fusedPageCount}
+                      onClick={() => setFusedPage((p) => Math.min(fusedPageCount, p + 1))}
+                    >
+                      Next
+                    </Button>
+                  </Group>
+                )}
               </Stack>
             )}
 
