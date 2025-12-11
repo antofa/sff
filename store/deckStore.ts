@@ -838,6 +838,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       const es = new EventSource(
         `/api/decks/stream?player=${encodeURIComponent(normalizedName)}${forceRefresh ? '&force=1' : ''}${cacheBust}`
       )
+      let streamFinished = false
       let regularDecks: any[] = []
       let fusedDecks: any[] = []
       let meta: any = {}
@@ -1027,6 +1028,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             fusedDecks: enhancedFused,
             deckNameIndex: names.deckNameIndex,
             forgebornNameIndex: names.forgebornNameIndex,
+            loading: false,
           })
         } catch (err) {
           console.warn('[Store] Failed to parse decks-ready event:', err)
@@ -1041,6 +1043,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             regularPages: prevCounters.regularPages,
             fusedPages: prevCounters.fusedPages ?? (prevCounters.fusedCount ? 1 : 0),
           })
+          set({ loading: false })
         }
       })
 
@@ -1063,6 +1066,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           reject(err)
           return
         }
+        streamFinished = true
 
         setProgressCounters({
           regularCount: regularDecks.length,
@@ -1168,7 +1172,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       es.addEventListener('error', (event) => {
         // Ignore errors if stream already closed or progress finished
         const progressState = get().progress.status
-        if (es.readyState === EventSource.CLOSED || ['done', 'cached'].includes(progressState)) {
+        if (streamFinished || es.readyState === EventSource.CLOSED || ['done', 'cached'].includes(progressState)) {
           cleanup()
           return
         }

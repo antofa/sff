@@ -86,6 +86,12 @@ export default function Home() {
     100,
     Math.round(((completedSteps + (progress.status === 'running' && hasActiveStep ? 0.35 : 0)) / totalSteps) * 100)
   )
+  const finalizeDone = progress.steps.some((step) => step.key === 'finalize' && step.status === 'done')
+  const canShowDecks =
+    !loading &&
+    !isTyping &&
+    (decks.length > 0 || fusedDecks.length > 0) &&
+    (progress.status === 'done' || progress.status === 'cached' || finalizeDone)
 
   const etaMs =
     progress.status === 'running' && (completedSteps > 0 || hasActiveStep)
@@ -454,7 +460,7 @@ export default function Home() {
             </Paper>
           )}
 
-          {!loading && !isTyping && (decks.length > 0 || fusedDecks.length > 0) && (
+          {canShowDecks && (
             <DeckList
               decks={decks}
               fusedDecks={fusedDecks}
@@ -466,7 +472,7 @@ export default function Home() {
             />
           )}
           
-          {!loading && !isTyping && decks.length === 0 && fusedDecks.length === 0 && hasSearched && (
+          {!loading && !isTyping && (progress.status === 'done' || progress.status === 'cached' || finalizeDone) && decks.length === 0 && fusedDecks.length === 0 && hasSearched && (
             <Paper
               p="xl"
               className="w-full max-w-2xl backdrop-blur-md border border-sf-primary/30 rounded-xl"

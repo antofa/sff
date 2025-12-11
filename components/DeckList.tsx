@@ -5,7 +5,6 @@ import { pluralize } from '@/lib/pluralize'
 import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
 import { useDebouncedValue, useResizeObserver } from '@mantine/hooks'
-import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import type { Deck } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo } from '@/lib/api'
@@ -432,13 +431,14 @@ const RegularDeckCard = memo(function RegularDeckCard({
         data-deck-id={deck.id}
         p="lg"
         onClick={() => handleDeckClick(deck)}
-        className="h-full border rounded-xl cursor-pointer"
+        className="border rounded-xl cursor-pointer"
         style={{
           backgroundColor: 'rgba(30, 41, 59, 0.5)',
           borderColor,
           boxShadow: '0 2px 4px rgba(0, 0, 0, 0.12)',
-          minHeight: '520px',
+          minHeight: 360,
           transition: 'border-color 0.1s ease',
+          overflow: 'hidden',
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.borderColor = hoverBorderColor
@@ -900,7 +900,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
     }
 
     return Array.from(setLabels)
-  }, [factionSets, aggregateCards, deck])
+  }, [factionSets, aggregatedCards, deck])
 
   const counts = useMemo(() => {
     if (deck.computed?.counts) return deck.computed.counts
@@ -989,7 +989,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
       return countPlayableCards(deck)
     }
     return { total: 0, creatures: 0, spells: 0, solbind: 0 }
-  }, [aggregateCards, deck, pickedSources])
+  }, [aggregatedCards, deck, pickedSources])
 
   const rarityCounts = useMemo(() => {
     if (deck.computed?.rarityCounts) {
@@ -1027,7 +1027,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
       counts.set('Solbind', (counts.get('Solbind') || 0) + parentSolbindCount)
     }
     return counts
-  }, [aggregateCards, deck.computed])
+  }, [aggregatedCards, deck.computed])
 
   let { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
 
@@ -1082,13 +1082,14 @@ const FusedDeckCard = memo(function FusedDeckCard({
         data-deck-id={deck.id}
         p="lg"
         onClick={() => handleDeckClick(deck)}
-        className="h-full border border-sf-primary/20 rounded-xl cursor-pointer"
+        className="border border-sf-primary/20 rounded-xl cursor-pointer"
         style={{
           backgroundColor: 'rgba(30, 41, 59, 0.5)',
           borderColor,
           boxShadow: '0 2px 4px rgba(0, 0, 0, 0.12)',
-          minHeight: '520px',
+          minHeight: 360,
           transition: 'border-color 0.1s ease',
+          overflow: 'hidden',
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.borderColor = hoverBorderColor
@@ -1348,11 +1349,14 @@ interface FilterState {
 type ViewMode = 'decks' | 'fused' | 'both'
 
 export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {} }: DeckListProps) {
+  const PAGE_SIZE = 300
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null)
   const [detailsOpened, setDetailsOpened] = useState(false)
   const [parentFusedDeck, setParentFusedDeck] = useState<Deck | null>(null)
   const [filtersOpened, setFiltersOpened] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('both')
+  const [viewMode, setViewMode] = useState<ViewMode>('decks')
+  const [regularPage, setRegularPage] = useState(1)
+  const [fusedPage, setFusedPage] = useState(1)
   
   const [filters, setFilters] = useState<FilterState>({
     faction: [],
@@ -1393,8 +1397,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   // Track only scroll position; skip expensive DOM scans for first visible card
   const firstVisibleDeckIdRef = useRef<string | null>(null)
   const shouldRestoreScrollRef = useRef<boolean>(false)
-  const contentHeightRef = useRef<number>(0)
-  const [minContentHeight, setMinContentHeight] = useState<number>(0)
   const gridContainerRef = useRef<HTMLDivElement>(null)
   
   // Collect all unique card names from all decks for the dropdown
@@ -1753,22 +1755,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   useEffect(() => {
     // Save scroll position and first visible deck ID before filters are applied
     scrollPositionRef.current = window.scrollY || window.pageYOffset || document.documentElement.scrollTop
-    
-    // Save current content height to maintain it after filtering
-    if (gridContainerRef.current) {
-      const currentHeight = gridContainerRef.current.scrollHeight || gridContainerRef.current.offsetHeight || 0
-      if (currentHeight > 0) {
-        contentHeightRef.current = Math.max(contentHeightRef.current, currentHeight)
-        setMinContentHeight(contentHeightRef.current)
-      }
-    } else {
-      // If gridContainerRef is not available, use document height
-      const docHeight = document.documentElement.scrollHeight || document.body.scrollHeight || 0
-      if (docHeight > 0) {
-        contentHeightRef.current = Math.max(contentHeightRef.current, docHeight)
-        setMinContentHeight(contentHeightRef.current)
-      }
-    }
     
     // No DOM scans; rely only on saved scroll position
     firstVisibleDeckIdRef.current = null
@@ -3130,6 +3116,87 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     return sortDecks(filtered)
   }, [filteredFusedDecksByExpiry, filterDeckArray, sortDecks])
 
+  // Pagination
+  const regularPageCount = Math.max(1, Math.ceil(filteredHalfDecks.length / PAGE_SIZE))
+  const fusedPageCount = Math.max(1, Math.ceil(filteredFusedDecks.length / PAGE_SIZE))
+
+  useEffect(() => {
+    setRegularPage((prev) => Math.min(prev, regularPageCount))
+  }, [regularPageCount])
+
+  useEffect(() => {
+    setFusedPage((prev) => Math.min(prev, fusedPageCount))
+  }, [fusedPageCount])
+
+  useEffect(() => {
+    setRegularPage(1)
+    setFusedPage(1)
+  }, [viewMode])
+
+  const pagedHalfDecks = useMemo(() => {
+    if (regularPageCount <= 1) return filteredHalfDecks
+    const start = (regularPage - 1) * PAGE_SIZE
+    return filteredHalfDecks.slice(start, start + PAGE_SIZE)
+  }, [filteredHalfDecks, regularPage, regularPageCount, PAGE_SIZE])
+
+  const pagedFusedDecks = useMemo(() => {
+    if (fusedPageCount <= 1) return filteredFusedDecks
+    const start = (fusedPage - 1) * PAGE_SIZE
+    return filteredFusedDecks.slice(start, start + PAGE_SIZE)
+  }, [filteredFusedDecks, fusedPage, fusedPageCount, PAGE_SIZE])
+
+  const clampPage = (value: number, max: number) => {
+    if (!Number.isFinite(value) || value < 1) return 1
+    return Math.min(Math.max(1, Math.floor(value)), Math.max(1, max))
+  }
+
+  const handleRegularPageChange = useCallback(
+    (value: number | string) => {
+      const next = clampPage(Number(value), regularPageCount)
+      setRegularPage(next)
+    },
+    [regularPageCount]
+  )
+
+  const handleFusedPageChange = useCallback(
+    (value: number | string) => {
+      const next = clampPage(Number(value), fusedPageCount)
+      setFusedPage(next)
+    },
+    [fusedPageCount]
+  )
+
+  const renderPageButtons = useCallback(
+    (current: number, total: number, onChange: (page: number) => void) => {
+      const buttons: number[] = []
+      const seen = new Set<number>()
+      const add = (p: number) => {
+        if (p < 1 || p > total || seen.has(p)) return
+        seen.add(p)
+        buttons.push(p)
+      }
+      add(1)
+      add(total)
+
+      return (
+        <Group gap="xs">
+          {buttons.map((p) => (
+            <Button
+              key={`page-${p}`}
+              size="xs"
+              variant={p === current ? 'filled' : 'outline'}
+              disabled={p === current}
+              onClick={() => onChange(p)}
+            >
+              {p}
+            </Button>
+          ))}
+        </Group>
+      )
+    },
+    []
+  )
+
   // Virtualization setup (after filtered decks are computed)
   const [regularListRef, rect] = useResizeObserver()
   const [fusedListRef, fusedRect] = useResizeObserver()
@@ -3145,49 +3212,27 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     if (width < 960) return 2
     return 3
   }, [fusedRect.width])
-  // Use a slightly larger estimate to avoid overlap before measurement kicks in
-  const estimatedRowHeight = 540
-  const regularRowCount = Math.ceil(filteredHalfDecks.length / columnCount)
-  const regularVirtualizer = useWindowVirtualizer({
-    count: regularRowCount,
-    estimateSize: () => estimatedRowHeight,
-    overscan: 2,
-    measureElement: (el) => el.getBoundingClientRect().height,
-  })
-  const fusedRowCount = Math.ceil(filteredFusedDecks.length / fusedColumnCount)
-  const fusedVirtualizer = useWindowVirtualizer({
-    count: fusedRowCount,
-    estimateSize: () => estimatedRowHeight,
-    overscan: 2,
-    measureElement: (el) => el.getBoundingClientRect().height,
-  })
+  // Fixed row height for smoother scroll without expensive measurements
+  const regularRows = useMemo(() => {
+    const rows: Deck[][] = []
+    for (let i = 0; i < pagedHalfDecks.length; i += columnCount) {
+      rows.push(pagedHalfDecks.slice(i, i + columnCount))
+    }
+    return rows
+  }, [pagedHalfDecks, columnCount])
+  const fusedRows = useMemo(() => {
+    const rows: Deck[][] = []
+    for (let i = 0; i < pagedFusedDecks.length; i += fusedColumnCount) {
+      rows.push(pagedFusedDecks.slice(i, i + fusedColumnCount))
+    }
+    return rows
+  }, [pagedFusedDecks, fusedColumnCount])
 
-  // Re-measure rows whenever column count or deck lengths change to avoid overlaps
-  useEffect(() => {
-    regularVirtualizer.measure()
-  }, [regularVirtualizer, columnCount, filteredHalfDecks.length])
+  // Keep min content height to avoid jump when filtering
 
-  useEffect(() => {
-    fusedVirtualizer.measure()
-  }, [fusedVirtualizer, fusedColumnCount, filteredFusedDecks.length])
-  
+
   // Update content height and restore scroll position after filteredDecks changes
   useEffect(() => {
-    // Update content height after filtering to maintain minimum height
-    if (gridContainerRef.current) {
-      const currentHeight = gridContainerRef.current.scrollHeight || gridContainerRef.current.offsetHeight || 0
-      if (currentHeight > 0) {
-        // Only update if current height is greater, to maintain minimum
-        if (currentHeight > contentHeightRef.current) {
-          contentHeightRef.current = currentHeight
-          setMinContentHeight(currentHeight)
-        } else if (contentHeightRef.current > 0) {
-          // Maintain saved minimum height
-          setMinContentHeight(contentHeightRef.current)
-        }
-      }
-    }
-    
     if (shouldRestoreScrollRef.current) {
       const savedScroll = scrollPositionRef.current
       const totalFilteredDecks = filteredHalfDecks.length + filteredFusedDecks.length
@@ -3200,7 +3245,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       firstVisibleDeckIdRef.current = null
       window.scrollTo(0, savedScroll)
     }
-  }, [filteredHalfDecks.length, filteredFusedDecks.length]) // Only depend on length to avoid unnecessary runs
+  }, [filteredHalfDecks.length, filteredFusedDecks.length, columnCount, fusedColumnCount]) // Only depend on length to avoid unnecessary runs
 
   return (
     <>
@@ -4064,9 +4109,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             className="w-full backdrop-blur-md border border-sf-primary/30 rounded-xl"
             style={{ 
               backgroundColor: 'rgba(30, 41, 59, 0.6)',
-              minHeight: minContentHeight > 0 
-                ? `${minContentHeight}px` 
-                : '100vh', // Maintain minimum height to prevent scroll jump
             }}
           >
             <Text size="lg" className="text-center text-gray-400">
@@ -4074,56 +4116,63 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             </Text>
           </Paper>
         ) : (
-          <div 
-            ref={gridContainerRef}
-            style={{ 
-              minHeight: minContentHeight > 0 
-                ? `${minContentHeight}px` 
-                : '100vh', // Maintain minimum height to prevent scroll jump
-              willChange: 'transform',
-              scrollBehavior: 'auto',
-            }}
-          >
+          <div ref={gridContainerRef}>
             {/* Half Decks Section */}
             {showHalfDecks && filteredHalfDecks.length > 0 && (
               <Stack gap="md" className="mb-8">
-                <Title order={3} className="text-white">
-                  Decks ({filteredHalfDecks.length})
-                </Title>
+                  <Group justify="space-between" align="center">
+                    <Title order={3} className="text-white">
+                      Decks ({filteredHalfDecks.length})
+                    </Title>
+                    {regularPageCount > 1 && (
+                    <Group gap="xs" align="center">
+                      <Text size="sm" className="text-gray-300">
+                        Page
+                      </Text>
+                      <NumberInput
+                        size="xs"
+                        value={regularPage}
+                        min={1}
+                        max={regularPageCount}
+                        onChange={handleRegularPageChange}
+                        hideControls
+                        styles={{
+                          input: { width: 60, textAlign: 'center' },
+                        }}
+                      />
+                      <Text size="sm" className="text-gray-300">
+                        of {regularPageCount} ({PAGE_SIZE} per page)
+                      </Text>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={regularPage <= 1}
+                        onClick={() => setRegularPage((p) => Math.max(1, p - 1))}
+                      >
+                        Prev
+                      </Button>
+                      {renderPageButtons(regularPage, regularPageCount, (p) => setRegularPage(p))}
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={regularPage >= regularPageCount}
+                        onClick={() => setRegularPage((p) => Math.min(regularPageCount, p + 1))}
+                      >
+                        Next
+                      </Button>
+                    </Group>
+                  )}
+                </Group>
                 <div ref={regularListRef} style={{ position: 'relative' }}>
-                  <div
-                    style={{
-                      height: `${regularVirtualizer.getTotalSize()}px`,
-                      position: 'relative',
-                      width: '100%',
-                    }}
-                  >
-                    {regularVirtualizer.getVirtualItems().map(virtualRow => {
-                      const startIndex = virtualRow.index * columnCount
-                      const rowDecks = filteredHalfDecks.slice(startIndex, startIndex + columnCount)
-                      return (
-                        <div
-                          ref={regularVirtualizer.measureElement}
-                          key={virtualRow.key}
-                          data-index={virtualRow.index}
-                          style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            transform: `translateY(${virtualRow.start}px)`,
-                            paddingBottom: '16px',
-                          }}
-                        >
-                          <Grid gutter="md">
-                            {rowDecks.map(deck => (
-                              <RegularDeckCard key={deck.id} deck={deck} handleDeckClick={handleDeckClick} />
-                            ))}
-                          </Grid>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  {regularRows.map((rowDecks, idx) => (
+                    <div key={`regular-row-${idx}`} style={{ paddingBottom: '16px' }}>
+                      <Grid gutter="md">
+                        {rowDecks.map((deck) => (
+                          <RegularDeckCard key={deck.id} deck={deck} handleDeckClick={handleDeckClick} />
+                        ))}
+                      </Grid>
+                    </div>
+                  ))}
                 </div>
               </Stack>
             )}
@@ -4131,54 +4180,70 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             {/* Fused Decks Section */}
             {showFusedDecks && filteredFusedDecks.length > 0 && (
               <Stack gap="md">
-                <Title order={3} className="text-white">
-                  Fused ({filteredFusedDecks.length})
-                </Title>
+                  <Group justify="space-between" align="center">
+                    <Title order={3} className="text-white">
+                      Fused ({filteredFusedDecks.length})
+                    </Title>
+                    {fusedPageCount > 1 && (
+                    <Group gap="xs" align="center">
+                      <Text size="sm" className="text-gray-300">
+                        Page
+                      </Text>
+                      <NumberInput
+                        size="xs"
+                        value={fusedPage}
+                        min={1}
+                        max={fusedPageCount}
+                        onChange={handleFusedPageChange}
+                        hideControls
+                        styles={{
+                          input: { width: 60, textAlign: 'center' },
+                        }}
+                      />
+                      <Text size="sm" className="text-gray-300">
+                        of {fusedPageCount} ({PAGE_SIZE} per page)
+                      </Text>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={fusedPage <= 1}
+                        onClick={() => setFusedPage((p) => Math.max(1, p - 1))}
+                      >
+                        Prev
+                      </Button>
+                      {renderPageButtons(fusedPage, fusedPageCount, (p) => setFusedPage(p))}
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={fusedPage >= fusedPageCount}
+                        onClick={() => setFusedPage((p) => Math.min(fusedPageCount, p + 1))}
+                      >
+                        Next
+                      </Button>
+                    </Group>
+                  )}
+                </Group>
                 <div ref={fusedListRef} style={{ position: 'relative' }}>
-                  <div
-                    style={{
-                      height: `${fusedVirtualizer.getTotalSize()}px`,
-                      position: 'relative',
-                      width: '100%',
-                    }}
-                  >
-                    {fusedVirtualizer.getVirtualItems().map(virtualRow => {
-                      const startIndex = virtualRow.index * fusedColumnCount
-                      const rowDecks = filteredFusedDecks.slice(startIndex, startIndex + fusedColumnCount)
-                      return (
-                        <div
-                          ref={fusedVirtualizer.measureElement}
-                          key={virtualRow.key}
-                          data-index={virtualRow.index}
-                          style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            transform: `translateY(${virtualRow.start}px)`,
-                            paddingBottom: '16px',
-                          }}
-                        >
-                          <Grid gutter="md">
-                            {rowDecks.map(deck => {
-                              const [d1, d2] = getFusedDeckSourceDecks(deck, [...decks, ...fusedDecks])
-                              return (
-                                <FusedDeckCard
-                                  key={deck.id}
-                                  deck={deck}
-                                  sourceDecks={[d1, d2]}
-                                  handleDeckClick={handleDeckClick}
-                                  deckTagsMap={deckTagsMap}
-                                  allDecks={[...decks, ...fusedDecks]}
-                                  fusedExpiryResolver={getFusedDeckExpiryStatus}
-                                />
-                              )
-                            })}
-                          </Grid>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  {fusedRows.map((rowDecks, idx) => (
+                    <div key={`fused-row-${idx}`} style={{ paddingBottom: '16px' }}>
+                      <Grid gutter="md">
+                        {rowDecks.map((deck) => {
+                          const [d1, d2] = getFusedDeckSourceDecks(deck, [...decks, ...fusedDecks])
+                          return (
+                            <FusedDeckCard
+                              key={deck.id}
+                              deck={deck}
+                              sourceDecks={[d1, d2]}
+                              handleDeckClick={handleDeckClick}
+                              deckTagsMap={deckTagsMap}
+                              allDecks={[...decks, ...fusedDecks]}
+                              fusedExpiryResolver={getFusedDeckExpiryStatus}
+                            />
+                          )
+                        })}
+                      </Grid>
+                    </div>
+                  ))}
                 </div>
               </Stack>
             )}

@@ -148,10 +148,15 @@ export async function GET(request: NextRequest) {
     for (let i = 0; i < decks.length; i += batchSize) {
       const slice = decks.slice(i, i + batchSize)
       slice.forEach((deck) => {
-        if (!deck || typeof deck !== 'object') return
+        if (!deck || typeof deck !== 'object') {
+          if (countProgress) tagState.processedDecks += 1
+          return
+        }
         const id = deck.id || deck.deckId
         const isDuplicate = countProgress && id && tagState.seenDecks.has(id)
         if (isDuplicate) {
+          // Keep progress moving even if tags already counted for this deck
+          tagState.processedDecks += 1
           return
         }
         if (countProgress && id) tagState.seenDecks.add(id)
@@ -347,7 +352,7 @@ export async function GET(request: NextRequest) {
         })
         logStage('decks-ready emitted to client')
 
-        // Final tag payload with both regular and fused decks
+        // Final tag payload with both regular and fused decks (blocking until tags complete)
         logStage('tag aggregation waiting for queue to finish')
         await tagState.queue
         const tagPayload = {
@@ -369,6 +374,7 @@ export async function GET(request: NextRequest) {
         })
         logStage('done emitted')
         controller.close()
+        return
       } catch (error) {
         console.error('[API /decks/stream] Error:', error)
         logStage('stream error')
