@@ -168,7 +168,25 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
     if (!d) return []
     if (Array.isArray(d.cardList)) return d.cardList
     if (Array.isArray(d.cards)) return d.cards
-    if (d.cards && typeof d.cards === 'object') return Object.values(d.cards)
+    if (Array.isArray(d.cardIds)) {
+      const cardDataValues =
+        d.cards && typeof d.cards === 'object' ? Object.values(d.cards) : []
+      return d.cardIds.map((id: string, idx: number) => {
+        const data = cardDataValues[idx] && typeof cardDataValues[idx] === 'object' ? cardDataValues[idx] : {}
+        return {
+          ...data,
+          id,
+          cardId: id,
+          name: (data as any)?.name || (data as any)?.title || id,
+          title: (data as any)?.title,
+          _idx: idx,
+        }
+      })
+    }
+    if (d.cards && typeof d.cards === 'object') {
+      const values = Object.values(d.cards)
+      if (values.length > 0) return values
+    }
     return []
   }
 
@@ -411,6 +429,72 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
   return { total, creatures, spells, solbind }
 }
 
+// Lightweight fallback counter for display (handles fused decks missing computed counts)
+function getDisplayCounts(deck: Deck): { total: number; creatures: number; spells: number } {
+  const deckAny = deck as any
+  const normalizeCardsFromHalf = (half: any): any[] => {
+    if (!half || typeof half !== 'object') return []
+    if (Array.isArray(half.cardIds) && half.cardIds.length > 0) {
+      const cardDataValues =
+        half.cards && typeof half.cards === 'object' ? Object.values(half.cards) : []
+      return half.cardIds.map((id: string, idx: number) => {
+        const data = cardDataValues[idx] && typeof cardDataValues[idx] === 'object' ? cardDataValues[idx] : {}
+        return {
+          ...data,
+          id,
+          cardId: id,
+          name: (data as any)?.name || (data as any)?.title || id,
+          title: (data as any)?.title,
+          _idx: idx,
+        }
+      })
+    }
+    if (half.cards && typeof half.cards === 'object' && Object.values(half.cards).length > 0) {
+      return Object.values(half.cards)
+    }
+    if (Array.isArray(half.cardList) && half.cardList.length > 0) return half.cardList
+    if (Array.isArray(half.cards) && half.cards.length > 0) return half.cards
+    return []
+  }
+
+  // Prefer halves when present
+  if (Array.isArray(deckAny.myDecks) && deckAny.myDecks.length > 0) {
+    let total = 0
+    let creatures = 0
+    let spells = 0
+    deckAny.myDecks.forEach((half: any) => {
+      const cards = normalizeCardsFromHalf(half)
+      cards.forEach((c: any) => {
+        const typeRaw = (c.cardType || c.type || '').toString().toLowerCase()
+        const isSpell = typeRaw.includes('spell') && !typeRaw.includes('creature')
+        if (isSpell) spells += 1
+        else creatures += 1
+        total += 1
+      })
+    })
+    return { total, creatures, spells }
+  }
+
+  const cards =
+    (Array.isArray(deckAny.cardList) && deckAny.cardList.length > 0 && deckAny.cardList) ||
+    (Array.isArray(deckAny.cards) && deckAny.cards.length > 0 && deckAny.cards) ||
+    (deckAny.cards && typeof deckAny.cards === 'object' ? Object.values(deckAny.cards) : []) ||
+    []
+
+  if (!cards || cards.length === 0) return { total: 0, creatures: 0, spells: 0 }
+
+  let creatures = 0
+  let spells = 0
+  cards.forEach((c: any) => {
+    const typeRaw = (c.cardType || c.type || '').toString().toLowerCase()
+    const isSpell = typeRaw.includes('spell') && !typeRaw.includes('creature')
+    if (isSpell) spells += 1
+    else creatures += 1
+  })
+
+  return { total: cards.length, creatures, spells }
+}
+
 // Shared deck card renderers (used by virtualized rows)
 const RegularDeckCard = memo(function RegularDeckCard({
   deck,
@@ -420,7 +504,8 @@ const RegularDeckCard = memo(function RegularDeckCard({
   handleDeckClick: (deck: Deck) => void
 }) {
   const [renderNow] = useState(() => Date.now())
-  const computedCounts = deck.computed?.counts
+  const computedCounts = deck.computed?.counts && deck.computed.counts.total > 0 ? deck.computed.counts : null
+  const displayCounts = computedCounts || getDisplayCounts(deck)
   const expiryTs = getExpiryTimestamp(deck)
   const isExpired = expiryTs !== null && expiryTs < renderNow
   const { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
@@ -516,9 +601,9 @@ const RegularDeckCard = memo(function RegularDeckCard({
                 ) : null
               })()}
             </Group>
-            {deck.cards && Array.isArray(deck.cards) && computedCounts && (
+            {displayCounts && (
               <Badge color="blue" variant="light" size="sm" leftSection={<IconCards size={12} />}>
-                {computedCounts.total} cards
+                {displayCounts.total} cards
               </Badge>
             )}
             {deck.deckRank && deck.deckRank !== 'Unranked' && (
@@ -557,7 +642,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
           </Group>
 
           {(() => {
-            const counts = deck.computed?.counts
+            const counts = computedCounts || displayCounts
             const rarityEntries = deck.computed?.rarityCounts ? Object.entries(deck.computed.rarityCounts) : []
             if (!counts && rarityEntries.length === 0) return null
             return (
@@ -573,9 +658,9 @@ const RegularDeckCard = memo(function RegularDeckCard({
                       {pluralize(counts.spells, 'Spell')}
                     </Badge>
                   ) : null}
-                  {counts?.solbind ? (
+                  {((counts as any)?.solbind) ? (
                     <Badge color="orange" variant="light" size="sm">
-                      {pluralize(counts.solbind, 'Solbind')}
+                      {pluralize((counts as any).solbind, 'Solbind')}
                     </Badge>
                   ) : null}
                 </Group>
@@ -737,8 +822,13 @@ const FusedDeckCard = memo(function FusedDeckCard({
     if (!d || typeof d !== 'object') return []
     if (Array.isArray(d.cardList) && d.cardList.length > 0) return d.cardList
     if (Array.isArray(d.cards) && d.cards.length > 0) return d.cards
-    if (Array.isArray(d.cardIds) && d.cardIds.length > 0) return d.cardIds
-    if (d.cards && typeof d.cards === 'object') return Object.values(d.cards)
+    if (d.cards && typeof d.cards === 'object') {
+      const values = Object.values(d.cards)
+      if (values.length > 0) return values
+    }
+    if (Array.isArray(d.cardIds) && d.cardIds.length > 0) {
+      return d.cardIds.map((id: string, idx: number) => ({ id, cardId: id, name: id, title: id, _idx: idx }))
+    }
     return []
   }, [])
 
@@ -903,7 +993,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
   }, [factionSets, aggregatedCards, deck])
 
   const counts = useMemo(() => {
-    if (deck.computed?.counts) return deck.computed.counts
+    if (deck.computed?.counts && deck.computed.counts.total > 0) return deck.computed.counts
     if (aggregatedCards.length > 0) {
       let creatures = 0
       let spells = 0
@@ -1015,10 +1105,12 @@ const FusedDeckCard = memo(function FusedDeckCard({
       }
       if (!isParentSolbind && rarity && typeof rarity === 'string') {
         let normalized = rarity.trim()
+        const lower = normalized.toLowerCase()
+        if (lower.includes('n/a')) return
         if (normalized.includes('Common') && normalized.includes('Rare')) normalized = 'Common Rare'
-        else if (normalized.toLowerCase().includes('common')) normalized = 'Common'
-        else if (normalized.toLowerCase().includes('rare')) normalized = 'Rare'
-        else if (normalized.toLowerCase().includes('ls') || normalized.toLowerCase().includes('legendary'))
+        else if (lower.includes('common')) normalized = 'Common'
+        else if (lower.includes('rare')) normalized = 'Rare'
+        else if (lower.includes('ls') || lower.includes('legendary'))
           normalized = 'LS'
         counts.set(normalized, (counts.get(normalized) || 0) + 1)
       }

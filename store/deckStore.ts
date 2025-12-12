@@ -101,24 +101,48 @@ const countPlayableCards = (deck: Deck): { total: number; creatures: number; spe
     if (!d) return []
     if (Array.isArray(d.cardList)) return d.cardList
     if (Array.isArray(d.cards)) return d.cards
+    if (Array.isArray(d.cardIds) && d.cardIds.length > 0) {
+      const cardDataValues =
+        d.cards && typeof d.cards === 'object' ? Object.values(d.cards) : []
+      return d.cardIds.map((id: string, idx: number) => {
+        const data = cardDataValues[idx] && typeof cardDataValues[idx] === 'object' ? cardDataValues[idx] : {}
+        return {
+          ...data,
+          id,
+          cardId: id,
+          name: (data as any)?.name || (data as any)?.title || id,
+          title: (data as any)?.title,
+          _idx: idx,
+        }
+      })
+    }
     if (d.cards && typeof d.cards === 'object') return Object.values(d.cards)
     return []
   }
 
   let rawCards: any[] = extractCards(deckAny)
 
-  if (deckAny.format === 'Fused' && Array.isArray(deckAny.myDecks) && deckAny.myDecks.length >= 2) {
+  const hasFusedHalves = Array.isArray(deckAny.myDecks) && deckAny.myDecks.length > 0
+
+  if ((deckAny.format === 'Fused' || hasFusedHalves) && hasFusedHalves) {
     const combined: any[] = []
     const seen = new Set<string>()
-    const addCards = (cardsArr: any[]) => {
+    const addCards = (cardsArr: any[], ids?: any[]) => {
       cardsArr.forEach((c, idx) => {
-        const key = c?.id || c?.cardId || c?.name || `card-${combined.length + idx}`
+        const cardObj = { ...c }
+        if (!cardObj.id && Array.isArray(ids) && ids[idx]) {
+          cardObj.id = ids[idx]
+        }
+        if (!cardObj.id) {
+          cardObj.id = cardObj.cardId || cardObj.name || cardObj.title || `card-${combined.length + idx}`
+        }
+        const key = cardObj?.id || cardObj?.cardId || cardObj?.name || cardObj?.title || `card-${combined.length + idx}`
         if (seen.has(key)) return
         seen.add(key)
-        combined.push(c)
+        combined.push(cardObj)
       })
     }
-    deckAny.myDecks.forEach((src: any) => addCards(extractCards(src)))
+    deckAny.myDecks.forEach((src: any) => addCards(extractCards(src), src.cardIds))
     if (combined.length > 0) rawCards = combined
   }
 
@@ -293,8 +317,57 @@ const countPlayableCards = (deck: Deck): { total: number; creatures: number; spe
 
 const computeRarityCounts = (deck: Deck): Record<string, number> => {
   const rarityCounts = new Map<string, number>()
-  if (!deck.cards || !Array.isArray(deck.cards)) return {}
-  const normalizedCards = deck.cards.map((card: any, index: number) => {
+  const deckAny = deck as any
+  const extractCards = (d: any): any[] => {
+    if (!d) return []
+    if (Array.isArray(d.cardList)) return d.cardList
+    if (Array.isArray(d.cards)) return d.cards
+    if (Array.isArray(d.cardIds) && d.cardIds.length > 0) {
+      const cardDataValues =
+        d.cards && typeof d.cards === 'object' ? Object.values(d.cards) : []
+      return d.cardIds.map((id: string, idx: number) => {
+        const data = cardDataValues[idx] && typeof cardDataValues[idx] === 'object' ? cardDataValues[idx] : {}
+        return {
+          ...data,
+          id,
+          cardId: id,
+          name: (data as any)?.name || (data as any)?.title || id,
+          title: (data as any)?.title,
+          _idx: idx,
+        }
+      })
+    }
+    if (d.cards && typeof d.cards === 'object') return Object.values(d.cards)
+    return []
+  }
+
+  let sourceCards: any[] = extractCards(deckAny)
+  const hasFusedHalves = Array.isArray(deckAny.myDecks) && deckAny.myDecks.length > 0
+  if ((deckAny.format === 'Fused' || hasFusedHalves) && hasFusedHalves) {
+    const combined: any[] = []
+    const seen = new Set<string>()
+    const addCards = (arr: any[], ids?: any[]) => {
+      arr.forEach((c, idx) => {
+        const cardObj = { ...c }
+        if (!cardObj.id && Array.isArray(ids) && ids[idx]) {
+          cardObj.id = ids[idx]
+        }
+        if (!cardObj.id) {
+          cardObj.id = cardObj.cardId || cardObj.name || cardObj.title || `card-${combined.length + idx}`
+        }
+        const key = cardObj?.id || cardObj?.cardId || cardObj?.name || cardObj?.title || `card-${combined.length + idx}`
+        if (seen.has(key)) return
+        seen.add(key)
+        combined.push(cardObj)
+      })
+    }
+    deckAny.myDecks.forEach((src: any) => addCards(extractCards(src), src.cardIds))
+    if (combined.length > 0) sourceCards = combined
+  }
+
+  if (!sourceCards || !Array.isArray(sourceCards) || sourceCards.length === 0) return {}
+
+  const normalizedCards = sourceCards.map((card: any, index: number) => {
     if (typeof card === 'string') return getCardInfoCached(card)
     if (typeof card === 'object' && card !== null) {
       const cardId = card.id || card.cardId || card.name || `card-${index}`
@@ -332,6 +405,9 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
     if (rarityRaw && typeof rarityRaw === 'string') {
       let normalizedRarity = rarityRaw.trim()
       const lower = normalizedRarity.toLowerCase()
+      if (lower.includes('n/a')) {
+        return
+      }
       if (lower.includes('solbind')) {
         normalizedRarity = 'Solbind'
         solbindCardIds.add(card.id || `card-${idx}`)

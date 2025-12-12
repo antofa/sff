@@ -815,6 +815,7 @@ export async function fetchFusedDecksFromAPI(
 
     for (const fusedDeck of fusedDecks) {
       const allCards: any[] = []
+      const enrichedMyDecks: any[] = Array.isArray(fusedDeck.myDecks) ? [] : []
 
       // Prefer embedded myDecks data (fast, no network)
       if (Array.isArray(fusedDeck.myDecks)) {
@@ -830,14 +831,22 @@ export async function fetchFusedDecksFromAPI(
           let cardSource = 'embedded'
           if (cards.length > 0) {
             allCards.push(...cards)
+            enrichedMyDecks.push(d)
           } else if (d?.id) {
             const cachedCards = collectCardsFromCachedRegular(d.id)
             if (cachedCards.length > 0) {
               allCards.push(...cachedCards)
+              const cachedDeck = cachedRegularById.get(d.id)
+              enrichedMyDecks.push(cachedDeck ? { ...cachedDeck, id: d.id } : d)
               cachedRegularHits++
               cardSource = 'cached'
+            } else {
+              enrichedMyDecks.push(d)
             }
           }
+        }
+        if (enrichedMyDecks.length === fusedDeck.myDecks.length) {
+          fusedDeck.myDecks = enrichedMyDecks
         }
         if (allCards.length > 0) {
           embeddedCardDecks++

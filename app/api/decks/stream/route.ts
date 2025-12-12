@@ -10,7 +10,20 @@ export const dynamic = 'force-dynamic'
 const writeEvent = (controller: ReadableStreamDefaultController<Uint8Array>, event: string, data: any) => {
   const encoder = new TextEncoder()
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
-  controller.enqueue(encoder.encode(payload))
+  try {
+    controller.enqueue(encoder.encode(payload))
+  } catch (err: any) {
+    // Ignore attempts to write after the stream is closed; log others for diagnostics
+    if (err?.code !== 'ERR_INVALID_STATE') {
+      console.warn('[API /decks/stream] failed to enqueue SSE event', { event, err })
+    }
+  }
+}
+
+const fallbackCardNameFromId = (id: string): string => {
+  if (!id) return ''
+  const withSpaces = id.replace(/[_-]/g, ' ')
+  return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1)
 }
 
 const collectTags = (deck: any): string[] => {
@@ -78,12 +91,18 @@ const buildTagPayload = (decks: any[], fused: any[]) => {
 
     if (deck.cards && Array.isArray(deck.cards)) {
       deck.cards.forEach((card: any, idx: number) => {
-        const cardInfo =
-          typeof card === 'string'
-            ? getCardInfo(card)
-            : getCardInfo(card.id || card.cardId || card.name || `card-${idx}`, card)
-        if (cardInfo?.name && cardInfo.name.trim()) {
-          uniqueCardNames.add(cardInfo.name)
+        let cardName: string | null = null
+        if (typeof card === 'string') {
+          cardName = fallbackCardNameFromId(card)
+        } else if (card && typeof card === 'object') {
+          cardName = (card as any).name || (card as any).title || (card as any).cardTitle || (card as any).cardId || null
+          if (!cardName) {
+            const id = (card as any).id || (card as any).cardId || `card-${idx}`
+            cardName = fallbackCardNameFromId(id)
+          }
+        }
+        if (cardName && cardName.trim()) {
+          uniqueCardNames.add(cardName.trim())
         }
       })
     }
