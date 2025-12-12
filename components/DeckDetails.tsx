@@ -771,21 +771,6 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       if (!stored) pendingFetch.push(cid)
     })
 
-    console.log(
-      '[DeckDetails debug] fused halves fetch plan',
-      JSON.stringify({
-        deckId: deckAny?.id,
-        pool: normalizedPool.map((c) => ({
-          id: c?.id,
-          cardIdsLen: Array.isArray((c as any)?.cardIds) ? (c as any).cardIds.length : 0,
-          cardListLen: Array.isArray((c as any)?.cardList) ? (c as any).cardList.length : 0,
-          cardsArrayLen: Array.isArray((c as any)?.cards) ? (c as any).cards.length : 0,
-        })),
-        updates: Object.keys(updates),
-        pendingFetch,
-      })
-    )
-
     if (pendingFetch.length === 0 && Object.keys(updates).length === 0) return
 
     const load = async () => {
@@ -795,20 +780,6 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           return res && res.id ? res : null
         })
       )
-
-      if (fetchedResults.length > 0) {
-        console.log(
-          '[DeckDetails debug] fetched halves details',
-          JSON.stringify(
-            fetchedResults.map((res, idx) => ({
-              id: pendingFetch[idx],
-              ok: !!res,
-              cardIdsLen: Array.isArray((res as any)?.cardIds) ? (res as any).cardIds.length : 0,
-              cardListLen: Array.isArray((res as any)?.cardList) ? (res as any).cardList.length : 0,
-            }))
-          )
-        )
-      }
 
       const merged: Record<string, any> = { ...updates }
       fetchedResults.forEach((res, idx) => {
@@ -938,23 +909,6 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
 
       const halvesToUse = picked.slice(0, 2)
-      // Debug: одна строка с выбранными половинками
-      console.log(
-        '[DeckDetails debug] fused halves',
-        JSON.stringify({
-          deckId: deckToUse.id,
-          halves: halvesToUse.map((h) => ({
-            id: h?.id,
-            cardIdsLen: Array.isArray((h as any)?.cardIds) ? (h as any).cardIds.length : 0,
-            cardsLen: Array.isArray((h as any)?.cards) ? (h as any).cards.length : 0,
-            hasCardMap: !!((h as any)?.cards && typeof (h as any).cards === 'object'),
-          })),
-          candidates: candidates.map((h: any) => ({
-            id: h?.id,
-            cardIdsLen: Array.isArray(h?.cardIds) ? h.cardIds.length : 0,
-          })),
-        })
-      )
       const raw = halvesToUse.flatMap(normalizeHalf)
       const seen = new Set<string>()
       const combined: any[] = []
@@ -1035,34 +989,6 @@ const originalCardMeta = useMemo(() => {
   })
   return map
 }, [deck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks])
-
-  // Debug snapshot (одна строка) для fused
-  useEffect(() => {
-    const deckToUse = fullDeckData || deck
-    if (!deckToUse || !isFusedDeck(deckToUse)) return
-    const infoList = uniqueNormalizedCards.map((c) => {
-      const meta = originalCardMeta.get((c.id || '').toLowerCase())
-      const info = getCardInfo(c.id, c as any)
-      const rawType = (c as any)?.cardType || (c as any)?.card_type || (c as any)?.type || meta?.cardType || meta?.type || info.cardType || (info as any)?.type || ''
-      const lower = rawType.toLowerCase()
-      return {
-        id: c.id,
-        type: rawType,
-        isSpell: lower.includes('spell') && !lower.includes('creature'),
-      }
-    })
-    console.log(
-      '[DeckDetails debug] fused snapshot',
-      JSON.stringify({
-        deckId: deckToUse.id,
-        normalized: normalizedCards.length,
-        unique: uniqueNormalizedCards.length,
-        spells: infoList.filter(i => i.isSpell).length,
-        creatures: infoList.filter(i => !i.isSpell).length,
-        ids: infoList,
-      })
-    )
-  }, [deck, fullDeckData, normalizedCards, uniqueNormalizedCards, originalCardMeta, isFusedDeck])
 
   const markLevelsLoading = useCallback((cardId: string, levels: number[]) => {
     setLoadingLevels(prev => {
