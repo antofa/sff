@@ -802,7 +802,21 @@ export async function fetchFusedDecksFromAPI(
       if (!deckObj) return []
       if (Array.isArray(deckObj.cardList) && deckObj.cardList.length > 0) return deckObj.cardList
       if (Array.isArray(deckObj.cards) && deckObj.cards.length > 0) return deckObj.cards
-      if (Array.isArray(deckObj.cardIds) && deckObj.cardIds.length > 0) return deckObj.cardIds
+      if (Array.isArray(deckObj.cardIds) && deckObj.cardIds.length > 0) {
+        const cardDataValues =
+          deckObj.cards && typeof deckObj.cards === 'object' ? Object.values(deckObj.cards) : []
+        return deckObj.cardIds.map((id: string, idx: number) => {
+          const data = cardDataValues[idx] && typeof cardDataValues[idx] === 'object' ? cardDataValues[idx] : {}
+          return {
+            ...data,
+            id,
+            cardId: id,
+            name: (data as any)?.name || (data as any)?.title || id,
+            title: (data as any)?.title,
+            _idx: idx,
+          }
+        })
+      }
       if (deckObj.cards && typeof deckObj.cards === 'object') return Object.values(deckObj.cards)
       return []
     }
