@@ -297,6 +297,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const [imageLoadStatus, setImageLoadStatus] = useState<Record<string, boolean>>({})
   const [fullDeckData, setFullDeckData] = useState<Deck | null>(null) // Full deck data with forgeborn.solbindCards
   const [fusedSourceDecks, setFusedSourceDecks] = useState<Deck[]>([])
+  const [halfDetails, setHalfDetails] = useState<Record<string, any>>({})
   const [copied, setCopied] = useState(false)
   const levelManuallyChangedRef = useRef<boolean>(false)
   const lastSelectedCardIdRef = useRef<string | null>(null)
@@ -315,6 +316,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     fusedCardsMergedRef.current = false
     fusedSourceDecksRef.current = ''
     setFusedSourceDecks([])
+    setHalfDetails({})
     // Reset selection and loading state when switching to a different deck
     setSelectedCard(null)
     setSelectedLevel(1)
@@ -710,6 +712,135 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     setFullDeckData(mergedDeck)
   }, [deck, opened, fullDeckData, fusedSourceDecks, isFusedDeck])
 
+  // Fetch and cache half details with cardIds if local candidates lack them
+  useEffect(() => {
+    if (!deck || !opened || !isFusedDeck(deck)) return
+    const deckAny = (fullDeckData || deck) as any
+
+    const pool: any[] = []
+    if (Array.isArray(deckAny?.myDecks)) deckAny.myDecks.forEach((s: any) => s && pool.push(s))
+    if (Array.isArray((deck as any)?.myDecks)) (deck as any).myDecks.forEach((s: any) => s && pool.push(s))
+    const [s1, s2] = getFusedDeckSourceDecks
+    if (s1) pool.push(s1)
+    if (s2) pool.push(s2)
+    fusedSourceDecks.forEach((s) => s && pool.push(s))
+    if (Array.isArray(deckAny?.fusedDeckIds)) {
+      deckAny.fusedDeckIds.forEach((id: string) => id && pool.push({ id }))
+    }
+
+    const allDecksMap = new Map<string, Deck>()
+    allDecks.forEach((d) => d?.id && allDecksMap.set(d.id, d))
+    const normalizedPool = pool.map((c) => {
+      const cid = c?.id
+      const replacement = cid ? allDecksMap.get(cid) : null
+      const hasReplacementCards =
+        replacement &&
+        ((Array.isArray((replacement as any).cardIds) && (replacement as any).cardIds.length > 0) ||
+          (Array.isArray((replacement as any).cardList) && (replacement as any).cardList.length > 0) ||
+          (Array.isArray((replacement as any).cards) && (replacement as any).cards.length > 0))
+      return hasReplacementCards ? (replacement as any) : c
+    })
+
+    const pendingFetch: string[] = []
+    const updates: Record<string, any> = {}
+
+    normalizedPool.forEach((c) => {
+      const cid = c?.id
+      if (!cid) return
+      const hasCardIds = Array.isArray((c as any).cardIds) && (c as any).cardIds.length > 0
+      const hasCardList = Array.isArray((c as any).cardList) && (c as any).cardList.length > 0
+      const hasCardsArray = Array.isArray((c as any).cards) && (c as any).cards.length > 0
+      const stored = cid ? halfDetails[cid] : null
+      const storedHasIds =
+        stored &&
+        ((Array.isArray((stored as any).cardIds) && (stored as any).cardIds.length > 0) ||
+          (Array.isArray((stored as any).cardList) && (stored as any).cardList.length > 0))
+
+      if (hasCardIds || hasCardList) {
+        if (!storedHasIds) updates[cid] = c
+        return
+      }
+
+      // cards array без cardIds — используем как временный вариант, но всё равно пытаемся фетчить
+      if (hasCardsArray) {
+        if (!stored) updates[cid] = c
+        if (!storedHasIds) pendingFetch.push(cid)
+        return
+      }
+
+      if (!stored) pendingFetch.push(cid)
+    })
+
+    console.log(
+      '[DeckDetails debug] fused halves fetch plan',
+      JSON.stringify({
+        deckId: deckAny?.id,
+        pool: normalizedPool.map((c) => ({
+          id: c?.id,
+          cardIdsLen: Array.isArray((c as any)?.cardIds) ? (c as any).cardIds.length : 0,
+          cardListLen: Array.isArray((c as any)?.cardList) ? (c as any).cardList.length : 0,
+          cardsArrayLen: Array.isArray((c as any)?.cards) ? (c as any).cards.length : 0,
+        })),
+        updates: Object.keys(updates),
+        pendingFetch,
+      })
+    )
+
+    if (pendingFetch.length === 0 && Object.keys(updates).length === 0) return
+
+    const load = async () => {
+      const fetchedResults = await Promise.all(
+        pendingFetch.map(async (id) => {
+          const res = await fetchDeckDetails(id)
+          return res && res.id ? res : null
+        })
+      )
+
+      if (fetchedResults.length > 0) {
+        console.log(
+          '[DeckDetails debug] fetched halves details',
+          JSON.stringify(
+            fetchedResults.map((res, idx) => ({
+              id: pendingFetch[idx],
+              ok: !!res,
+              cardIdsLen: Array.isArray((res as any)?.cardIds) ? (res as any).cardIds.length : 0,
+              cardListLen: Array.isArray((res as any)?.cardList) ? (res as any).cardList.length : 0,
+            }))
+          )
+        )
+      }
+
+      const merged: Record<string, any> = { ...updates }
+      fetchedResults.forEach((res, idx) => {
+        const id = pendingFetch[idx]
+        if (!id) return
+        if (res) merged[id] = res
+      })
+
+      if (Object.keys(merged).length === 0) return
+      setHalfDetails((prev) => {
+        const next = { ...prev }
+        Object.entries(merged).forEach(([id, val]) => {
+          const incomingHasIds =
+            (Array.isArray((val as any).cardIds) && (val as any).cardIds.length > 0) ||
+            (Array.isArray((val as any).cardList) && (val as any).cardList.length > 0)
+          const incomingHasCards = Array.isArray((val as any).cards) && (val as any).cards.length > 0
+          const stored = next[id]
+          const storedHasIds =
+            stored &&
+            ((Array.isArray((stored as any).cardIds) && (stored as any).cardIds.length > 0) ||
+              (Array.isArray((stored as any).cardList) && (stored as any).cardList.length > 0))
+          if (!stored || incomingHasIds || (!storedHasIds && incomingHasCards)) {
+            next[id] = val
+          }
+        })
+        return next
+      })
+    }
+
+    load().catch(() => {})
+  }, [deck, opened, isFusedDeck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, allDecks, halfDetails])
+
   // Собираем карты для отображения в модалке (чистый сбор для fused)
   const normalizedCards: CardInfo[] = useMemo(() => {
     const deckToUse = fullDeckData || deck
@@ -718,7 +849,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     const normalizeHalf = (half: any): any[] => {
       if (!half) return []
       if (Array.isArray(half.cardIds) && half.cardIds.length > 0) {
-        const ids = half.cardIds.slice(0, 10) // ограничиваем нормальный размер половины
+        const ids = half.cardIds.slice(0, 10)
         const values = half.cards && typeof half.cards === 'object' ? Object.values(half.cards) : []
         return ids.map((id: string, idx: number) => {
           const data = values[idx] && typeof values[idx] === 'object' ? values[idx] : {}
@@ -733,12 +864,25 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
       if (Array.isArray(half.cardList)) return half.cardList
       if (Array.isArray(half.cards)) return half.cards
-      if (half.cards && typeof half.cards === 'object') return Object.values(half.cards)
+      if (half.cards && typeof half.cards === 'object') {
+        const entries = Object.entries(half.cards)
+        return entries.slice(0, 10).map(([key, val]) => {
+          const data = typeof val === 'object' && val !== null ? val : {}
+          const id = key || (data as any)?.id || (data as any)?.cardId || (data as any)?.name || (data as any)?.title
+          return {
+            ...data,
+            id,
+            cardId: id,
+            name: (data as any)?.name || (data as any)?.title || id,
+            title: (data as any)?.title,
+          }
+        })
+      }
       return []
     }
 
     const collectFused = (): any[] => {
-      const candidates: any[] = []
+      let candidates: any[] = []
       // 1) myDecks из полных данных
       if (Array.isArray((fullDeckData as any)?.myDecks)) {
         (fullDeckData as any).myDecks.forEach((s: any) => s && candidates.push(s))
@@ -753,6 +897,31 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       if (s2) candidates.push(s2)
       // 4) fusedSourceDecks (фетч по id)
       fusedSourceDecks.forEach(s => s && candidates.push(s))
+
+      // Попробуем заменить кандидатов на версии из allDecks, если там есть cardIds/cardList
+      const allDecksMap = new Map<string, any>()
+      allDecks.forEach(d => d?.id && allDecksMap.set(d.id, d))
+      candidates = candidates.map((c) => {
+        const cid = c?.id
+        const replacement = cid ? allDecksMap.get(cid) : null
+        if (!replacement) return c
+        const hasIds = Array.isArray((replacement as any).cardIds) && (replacement as any).cardIds.length > 0
+        const hasList = Array.isArray((replacement as any).cardList) && (replacement as any).cardList.length > 0
+        if (hasIds || hasList) return replacement
+        return c
+      })
+
+      // Попробуем заменить кандидатов деталями, которые уже подтянули отдельно
+      candidates = candidates.map((c) => {
+        const cid = c?.id
+        const details = cid ? halfDetails[cid] : null
+        if (!details) return c
+        const hasIds = Array.isArray((details as any)?.cardIds) && (details as any).cardIds.length > 0
+        const hasList = Array.isArray((details as any)?.cardList) && (details as any).cardList.length > 0
+        const hasCardsArray = Array.isArray((details as any)?.cards) && (details as any).cards.length > 0
+        if (hasIds || hasList || hasCardsArray) return details
+        return c
+      })
 
       if (candidates.length === 0) return []
 
@@ -769,6 +938,23 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
 
       const halvesToUse = picked.slice(0, 2)
+      // Debug: одна строка с выбранными половинками
+      console.log(
+        '[DeckDetails debug] fused halves',
+        JSON.stringify({
+          deckId: deckToUse.id,
+          halves: halvesToUse.map((h) => ({
+            id: h?.id,
+            cardIdsLen: Array.isArray((h as any)?.cardIds) ? (h as any).cardIds.length : 0,
+            cardsLen: Array.isArray((h as any)?.cards) ? (h as any).cards.length : 0,
+            hasCardMap: !!((h as any)?.cards && typeof (h as any).cards === 'object'),
+          })),
+          candidates: candidates.map((h: any) => ({
+            id: h?.id,
+            cardIdsLen: Array.isArray(h?.cardIds) ? h.cardIds.length : 0,
+          })),
+        })
+      )
       const raw = halvesToUse.flatMap(normalizeHalf)
       const seen = new Set<string>()
       const combined: any[] = []
@@ -802,7 +988,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
       return getCardInfo(`card-${index}`)
     })
-  }, [deck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, isFusedDeck])
+  }, [deck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, isFusedDeck, halfDetails])
 
   // Дедуп уже после нормализации (id в нижнем регистре)
   const uniqueNormalizedCards: CardInfo[] = useMemo(() => {
@@ -818,11 +1004,11 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   }, [normalizedCards])
 
   // Метаданные типов из половинок (используются как fallback)
-  const originalCardMeta = useMemo(() => {
-    const map = new Map<string, { cardType?: string; type?: string }>()
-    const deckToUse = fullDeckData || deck
-    if (!deckToUse) return map
-    const halves: any[] = []
+const originalCardMeta = useMemo(() => {
+  const map = new Map<string, { cardType?: string; type?: string }>()
+  const deckToUse = fullDeckData || deck
+  if (!deckToUse) return map
+  const halves: any[] = []
     const [s1, s2] = getFusedDeckSourceDecks
     if (s1) halves.push(s1)
     if (s2) halves.push(s2)
@@ -846,11 +1032,11 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           map.set(key, { cardType: c?.cardType || c?.card_type, type: c?.type })
         })
       }
-    })
-    return map
-  }, [deck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks])
+  })
+  return map
+}, [deck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks])
 
-  // Debug snapshot to console for fused decks (helps track counts)
+  // Debug snapshot (одна строка) для fused
   useEffect(() => {
     const deckToUse = fullDeckData || deck
     if (!deckToUse || !isFusedDeck(deckToUse)) return
@@ -861,19 +1047,21 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       const lower = rawType.toLowerCase()
       return {
         id: c.id,
-        name: c.name,
-        rawType,
+        type: rawType,
         isSpell: lower.includes('spell') && !lower.includes('creature'),
       }
     })
-    console.log('[DeckDetails debug] fused snapshot', {
-      deckId: deckToUse.id,
-      normalized: normalizedCards.length,
-      unique: uniqueNormalizedCards.length,
-      spells: infoList.filter(i => i.isSpell).length,
-      creatures: infoList.filter(i => !i.isSpell).length,
-      ids: infoList.map(i => ({ id: i.id, type: i.rawType, isSpell: i.isSpell })),
-    })
+    console.log(
+      '[DeckDetails debug] fused snapshot',
+      JSON.stringify({
+        deckId: deckToUse.id,
+        normalized: normalizedCards.length,
+        unique: uniqueNormalizedCards.length,
+        spells: infoList.filter(i => i.isSpell).length,
+        creatures: infoList.filter(i => !i.isSpell).length,
+        ids: infoList,
+      })
+    )
   }, [deck, fullDeckData, normalizedCards, uniqueNormalizedCards, originalCardMeta, isFusedDeck])
 
   const markLevelsLoading = useCallback((cardId: string, levels: number[]) => {
