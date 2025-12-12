@@ -1016,15 +1016,18 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             tagCount: tagsPayload.uniqueTags?.length ?? 0,
           })
           const processed = data.processedDecks
-          const totalDecks = data.totalDecks
+          const totalDecks = data.totalDecks ?? get().progress.counters?.totalCount
+          const isFinalPhase = data.phase === 'final'
+          const tagsComplete = !!totalDecks && !!processed && processed >= totalDecks
+          const doneMsg = 'Tags collected'
           const tagMsg =
             processed && totalDecks
               ? `Collecting tags... ${processed}/${totalDecks}`
               : 'Collecting tags...'
 
-          latestTagMessage = tagMsg
+          latestTagMessage = tagsComplete || isFinalPhase ? doneMsg : tagMsg
           // Keep the latest tag message in progress for when tags become the active step.
-          setProgressState({ message: tagMsg })
+          setProgressState({ message: tagsComplete || isFinalPhase ? doneMsg : tagMsg })
 
           const stepsState = get().progress.steps || []
           const fetchRegularStatus = stepsState.find((s) => s.key === 'fetchRegular')?.status
@@ -1035,6 +1038,11 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             tagProcessed: processed,
             tagTotal: totalDecks ?? get().progress.counters?.totalCount,
           })
+
+          if (tagsComplete || isFinalPhase) {
+            updateSteps('tags', 'done', doneMsg)
+            return
+          }
 
           if (deckPhaseInFlight) {
             // While decks are still loading, avoid switching the active step to tags.
@@ -1104,7 +1112,6 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             fusedDecks: enhancedFused,
             deckNameIndex: names.deckNameIndex,
             forgebornNameIndex: names.forgebornNameIndex,
-            loading: false,
           })
         } catch (err) {
           console.warn('[Store] Failed to parse decks-ready event:', err)
@@ -1119,7 +1126,6 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             regularPages: prevCounters.regularPages,
             fusedPages: prevCounters.fusedPages ?? (prevCounters.fusedCount ? 1 : 0),
           })
-          set({ loading: false })
         }
       })
 
@@ -1245,6 +1251,34 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         resolve()
       })
 
+      const describeReadyState = () => {
+        switch (es.readyState) {
+          case EventSource.CONNECTING:
+            return 'CONNECTING'
+          case EventSource.OPEN:
+            return 'OPEN'
+          case EventSource.CLOSED:
+            return 'CLOSED'
+          default:
+            return `UNKNOWN(${es.readyState})`
+        }
+      }
+
+      const parseErrorPayload = (event: Event) => {
+        const maybeMessage = event as MessageEvent
+        if (maybeMessage?.data) {
+          if (typeof maybeMessage.data === 'string') {
+            try {
+              return JSON.parse(maybeMessage.data)
+            } catch {
+              return maybeMessage.data
+            }
+          }
+          return maybeMessage.data
+        }
+        return null
+      }
+
       es.addEventListener('error', (event) => {
         // Ignore errors if stream already closed or progress finished
         const progressState = get().progress.status
@@ -1253,16 +1287,27 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           return
         }
 
-        console.error('[Store] SSE error event:', event)
+        const parsed = parseErrorPayload(event)
+        const readyState = describeReadyState()
+        const detail =
+          (parsed && typeof parsed === 'object' && 'message' in parsed && (parsed as any).message) ||
+          (typeof parsed === 'string' ? parsed : null)
+
+        console.error('[Store] SSE error event:', {
+          readyState,
+          type: event?.type,
+          payload: parsed,
+        })
         cleanup()
+        const userMessage = detail || 'Failed to stream decks. Please try again.'
         set({
-          error: 'Failed to stream decks. Please try again.',
+          error: userMessage,
           loading: false,
           decks: [],
           fusedDecks: [],
         })
-        finishProgress('Streaming error', 'error')
-        reject(new Error('Streaming error'))
+        finishProgress(userMessage, 'error')
+        reject(new Error(userMessage))
       })
     })
   },
