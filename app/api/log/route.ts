@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
+import { getWritableLogsDir } from '@/lib/logPaths'
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,7 +9,7 @@ export async function POST(request: NextRequest) {
     const { message, data, timestamp } = body
 
     // Create logs directory if it doesn't exist
-    const logsDir = join(process.cwd(), 'logs')
+    const logsDir = getWritableLogsDir()
     try {
       await mkdir(logsDir, { recursive: true })
     } catch (error) {
@@ -34,4 +35,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-

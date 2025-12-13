@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server'
 import { fetchFusedDecksFromAPI, getPlayerDecks, getCardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 import { logWithTimestamp } from '@/lib/logger'
+import { getWritableLogsDir } from '@/lib/logPaths'
 
 export const dynamic = 'force-dynamic'
 
@@ -147,7 +148,8 @@ export async function GET(request: NextRequest) {
   const t0 = Date.now()
   const elapsed = () => `${Date.now() - t0}ms`
 
-  const logFilePath = path.join(process.cwd(), 'logs', `deck-search-${new Date().toISOString().slice(0, 10)}.log`)
+  const logsDir = getWritableLogsDir()
+  const logFilePath = path.join(logsDir, `deck-search-${new Date().toISOString().slice(0, 10)}.log`)
   const logToFile = async (message: string) => {
     const line = `${new Date().toISOString()} [stream] player=${playerName} ${message} (elapsed=${elapsed()})\n`
     try {
