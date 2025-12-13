@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { z } from 'zod'
 import { getCardInfo, type CardInfo } from '@/lib/api'
+import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day client-side cache
 
@@ -9,6 +10,7 @@ export type DeckComputed = {
   deckSet?: string | null
   counts?: { total: number; creatures: number; spells: number; solbind: number }
   rarityCounts?: Record<string, number>
+  creatureType?: Record<string, number>
   displayTags?: string[]
 }
 
@@ -452,6 +454,15 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
   return Object.fromEntries(rarityCounts)
 }
 
+const computeCreatureTypes = (deck: Deck): Record<string, number> => {
+  try {
+    return computeCreatureTypesForDeck(deck, getCardInfoCached)
+  } catch (err) {
+    console.warn('[Store] Failed to compute creature types', err)
+    return {}
+  }
+}
+
 const buildDisplayTags = (deck: Deck): string[] => {
   const tagsToDisplay: string[] = []
   if (deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags)) {
@@ -500,14 +511,16 @@ const buildDisplayTags = (deck: Deck): string[] => {
 
 const attachComputed = (decks: Deck[]): Deck[] => {
   return decks.map((deck) => {
+    const creatureType = computeCreatureTypes(deck)
     const computed: DeckComputed = {
       expiryTs: getExpiryTimestamp(deck),
       deckSet: getDeckSetComputed(deck),
       counts: countPlayableCards(deck),
       rarityCounts: computeRarityCounts(deck),
+      creatureType,
       displayTags: buildDisplayTags(deck),
     }
-    return { ...deck, computed }
+    return { ...deck, creatureType, computed }
   })
 }
 
@@ -578,6 +591,7 @@ type DeckCacheEntry = {
   deckNameIndex?: string[]
   forgebornNameIndex?: string[]
   deckTags?: Record<string, string[]>
+  deckCreatureTypes?: Record<string, Record<string, number>>
   expiresAt: number
 }
 
@@ -639,7 +653,7 @@ const DeckSchema = z.preprocess(
 
 const DecksResponseSchema = z.array(DeckSchema)
 
-export type Deck = z.infer<typeof DeckSchema> & { computed?: DeckComputed }
+export type Deck = z.infer<typeof DeckSchema> & { computed?: DeckComputed; creatureType?: Record<string, number> }
 
 type ProgressStepKey = 'prepare' | 'fetchRegular' | 'fetchFused' | 'tags' | 'finalize'
 type ProgressStepStatus = 'pending' | 'active' | 'done' | 'error'
@@ -759,6 +773,7 @@ interface DeckStore {
   deckNameIndex: string[]
   forgebornNameIndex: string[]
   deckTags: Record<string, string[]>
+  deckCreatureTypes: Record<string, Record<string, number>>
   fetchDecks: (playerName: string, options?: { force?: boolean }) => Promise<void>
   clearDecks: () => void
 }
@@ -775,6 +790,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   deckNameIndex: [],
   forgebornNameIndex: [],
   deckTags: {},
+  deckCreatureTypes: {},
   fetchDecks: async (playerName: string, options?: { force?: boolean }) => {
     const forceRefresh = options?.force ?? false
     const normalizedName = playerName.trim()
@@ -873,20 +889,21 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     const cached = forceRefresh ? undefined : get().playerCache[normalizedPlayer]
     const now = Date.now()
     if (cached && cached.expiresAt > now) {
-      const cachedRegular = attachComputed(cached.decks)
-      const cachedFused = attachComputed(cached.fusedDecks)
-      const names = buildNameIndexes(cachedRegular, cachedFused)
-      set({
-        decks: cachedRegular,
-        fusedDecks: cachedFused,
-        loading: false,
-        error: null,
-        tagIndex: cached.tagIndex || [],
-        cardNameIndex: cached.cardNameIndex || [],
-        deckNameIndex: cached.deckNameIndex || names.deckNameIndex,
-        forgebornNameIndex: cached.forgebornNameIndex || names.forgebornNameIndex,
-        deckTags: cached.deckTags || {},
-      })
+          const cachedRegular = attachComputed(cached.decks)
+          const cachedFused = attachComputed(cached.fusedDecks)
+          const names = buildNameIndexes(cachedRegular, cachedFused)
+          set({
+            decks: cachedRegular,
+            fusedDecks: cachedFused,
+            loading: false,
+            error: null,
+            tagIndex: cached.tagIndex || [],
+            cardNameIndex: cached.cardNameIndex || [],
+            deckNameIndex: cached.deckNameIndex || names.deckNameIndex,
+            forgebornNameIndex: cached.forgebornNameIndex || names.forgebornNameIndex,
+            deckTags: cached.deckTags || {},
+            deckCreatureTypes: cached.deckCreatureTypes || {},
+          })
       setProgressCounters({
         regularCount: cachedRegular.length,
         fusedCount: cachedFused.length,
@@ -930,6 +947,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         uniqueTags?: string[]
         uniqueCardNames?: string[]
         perDeck?: Record<string, string[]>
+        perDeckCreatureTypes?: Record<string, Record<string, number>>
       } = {}
       let latestTagMessage: string | undefined
 
@@ -1019,6 +1037,10 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             uniqueTags: Array.isArray(data.uniqueTags) ? data.uniqueTags : [],
             uniqueCardNames: Array.isArray(data.uniqueCardNames) ? data.uniqueCardNames : [],
             perDeck: typeof data.perDeck === 'object' && data.perDeck !== null ? data.perDeck : {},
+            perDeckCreatureTypes:
+              typeof data.perDeckCreatureTypes === 'object' && data.perDeckCreatureTypes !== null
+                ? data.perDeckCreatureTypes
+                : tagsPayload.perDeckCreatureTypes,
           }
           setProgressCounters({
             tagCount: tagsPayload.uniqueTags?.length ?? 0,
@@ -1148,6 +1170,10 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
               uniqueTags: Array.isArray(data.tags.uniqueTags) ? data.tags.uniqueTags : tagsPayload.uniqueTags,
               uniqueCardNames: Array.isArray(data.tags.uniqueCardNames) ? data.tags.uniqueCardNames : tagsPayload.uniqueCardNames,
               perDeck: typeof data.tags.perDeck === 'object' && data.tags.perDeck !== null ? data.tags.perDeck : tagsPayload.perDeck,
+              perDeckCreatureTypes:
+                typeof data.tags.perDeckCreatureTypes === 'object' && data.tags.perDeckCreatureTypes !== null
+                  ? data.tags.perDeckCreatureTypes
+                  : tagsPayload.perDeckCreatureTypes,
             }
           }
         } catch (err) {
@@ -1200,6 +1226,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             deckNameIndex: names.deckNameIndex,
             forgebornNameIndex: names.forgebornNameIndex,
             deckTags: tagsPayload.perDeck || {},
+            deckCreatureTypes: tagsPayload.perDeckCreatureTypes || {},
             playerCache: {
               ...state.playerCache,
               [normalizedPlayer]: {
@@ -1210,6 +1237,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
                 deckNameIndex: names.deckNameIndex,
                 forgebornNameIndex: names.forgebornNameIndex,
                 deckTags: tagsPayload.perDeck || {},
+                deckCreatureTypes: tagsPayload.perDeckCreatureTypes || {},
                 expiresAt: Date.now() + CACHE_TTL_MS,
               },
             },
@@ -1230,6 +1258,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
               deckNameIndex: names.deckNameIndex,
               forgebornNameIndex: names.forgebornNameIndex,
               deckTags: tagsPayload.perDeck || {},
+              deckCreatureTypes: tagsPayload.perDeckCreatureTypes || {},
               playerCache: {
                 ...state.playerCache,
                 [normalizedPlayer]: {
@@ -1240,6 +1269,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
                   deckNameIndex: names.deckNameIndex,
                   forgebornNameIndex: names.forgebornNameIndex,
                   deckTags: tagsPayload.perDeck || {},
+                  deckCreatureTypes: tagsPayload.perDeckCreatureTypes || {},
                   expiresAt: Date.now() + CACHE_TTL_MS,
                 },
               },
@@ -1319,5 +1349,16 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       })
     })
   },
-  clearDecks: () => set({ decks: [], fusedDecks: [], error: null, progress: createIdleProgress(), tagIndex: [], cardNameIndex: [], deckNameIndex: [], forgebornNameIndex: [], deckTags: {} }),
+  clearDecks: () => set({
+    decks: [],
+    fusedDecks: [],
+    error: null,
+    progress: createIdleProgress(),
+    tagIndex: [],
+    cardNameIndex: [],
+    deckNameIndex: [],
+    forgebornNameIndex: [],
+    deckTags: {},
+    deckCreatureTypes: {},
+  }),
 }))

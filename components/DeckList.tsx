@@ -8,11 +8,53 @@ import { useDebouncedValue, useResizeObserver } from '@mantine/hooks'
 import type { Deck } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo } from '@/lib/api'
+import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
+
+type CreatureTypeMap = Record<string, number>
+
+const buildCreatureTypeEntries = (
+  deck: Deck,
+  options: { deckCreatureTypesMap?: Record<string, CreatureTypeMap>; fallbackCards?: any[] } = {}
+) => {
+  let creatureMap: CreatureTypeMap | undefined =
+    (deck.computed?.creatureType as CreatureTypeMap | undefined) ||
+    ((deck as any).creatureType as CreatureTypeMap | undefined)
+
+  if (!creatureMap && options.deckCreatureTypesMap && deck.id) {
+    creatureMap = options.deckCreatureTypesMap[deck.id]
+  }
+
+  if (!creatureMap) {
+    try {
+      creatureMap = computeCreatureTypesForDeck(deck)
+    } catch (err) {
+      console.warn('[DeckList] creatureType fallback failed', err)
+    }
+  }
+
+  if ((!creatureMap || Object.keys(creatureMap).length === 0) && options.fallbackCards) {
+    try {
+      creatureMap = computeCreatureTypesForDeck({ cards: options.fallbackCards })
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!creatureMap || typeof creatureMap !== 'object') return []
+
+  return Object.entries(creatureMap)
+    .filter(([, count]) => Number(count) > 0)
+    .sort((a, b) => {
+      const diff = Number(b[1]) - Number(a[1])
+      if (diff !== 0) return diff
+      return a[0].localeCompare(b[0])
+    })
+}
 
 // Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", etc.
 function formatSetName(setNo: string | number | null | undefined): string | null {
   if (!setNo) return null
-  
+
   const setStr = String(setNo).trim()
   
   // If it's already B1 or b1, return as B1
@@ -506,9 +548,11 @@ function getDisplayCounts(deck: Deck): { total: number; creatures: number; spell
 // Shared deck card renderers (used by virtualized rows)
 const RegularDeckCard = memo(function RegularDeckCard({
   deck,
+  deckCreatureTypesMap,
   handleDeckClick,
 }: {
   deck: Deck
+  deckCreatureTypesMap?: Record<string, CreatureTypeMap>
   handleDeckClick: (deck: Deck) => void
 }) {
   const [renderNow] = useState(() => Date.now())
@@ -517,6 +561,10 @@ const RegularDeckCard = memo(function RegularDeckCard({
   const expiryTs = getExpiryTimestamp(deck)
   const isExpired = expiryTs !== null && expiryTs < renderNow
   const { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
+  const creatureTypeEntries = useMemo(
+    () => buildCreatureTypeEntries(deck, { deckCreatureTypesMap }),
+    [deck, deckCreatureTypesMap]
+  )
 
   return (
     <Grid.Col key={deck.id} span={{ base: 12, sm: 6, md: 4 }}>
@@ -794,6 +842,19 @@ const RegularDeckCard = memo(function RegularDeckCard({
               </Group>
             )
           })()}
+
+          {creatureTypeEntries.length > 0 && (
+            <Group gap="xs" className="mt-1 flex-wrap">
+              {creatureTypeEntries.map(([type, count]) => {
+                const pretty = type.charAt(0).toUpperCase() + type.slice(1)
+                return (
+                  <Badge key={`${deck.id}-ctype-${type}`} color="grape" variant="outline" size="sm">
+                    {`${pretty} ${count}`}
+                  </Badge>
+                )
+              })}
+            </Group>
+          )}
         </Stack>
       </Paper>
     </Grid.Col>
@@ -807,6 +868,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
   deckTagsMap,
   allDecks,
   fusedExpiryResolver,
+  deckCreatureTypesMap,
 }: {
   deck: Deck
   sourceDecks?: [Deck | null, Deck | null]
@@ -820,6 +882,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
     minExpiredDate: string | null
     minExpiringDate: string | null
   }
+  deckCreatureTypesMap?: Record<string, CreatureTypeMap>
 }) {
   const [renderNow] = useState(() => Date.now())
   const fusedDeckAny = deck as any
@@ -977,6 +1040,10 @@ const FusedDeckCard = memo(function FusedDeckCard({
 
   // Memoize aggregated cards to avoid recomputation across derived calculations
   const aggregatedCards = useMemo(() => aggregateCards(), [aggregateCards])
+  const creatureTypeEntries = useMemo(
+    () => buildCreatureTypeEntries(deck, { deckCreatureTypesMap, fallbackCards: aggregatedCards }),
+    [deck, deckCreatureTypesMap, aggregatedCards]
+  )
 
   const fusedSetLabels = useMemo(() => {
     const setLabels = new Set<string>()
@@ -1400,6 +1467,22 @@ const FusedDeckCard = memo(function FusedDeckCard({
               </Group>
             )
           })()}
+
+          {(() => {
+            if (creatureTypeEntries.length === 0) return null
+            return (
+              <Group gap="xs" className="mt-1 flex-wrap">
+                {creatureTypeEntries.map(([type, count]) => {
+                  const pretty = type.charAt(0).toUpperCase() + type.slice(1)
+                  return (
+                    <Badge key={`${deck.id}-ctype-${type}`} color="grape" variant="outline" size="sm">
+                      {`${pretty} ${count}`}
+                    </Badge>
+                  )
+                })}
+              </Group>
+            )
+          })()}
         </Stack>
       </Paper>
     </Grid.Col>
@@ -1414,6 +1497,7 @@ interface DeckListProps {
   precomputedDeckNames?: string[]
   precomputedForgebornNames?: string[]
   deckTagsMap?: Record<string, string[]>
+  deckCreatureTypesMap?: Record<string, CreatureTypeMap>
 }
 
 interface FilterState {
@@ -1431,6 +1515,7 @@ interface FilterState {
   freeCreaturesOperator: '>=' | '<=' | '='
   freeCreaturesValue: number | null
   creatureType: string
+  creatureTypeOperator: '>=' | '<=' | '='
   creatureTypeCount: number | null
   spellsOperator: '>=' | '<=' | '='
   spellsValue: number | null
@@ -1448,7 +1533,7 @@ interface FilterState {
 
 type ViewMode = 'decks' | 'fused'
 
-export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {} }: DeckListProps) {
+export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {}, deckCreatureTypesMap = {} }: DeckListProps) {
   const PAGE_SIZE = 300
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null)
   const [detailsOpened, setDetailsOpened] = useState(false)
@@ -1473,6 +1558,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     freeCreaturesOperator: '>=',
     freeCreaturesValue: null,
     creatureType: '',
+    creatureTypeOperator: '>=',
     creatureTypeCount: null,
     spellsOperator: '>=',
     spellsValue: null,
@@ -1686,70 +1772,37 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   }, [decks, fusedDecks, precomputedTags])
   
   // Collect all unique creature types from all decks for the dropdown with counts
-  const allCreatureTypes = useMemo(() => {
-    const creatureTypesMap = new Map<string, number>() // type -> count of cards with this type
-    
-    // Process both regular decks and fused decks
+  const creatureTypeIndex = useMemo(() => {
+    const counts = new Map<string, number>()
     const allDecks = [...decks, ...fusedDecks]
-    
+
     allDecks.forEach(deck => {
-      if (!deck.cards || !Array.isArray(deck.cards)) return
-      
-      // Normalize cards
-      const normalizedCards = deck.cards.map((card: any, index: number) => {
-        if (typeof card === 'string') {
-          return getCardInfo(card)
-        } else if (typeof card === 'object' && card !== null) {
-          const cardId = card.id || card.cardId || card.name || `card-${index}`
-          return getCardInfo(cardId, card)
-        }
-        return getCardInfo(`card-${index}`)
-      })
-      
-      normalizedCards.forEach(card => {
-        const cardData = card as any
-        const name = card.name?.toLowerCase() || ''
-        
-        // Check if it's a creature (not a spell) - use ONLY cardType
-        const originalCardForType = deck.cards && Array.isArray(deck.cards)
-          ? deck.cards.find((c: any, idx: number) => {
-              if (typeof c === 'string') {
-                return c === card.id
-              }
-              const cId = c?.id || c?.cardId || c?.name || `card-${idx}`
-              return cId === card.id
-            })
-          : null
-        const originalCardType = originalCardForType && typeof originalCardForType === 'object'
-          ? (originalCardForType.cardType || originalCardForType.card_type || '')
-          : ''
-        const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
-        const lowerCardType = cardType.toLowerCase()
-        const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
-        
-        if (!isSpell) {
-          // It's a creature - collect types from cardSubType
-          // cardSubType can contain multiple types separated by spaces, e.g., "Beast Warrior"
-          const subType = cardData.cardSubType || cardData.CardSubType || cardData.CARDSUBTYPE || 
-                          cardData.SubType || cardData.subType || cardData.SUBTYPE
-          if (subType && typeof subType === 'string' && subType.trim()) {
-            // Split by spaces and add each word as a separate type
-            const types = subType.trim().split(/\s+/).filter(t => t.length > 0)
-            types.forEach(type => {
-              // Capitalize first letter for consistency
-              const capitalized = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase()
-              
-              // Count each card with this type (increment for each card)
-              creatureTypesMap.set(capitalized, (creatureTypesMap.get(capitalized) || 0) + 1)
-            })
-          }
-        }
+      const map =
+        (deck.computed?.creatureType as Record<string, number> | undefined) ||
+        ((deck as any).creatureType as Record<string, number> | undefined) ||
+        computeCreatureTypesForDeck(deck)
+      if (!map || typeof map !== 'object') return
+      Object.entries(map).forEach(([type, value]) => {
+        if (!type) return
+        const key = type.toLowerCase()
+        const valNum = typeof value === 'number' ? value : Number(value)
+        if (Number.isNaN(valNum)) return
+        counts.set(key, (counts.get(key) || 0) + valNum)
       })
     })
-    
-    // Return sorted array of unique types
-    return Array.from(creatureTypesMap.keys()).sort()
+
+    return counts
   }, [decks, fusedDecks])
+
+  const allCreatureTypes = useMemo(() => {
+    return Array.from(creatureTypeIndex.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([type, count]) => ({
+        value: type,
+        label: `${type.charAt(0).toUpperCase() + type.slice(1)} (${count})`,
+        count,
+      }))
+  }, [creatureTypeIndex])
   
   // Collect all unique spell types from all decks for the dropdown (Sub Type only)
   const allSpellTypes = useMemo(() => {
@@ -1902,6 +1955,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       freeCreaturesOperator: '>=' as const,
       freeCreaturesValue: null,
       creatureType: '',
+      creatureTypeOperator: '>=' as const,
       creatureTypeCount: null,
       spellsOperator: '>=' as const,
       spellsValue: null,
@@ -1932,6 +1986,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       debouncedFilters.creaturesValue !== null ||
       debouncedFilters.freeCreaturesValue !== null ||
       debouncedFilters.creatureType ||
+      debouncedFilters.creatureTypeCount !== null ||
       (debouncedFilters.spellType && debouncedFilters.spellTypeCount !== null) ||
       debouncedFilters.deckName ||
       debouncedFilters.cardSetNo.length > 0 ||
@@ -2558,103 +2613,33 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         }
       }
       
-      // Filter by creature type (Sub Type only)
+      // Filter by creature type (Sub Type only, using precomputed counts)
       if (debouncedFilters.creatureType) {
-        // Identify Forgeborn and Solbind cards (same logic as above)
-        const forgebornId = deck.forgebornId
-        const forgebornCardsForType: any[] = []
-        if (forgebornId) {
-          const fb = normalizedCards.find(card => 
-            card.id === forgebornId || 
-            (card.id && forgebornId && card.id.includes(forgebornId)) ||
-            (forgebornId && card.id && forgebornId.includes(card.id))
-          )
-          if (fb) forgebornCardsForType.push(fb)
+        const selectedType = debouncedFilters.creatureType.toLowerCase()
+        const creatureTypesMap =
+          (deck.computed?.creatureType as Record<string, number> | undefined) ||
+          ((deck as any).creatureType as Record<string, number> | undefined) ||
+          computeCreatureTypesForDeck(deck)
+
+        const typeCount = creatureTypesMap?.[selectedType] ?? 0
+        const required = debouncedFilters.creatureTypeCount ?? 1
+        const operator = debouncedFilters.creatureTypeOperator || '>='
+
+        let matches = false
+        switch (operator) {
+          case '<=':
+            matches = typeCount <= required
+            break
+          case '=':
+            matches = typeCount === required
+            break
+          case '>=':
+          default:
+            matches = typeCount >= required
+            break
         }
-        if (forgebornCardsForType.length === 0) {
-          const fb = normalizedCards.find(card =>
-            card.type?.toLowerCase().includes('forgeborn') ||
-            (card as any).cardType?.toLowerCase().includes('forgeborn')
-          )
-          if (fb) forgebornCardsForType.push(fb)
-        }
-        
-        // Extract Solbind card IDs
-        const solbindCardIdsForType = new Set<string>()
-        normalizedCards.forEach(card => {
-          const cardData = card as any
-          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-            cardData.solbindCards.forEach((solbindCard: any) => {
-              if (solbindCard && solbindCard.id) {
-                solbindCardIdsForType.add(solbindCard.id)
-              }
-            })
-          }
-        })
-        const solbindCardObjectsForType: any[] = []
-        normalizedCards.forEach(card => {
-          if (forgebornCardsForType.includes(card)) return
-          const cardData = card as any
-          const cardId = card.id
-          if (solbindCardIdsForType.has(cardId)) {
-            if (!solbindCardObjectsForType.some((sb: any) => sb.id === cardId)) {
-              solbindCardObjectsForType.push(card)
-            }
-            return
-          }
-          if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
-            if (!solbindCardObjectsForType.some((sb: any) => sb.id === cardId)) {
-              solbindCardObjectsForType.push(card)
-            }
-          }
-        })
-        
-        const selectedType = debouncedFilters.creatureType
-        const selectedTypeLower = selectedType.toLowerCase()
-        let creatureTypeCount = 0
-        
-        normalizedCards.forEach(card => {
-          // Skip Forgeborn and Solbind
-          if (forgebornCardsForType.includes(card)) return
-          
-          const cardData = card as any
-          const isSolbindCard = solbindCardObjectsForType.some((sb: any) => sb.id === card.id)
-          if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
-            return
-          }
-          
-          // Check if it's a creature (not a spell) - use ONLY cardType
-          const originalCardForType = deck.cards && Array.isArray(deck.cards)
-            ? deck.cards.find((c: any) => {
-                const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
-                return cId === card.id
-              })
-            : null
-          const originalCardType = originalCardForType && typeof originalCardForType === 'object'
-            ? (originalCardForType.cardType || originalCardForType.card_type || '')
-            : ''
-          const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
-          const lowerCardType = cardType.toLowerCase()
-          const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
-          
-          if (!isSpell) {
-            // It's a creature - check if cardSubType contains the selected type
-            const subType = (cardData.cardSubType || cardData.CardSubType || cardData.CARDSUBTYPE ||
-                            cardData.SubType || cardData.subType || cardData.SUBTYPE || '').toString()
-            if (subType) {
-              // Split cardSubType by spaces and check if any word exactly matches the selected type
-              // Example: "Beast Warrior" -> ["beast", "warrior"]
-              // If selected type is "Beast", it should match "beast" exactly
-              const types = subType.toLowerCase().split(/\s+/).filter((t: string) => t.length > 0)
-              if (types.some((type: string) => type === selectedTypeLower)) {
-                creatureTypeCount++
-              }
-            }
-          }
-        })
-        
-        // Check if deck has at least the required number of cards with this type
-        if (creatureTypeCount < debouncedFilters.creatureTypeCount!) {
+
+        if (!matches) {
           return false
         }
       }
@@ -3653,13 +3638,16 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     <Select
                       label="Creature Type"
                       placeholder={allCreatureTypes.length > 0 ? "Select creature type..." : "No types available"}
-                      data={allCreatureTypes.map(type => ({ value: type, label: type }))}
+                      data={allCreatureTypes.map(type => ({ value: type.value, label: type.label }))}
                       value={filters.creatureType || null}
-                      onChange={(value) => setFilters({ 
-                        ...filters, 
-                        creatureType: value || '',
-                        creatureTypeCount: value ? 1 : null // Set default value to 1 when type is selected
-                      })}
+                      onChange={(value) =>
+                        setFilters(prev => ({
+                          ...prev,
+                          creatureType: value || '',
+                          creatureTypeCount: value ? (prev.creatureTypeCount ?? 1) : null, // Default to 1 when type is selected
+                          creatureTypeOperator: value ? prev.creatureTypeOperator : '>=',
+                        }))
+                      }
                       clearable
                       searchable
                       disabled={allCreatureTypes.length === 0}
@@ -3671,8 +3659,31 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         option: { color: 'white' }
                       }}
                     />
+                    <Select
+                      label="Op"
+                      data={[
+                        { value: '>=', label: '>=' },
+                        { value: '=', label: '=' },
+                        { value: '<=', label: '<=' },
+                      ]}
+                      value={filters.creatureTypeOperator}
+                      onChange={(value) =>
+                        setFilters(prev => ({
+                          ...prev,
+                          creatureTypeOperator: (value as '>=' | '<=' | '=') || '>=',
+                        }))
+                      }
+                      disabled={!filters.creatureType}
+                      w={90}
+                      styles={{
+                        label: { color: 'white' },
+                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                        dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                        option: { color: 'white' },
+                      }}
+                    />
                     <NumberInput
-                      placeholder="Min count"
+                      placeholder="Count"
                       value={filters.creatureTypeCount ?? ''}
                       onChange={(value) =>
                         setFilters(prev => ({
@@ -3681,6 +3692,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         }))
                       }
                       min={0}
+                      disabled={!filters.creatureType}
                       rightSection={filters.creatureTypeCount !== null ? (
                         <button
                           type="button"
@@ -4259,7 +4271,12 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     <div key={`regular-row-${idx}`} style={{ paddingBottom: '16px' }}>
                       <Grid gutter="md">
                         {rowDecks.map((deck) => (
-                          <RegularDeckCard key={deck.id} deck={deck} handleDeckClick={handleDeckClick} />
+                          <RegularDeckCard
+                            key={deck.id}
+                            deck={deck}
+                            handleDeckClick={handleDeckClick}
+                            deckCreatureTypesMap={deckCreatureTypesMap}
+                          />
                         ))}
                       </Grid>
                     </div>
@@ -4367,6 +4384,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               deckTagsMap={deckTagsMap}
                               allDecks={[...decks, ...fusedDecks]}
                               fusedExpiryResolver={getFusedDeckExpiryStatus}
+                              deckCreatureTypesMap={deckCreatureTypesMap}
                             />
                           )
                         })}

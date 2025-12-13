@@ -2,6 +2,7 @@ import { appendFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { NextRequest } from 'next/server'
 import { fetchFusedDecksFromAPI, getPlayerDecks, getCardInfo } from '@/lib/api'
+import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 import { logWithTimestamp } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -76,10 +77,21 @@ const collectTags = (deck: any): string[] => {
   return Array.from(tagsSet)
 }
 
+const addCreatureTypes = (deck: any) => {
+  try {
+    const creatureType = computeCreatureTypesForDeck(deck, getCardInfo)
+    return { ...deck, creatureType }
+  } catch (err) {
+    console.warn('[API /decks/stream] Failed to compute creature types', err)
+    return deck
+  }
+}
+
 const buildTagPayload = (decks: any[], fused: any[]) => {
   const uniqueTags = new Set<string>()
   const uniqueCardNames = new Set<string>()
   const perDeck: Record<string, string[]> = {}
+  const perDeckCreatureTypes: Record<string, Record<string, number>> = {}
   const allDecks = [...decks, ...fused]
 
   allDecks.forEach((deck) => {
@@ -87,6 +99,14 @@ const buildTagPayload = (decks: any[], fused: any[]) => {
     deckTags.forEach((t) => uniqueTags.add(t))
     if (deck.id) {
       perDeck[deck.id] = deckTags
+      const ctype =
+        (deck as any).creatureType &&
+        typeof (deck as any).creatureType === 'object'
+          ? (deck as any).creatureType
+          : computeCreatureTypesForDeck(deck, getCardInfo)
+      if (ctype && typeof ctype === 'object') {
+        perDeckCreatureTypes[deck.id] = ctype
+      }
     }
 
     if (deck.cards && Array.isArray(deck.cards)) {
@@ -112,6 +132,7 @@ const buildTagPayload = (decks: any[], fused: any[]) => {
     uniqueTags: Array.from(uniqueTags).sort(),
     uniqueCardNames: Array.from(uniqueCardNames).sort(),
     perDeck,
+    perDeckCreatureTypes,
   }
 }
 
@@ -151,17 +172,18 @@ export async function GET(request: NextRequest) {
     uniqueTags: new Set<string>(),
     uniqueCardNames: new Set<string>(),
     perDeck: {} as Record<string, string[]>,
+    perDeckCreatureTypes: {} as Record<string, Record<string, number>>,
     seenDecks: new Set<string>(),
     queue: Promise.resolve(),
     processedDecks: 0,
     totalDecks: undefined as number | undefined,
   }
 
-  const processDeckBatch = async (
-    controller: ReadableStreamDefaultController<Uint8Array>,
-    decks: any[],
-    includePerDeck: boolean,
-    countProgress: boolean = true
+const processDeckBatch = async (
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  decks: any[],
+  includePerDeck: boolean,
+  countProgress: boolean = true
   ) => {
     const batchSize = 25
     for (let i = 0; i < decks.length; i += batchSize) {
@@ -183,6 +205,13 @@ export async function GET(request: NextRequest) {
         const deckTags = collectTags(deck)
         if (includePerDeck && id) {
           tagState.perDeck[id] = deckTags
+          const creatureTypes =
+            (deck as any).creatureType && typeof (deck as any).creatureType === 'object'
+              ? (deck as any).creatureType
+              : computeCreatureTypesForDeck(deck, getCardInfo)
+          if (creatureTypes && typeof creatureTypes === 'object') {
+            tagState.perDeckCreatureTypes[id] = creatureTypes
+          }
         }
         deckTags.forEach((t) => tagState.uniqueTags.add(t))
 
@@ -291,21 +320,23 @@ export async function GET(request: NextRequest) {
           force,
         })
 
+        const regularWithTypes = Array.isArray(regular) ? regular.map(addCreatureTypes) : []
+
         meta = fetchedMeta
         if (!meta) {
           throw new Error('Missing metadata from getPlayerDecks')
         }
 
-        logStage(`regular fetch done count=${regular.length} pages=${meta.pages ?? meta.regularPages ?? 1}`)
+        logStage(`regular fetch done count=${regularWithTypes.length} pages=${meta.pages ?? meta.regularPages ?? 1}`)
 
-        tagState.totalDecks = regular?.length || 0
+        tagState.totalDecks = regularWithTypes.length
         writeEvent(controller, 'regular-complete', {
-          regularCount: regular.length,
+          regularCount: regularWithTypes.length,
           regularPages: meta.pages ?? meta.regularPages ?? 1,
         })
 
         // Start preparing tags from regular decks while fused decks are loading (non-blocking)
-        enqueueTags(regular, {
+        enqueueTags(regularWithTypes, {
           includePerDeck: true,
           onDone: () => {
             writeEvent(controller, 'tags', {
@@ -346,21 +377,22 @@ export async function GET(request: NextRequest) {
           },
         }).then((result) => {
           fusedProgress({ totalSoFar: result.length })
-          tagState.totalDecks = (regular?.length || 0) + result.length
-          enqueueTags(result, {
+          const fusedWithTypes = Array.isArray(result) ? result.map(addCreatureTypes) : []
+          tagState.totalDecks = (regularWithTypes?.length || 0) + fusedWithTypes.length
+          enqueueTags(fusedWithTypes, {
             includePerDeck: true,
           })
           writeEvent(controller, 'fused-complete', {
-            fusedCount: result.length,
-            fusedPages: result.length > 0 ? 1 : 0,
+            fusedCount: fusedWithTypes.length,
+            fusedPages: fusedWithTypes.length > 0 ? 1 : 0,
           })
-          logStage(`fused fetch done count=${result.length}`)
-          return result
+          logStage(`fused fetch done count=${fusedWithTypes.length}`)
+          return fusedWithTypes
         })
 
         // Send decks immediately so fetch step can complete on client
         writeEvent(controller, 'decks-ready', {
-          regular,
+          regular: regularWithTypes,
           fused,
           meta: {
             ...meta,
@@ -378,6 +410,7 @@ export async function GET(request: NextRequest) {
           uniqueTags: Array.from(tagState.uniqueTags).sort(),
           uniqueCardNames: Array.from(tagState.uniqueCardNames).sort(),
           perDeck: tagState.perDeck,
+          perDeckCreatureTypes: tagState.perDeckCreatureTypes,
         }
         writeEvent(controller, 'tags', { ...tagPayload, phase: 'final' })
         logStage(`tag aggregation done tags=${tagPayload.uniqueTags.length} cards=${tagPayload.uniqueCardNames.length}`)
