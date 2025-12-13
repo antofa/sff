@@ -9,6 +9,45 @@ import type { Deck } from '@/store/deckStore'
 import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForgebornAlternativeUrl, type CardInfo } from '@/lib/api'
 import { logWithTimestamp } from '@/lib/logger'
 import { pluralize } from '@/lib/pluralize'
+import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
+
+type CreatureTypeMap = Record<string, number>
+
+const buildCreatureTypeEntries = (
+  deckLike: any,
+  options: { fallbackCards?: any[] } = {}
+) => {
+  if (!deckLike) return []
+  let creatureMap: CreatureTypeMap | undefined =
+    (deckLike.computed?.creatureType as CreatureTypeMap | undefined) ||
+    ((deckLike as any).creatureType as CreatureTypeMap | undefined)
+
+  if (!creatureMap) {
+    try {
+      creatureMap = computeCreatureTypesForDeck(deckLike)
+    } catch (err) {
+      console.warn('[DeckDetails] creatureType fallback failed', err)
+    }
+  }
+
+  if ((!creatureMap || Object.keys(creatureMap).length === 0) && options.fallbackCards) {
+    try {
+      creatureMap = computeCreatureTypesForDeck({ cards: options.fallbackCards })
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!creatureMap || typeof creatureMap !== 'object') return []
+
+  return Object.entries(creatureMap)
+    .filter(([, count]) => Number(count) > 0)
+    .sort((a, b) => {
+      const diff = Number(b[1]) - Number(a[1])
+      if (diff !== 0) return diff
+      return a[0].localeCompare(b[0])
+    })
+}
 
 // Fetch full deck details directly from API (faster than going through API route)
 async function fetchDeckDetails(deckId: string): Promise<any> {
@@ -1219,6 +1258,105 @@ const originalCardMeta = useMemo(() => {
 
     return summary
   }, [uniqueNormalizedCards, solbindCardIdsSet])
+
+  const deckCounts = useMemo(() => {
+    if (deck?.computed?.counts) return deck.computed.counts
+    let creatures = 0
+    let spells = 0
+    let solbind = 0
+    const solbindIds = new Set<string>()
+
+    uniqueNormalizedCards.forEach((card, idx) => {
+      const cardData = card as any
+      const cardTypeRaw = (cardData.cardType || cardData.card_type || '').toLowerCase()
+      const typeRaw = (cardData.type || '').toLowerCase()
+      const isForgeborn = cardTypeRaw.includes('forgeborn') || typeRaw.includes('forgeborn')
+      if (isForgeborn) return
+
+      const isParentSolbind =
+        Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0
+      const isSpell = cardTypeRaw.includes('spell') && !cardTypeRaw.includes('creature')
+      const isSolbind =
+        !isParentSolbind &&
+        cardData.rarity &&
+        String(cardData.rarity).toLowerCase().includes('solbind')
+
+      if (isParentSolbind) {
+        if (isSpell) spells += 1
+        else creatures += 1
+        cardData.solbindCards.forEach((sb: any, sbIdx: number) => {
+          const sid = sb?.id || sb?.cardId || sb?.name || `solbind-${cardData.id || idx}-${sbIdx}`
+          if (sid) solbindIds.add(sid)
+        })
+        return
+      }
+
+      if (isSolbind) {
+        const sid = cardData.id || cardData.cardId || cardData.name || `solbind-${idx}`
+        solbindIds.add(sid)
+        return
+      }
+
+      if (isSpell) spells += 1
+      else creatures += 1
+    })
+
+    if ((deck as any)?.forgeborn?.solbindCards && Array.isArray((deck as any).forgeborn.solbindCards)) {
+      (deck as any).forgeborn.solbindCards.forEach((sb: any, idx: number) => {
+        const sid = sb?.id || sb?.cardId || sb?.name || `solbind-forgeborn-${idx}`
+        if (sid) solbindIds.add(sid)
+      })
+    }
+
+    solbind = solbindIds.size
+    if (solbind === 1) solbind = 2
+
+    return { total: creatures + spells + solbind, creatures, spells, solbind }
+  }, [deck, uniqueNormalizedCards])
+
+  const deckTags = useMemo(() => {
+    const tagSet = new Set<string>()
+    const deckAny = (fullDeckData || deck) as any
+
+    if (deckAny?.tags && typeof deckAny.tags === 'object' && !Array.isArray(deckAny.tags)) {
+      Object.entries(deckAny.tags).forEach(([key, value]) => {
+        if (value === null || value === undefined || value === '') return
+        if (typeof value === 'string' && value.trim()) tagSet.add(value.trim())
+        else if (typeof value === 'number' || typeof value === 'boolean') tagSet.add(String(value))
+        else if (key && key !== 'none' && !key.startsWith('tag_')) tagSet.add(key)
+      })
+    }
+
+    if (tagSet.size === 0) {
+      uniqueNormalizedCards.forEach((card: any) => {
+        if (card && typeof card === 'object') {
+          const provides = card.provides || card.Provides
+          if (provides) {
+            if (typeof provides === 'string') {
+              provides.split(',').forEach((p: string) => {
+                const trimmed = p.trim()
+                if (trimmed) tagSet.add(trimmed)
+              })
+            } else if (Array.isArray(provides)) {
+              provides.forEach((p: string) => {
+                if (p && typeof p === 'string') {
+                  const trimmed = p.trim()
+                  if (trimmed) tagSet.add(trimmed)
+                }
+              })
+            }
+          }
+        }
+      })
+    }
+
+    return Array.from(tagSet)
+  }, [deck, fullDeckData, uniqueNormalizedCards])
+
+  const creatureTypeEntries = useMemo(
+    () => buildCreatureTypeEntries(fullDeckData || deck, { fallbackCards: uniqueNormalizedCards }),
+    [fullDeckData, deck, uniqueNormalizedCards]
+  )
 
   // Helper function to load images in parallel with a concurrency limit
   const loadImagesInParallel = async (
@@ -3784,8 +3922,8 @@ const originalCardMeta = useMemo(() => {
                 className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
                 style={{ 
                   backgroundColor: 'rgba(30, 41, 59, 0.6)',
-                  minHeight: '60vh',
-                  maxHeight: '70vh',
+                  minHeight: '42vh',
+                  maxHeight: '52vh',
                   width: 'min(60vw, 900px)',
                   minWidth: '520px',
                   display: 'flex',
@@ -3823,20 +3961,26 @@ const originalCardMeta = useMemo(() => {
                     const hasAllLevels = availableLevels.length === 3 && availableLevels.includes(1) && availableLevels.includes(2) && availableLevels.includes(3)
                     const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
                     
-                    const frameWidthPx = 340
-                    const frameHeightPx = 510
+                    const baseFrameWidthPx = 288
+                    const baseFrameHeightPx = 423
+                    const frameWidthPx = baseFrameWidthPx
+                    const frameHeightPx = baseFrameHeightPx
+                    const forgebornScale = isForgeborn ? 1.2 : 1
 
                     const imageKey = effectiveImageUrl ? `${selectedCard.id}-${effectiveLevel}-${effectiveImageUrl}` : ''
                     const isImageReady = !!(imageKey && imageLoadStatus[imageKey])
 
                     return !hasError ? (
-                      <div className="relative w-full flex flex-col items-center justify-center gap-4">
+                      <div
+                        className="relative w-full flex flex-col items-center justify-center"
+                        style={{ gap: '0.35rem' }}
+                      >
                         <div
-                          className="relative w-full flex items-center justify-center"
-                          style={{
-                            width: `min(${frameWidthPx}px, 70vw)`,
-                            height: `min(${frameHeightPx}px, 70vh)`,
-                          }}
+                        className="relative w-full flex items-center justify-center"
+                        style={{
+                          width: `min(${frameWidthPx}px, 70vw)`,
+                          height: `min(${frameHeightPx}px, 70vh)`,
+                        }}
                         >
                           {effectiveImageUrl && (
                             <NextImage
@@ -3848,7 +3992,8 @@ const originalCardMeta = useMemo(() => {
                               className="object-contain"
                               sizes="(max-width: 1024px) 80vw, 420px"
                               style={{
-                                transform: isForgeborn ? 'rotate(-90deg)' : 'none',
+                                transform: isForgeborn ? `rotate(-90deg) scale(${forgebornScale})` : 'none',
+                                transformOrigin: 'center center',
                                 opacity: isImageReady ? 1 : 0,
                                 transition: 'opacity 120ms ease',
                               }}
@@ -3932,6 +4077,76 @@ const originalCardMeta = useMemo(() => {
                     )
                   })()}
                   </div>
+              </Paper>
+
+              <Paper
+                p="md"
+                className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
+                style={{
+                  backgroundColor: 'rgba(30, 41, 59, 0.6)',
+                  width: 'min(60vw, 900px)',
+                  minWidth: '520px',
+                  boxSizing: 'border-box',
+                }}
+              >
+                <Stack gap="xs">
+                  <Group gap="xs" wrap="wrap">
+                    {deckCounts.creatures ? (
+                      <Badge color="green" variant="light" size="sm">
+                        {pluralize(deckCounts.creatures, 'Creature')}
+                      </Badge>
+                    ) : null}
+                    {deckCounts.spells ? (
+                      <Badge color="pink" variant="light" size="sm">
+                        {pluralize(deckCounts.spells, 'Spell')}
+                      </Badge>
+                    ) : null}
+                    {deckCounts.solbind ? (
+                      <Badge color="orange" variant="light" size="sm">
+                        {pluralize(deckCounts.solbind, 'Solbind')}
+                      </Badge>
+                    ) : null}
+                    {Array.from(raritySummary.entries())
+                      .sort(([a], [b]) => {
+                        const order: Record<string, number> = {
+                          Solbind: 0,
+                          Common: 1,
+                          'Common Rare': 2,
+                          Rare: 3,
+                          LS: 4,
+                        }
+                        return (order[a] ?? 99) - (order[b] ?? 99)
+                      })
+                      .map(([rarity, count]) => (
+                        <Badge key={`rarity-${rarity}`} variant="light" size="sm">
+                          {pluralize(count, rarity)}
+                        </Badge>
+                      ))}
+                  </Group>
+
+                  {deckTags.length > 0 && (
+                    <Group gap="xs" className="flex-wrap">
+                      {deckTags.map((tag) => (
+                        <Badge key={`tag-${tag}`} color="violet" variant="light" size="sm">
+                          {tag.toString().toUpperCase()}
+                        </Badge>
+                      ))}
+                    </Group>
+                  )}
+
+                  {creatureTypeEntries.length > 0 && (
+                    <Group gap="xs" className="flex-wrap">
+                      {creatureTypeEntries.map(([type, count]) => {
+                        const pretty = type.charAt(0).toUpperCase() + type.slice(1)
+                        return (
+                          <Badge key={`ctype-${type}`} color="grape" variant="outline" size="sm">
+                            {`${pretty} ${count}`}
+                          </Badge>
+                        )
+                      })}
+                    </Group>
+                  )}
+                </Stack>
               </Paper>
             </Stack>
           ) : (
