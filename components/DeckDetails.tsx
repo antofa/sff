@@ -100,88 +100,107 @@ function getFactionBadgeColor(faction?: string): string {
   }
 }
 
+// Global cache for card images (persists across modal opens)
+const globalImageCache = new Map<string, string>()
+const globalImagePromiseCache = new Map<string, Promise<string | null>>()
+const globalImageUrlCache = new Map<string, string>() // remote URL -> cached object/data URL
+const globalImageUrlPromiseCache = new Map<string, Promise<string | null>>()
+const makeImageCacheKey = (cardId: string, level: number, isForgeborn: boolean) =>
+  `${cardId}::${level}::${isForgeborn ? 'f' : 'r'}`
+const staticIconCache = new Map<string, string>()
+const staticIconLoading = new Map<string, Promise<string>>()
+const normalizeId = (value?: string | null) => (value || '').toLowerCase()
+
+async function fetchAsDataUrl(url: string): Promise<string> {
+  const response = await fetch(url)
+  const blob = await response.blob()
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') resolve(reader.result)
+      else reject(new Error('Failed to read data URL'))
+    }
+    reader.onerror = () => reject(reader.error || new Error('FileReader failed'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+// Fetch image as blob/object URL with URL-level caching to avoid duplicate network hits
+async function loadImageUrlWithCache(url: string, timeoutMs: number): Promise<string | null> {
+  if (!url) return null
+
+  const cached = globalImageUrlCache.get(url)
+  if (cached) return cached
+
+  const inFlight = globalImageUrlPromiseCache.get(url)
+  if (inFlight) return inFlight
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  const promise = fetch(url, { signal: controller.signal, cache: 'force-cache' })
+    .then(async (response) => {
+      if (!response.ok) return null
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      globalImageUrlCache.set(url, objectUrl)
+      return objectUrl
+    })
+    .catch(() => null)
+    .finally(() => {
+      clearTimeout(timeoutId)
+      globalImageUrlPromiseCache.delete(url)
+    })
+
+  globalImageUrlPromiseCache.set(url, promise)
+  return promise
+}
+
 // Helper function to load a single image (stable, outside component to avoid TDZ)
 async function loadSingleImage(cardId: string, level: number, isForgeborn: boolean): Promise<string | null> {
-  return new Promise((resolve) => {
-    const imageUrl = getCardImageUrl(cardId, level, isForgeborn)
-    const img = new window.Image()
-    const isSet99 = /^s99/i.test(cardId)
-    
-    const tryAlternativeUrl = (): void => {
-      if (isSet99 && !isForgeborn) {
-        const baseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
-        let cleanId = cardId.replace(/[^a-z0-9\-_]/gi, '').toLowerCase()
-        const cardLevel = Math.max(1, Math.min(3, level))
-        const alternativeUrl = `${baseUrl}/${cleanId}_${cardLevel}.jpg`
-        
-        const altImg = new window.Image()
-        const altTimeout = setTimeout(() => {
-          resolve(null)
-        }, 5000)
-        
-        altImg.onload = () => {
-          clearTimeout(altTimeout)
-          resolve(alternativeUrl)
-        }
-        altImg.onerror = () => {
-          clearTimeout(altTimeout)
-          const encodedId = encodeURIComponent(cardId)
-          const encodedUrl = `${baseUrl}/${encodedId}_${cardLevel}.jpg`
-          const encodedImg = new window.Image()
-          const encodedTimeout = setTimeout(() => {
-            resolve(null)
-          }, 5000)
-          
-          encodedImg.onload = () => {
-            clearTimeout(encodedTimeout)
-            resolve(encodedUrl)
-          }
-          encodedImg.onerror = () => {
-            clearTimeout(encodedTimeout)
-            resolve(null)
-          }
-          encodedImg.src = encodedUrl
-        }
-        altImg.src = alternativeUrl
-        return
-      }
-      
-      if (isForgeborn && cardId.includes('-')) {
-        const alternativeUrl = getForgebornAlternativeUrl(cardId)
-        const altImg = new window.Image()
-        const altTimeout = setTimeout(() => {
-          resolve(null)
-        }, 5000)
-        
-        altImg.onload = () => {
-          clearTimeout(altTimeout)
-          resolve(alternativeUrl)
-        }
-        altImg.onerror = () => {
-          clearTimeout(altTimeout)
-          resolve(null)
-        }
-        
-        altImg.src = alternativeUrl
-      } else {
-        resolve(null)
-      }
+  const cacheKey = makeImageCacheKey(cardId, level, isForgeborn)
+  const cachedUrl = globalImageCache.get(cacheKey)
+  if (cachedUrl) {
+    return cachedUrl
+  }
+
+  const imageUrl = getCardImageUrl(cardId, level, isForgeborn)
+  const isSet99 = /^s99/i.test(cardId)
+  const timeoutMs = isForgeborn ? 10000 : 5000
+  const candidates: string[] = []
+
+  const addCandidate = (url?: string | null) => {
+    if (url && !candidates.includes(url)) {
+      candidates.push(url)
     }
-    
-    const timeout = setTimeout(() => {
-      tryAlternativeUrl()
-    }, isForgeborn ? 10000 : 5000)
-    
-    img.onload = () => {
-      clearTimeout(timeout)
-      resolve(imageUrl)
+  }
+
+  addCandidate(imageUrl)
+
+  if (isSet99 && !isForgeborn) {
+    const baseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
+    const cardLevel = Math.max(1, Math.min(3, level))
+    const cleanId = cardId.replace(/[^a-z0-9\-_]/gi, '').toLowerCase()
+    addCandidate(`${baseUrl}/${cleanId}_${cardLevel}.jpg`)
+    const encodedId = encodeURIComponent(cardId)
+    if (encodedId !== cleanId) {
+      addCandidate(`${baseUrl}/${encodedId}_${cardLevel}.jpg`)
     }
-    img.onerror = () => {
-      clearTimeout(timeout)
-      tryAlternativeUrl()
+  }
+
+  if (isForgeborn && cardId.includes('-')) {
+    addCandidate(getForgebornAlternativeUrl(cardId))
+  }
+
+  for (const candidate of candidates) {
+    const loadedUrl = await loadImageUrlWithCache(candidate, timeoutMs)
+    if (loadedUrl) {
+      globalImageCache.set(cacheKey, loadedUrl)
+      return loadedUrl
     }
-    img.src = imageUrl
-  })
+  }
+
+  return null
 }
 
 // Memoized CardListItem component - defined outside to prevent recreation on each render
@@ -293,6 +312,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const [selectedLevel, setSelectedLevel] = useState<number>(1) // Current card level (1, 2, or 3)
   const [cardImages, setCardImages] = useState<Record<string, Record<number, string>>>({}) // cardId -> level -> imageUrl
   const [loadingLevels, setLoadingLevels] = useState<Record<string, Record<number, boolean>>>({}) // cardId -> level -> loading
+  const [, setIconVersion] = useState(0) // bump to force rerender when static icons are loaded into data URLs
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set())
   const [imageLoadStatus, setImageLoadStatus] = useState<Record<string, boolean>>({})
   const [fullDeckData, setFullDeckData] = useState<Deck | null>(null) // Full deck data with forgeborn.solbindCards
@@ -338,25 +358,63 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const finishInFlight = useCallback((cardId: string, level: number) => {
     loadingInFlightRef.current.delete(makeLoadingKey(cardId, level))
   }, [makeLoadingKey])
+  const getCachedIconPath = useCallback(
+    (key: string | null, rawPath: string | null): string | null => {
+      if (!key || !rawPath) return rawPath
+      const cached = staticIconCache.get(key)
+      if (cached) return cached
+      if (!staticIconLoading.has(key)) {
+        const promise = fetchAsDataUrl(rawPath)
+          .then((dataUrl) => {
+            staticIconCache.set(key, dataUrl)
+            staticIconLoading.delete(key)
+            setIconVersion(v => v + 1)
+            return dataUrl
+          })
+          .catch(() => {
+            staticIconLoading.delete(key)
+            return rawPath
+          })
+        staticIconLoading.set(key, promise)
+      }
+      return rawPath
+    },
+    [setIconVersion]
+  )
 
   const loadImageOnce = useCallback((cardId: string, level: number, isForgeborn: boolean) => {
     const key = `${cardId}-${level}-${isForgeborn ? 'f' : 'r'}`
+    const globalKey = makeImageCacheKey(cardId, level, isForgeborn)
+
+    // Reuse in-flight or resolved promises across component instances (helps with StrictMode double-invocation)
     const existing = imageRequestCacheRef.current.get(key)
     if (existing) return existing
+
+    const globalExisting = globalImagePromiseCache.get(globalKey)
+    if (globalExisting) {
+      imageRequestCacheRef.current.set(key, globalExisting)
+      return globalExisting
+    }
 
     const promise = loadSingleImage(cardId, level, isForgeborn)
       .then((url) => {
         if (!url) {
           imageRequestCacheRef.current.delete(key)
+          globalImagePromiseCache.delete(globalKey)
+        } else {
+          // Keep resolved promise for future callers to avoid reloading the same image
+          globalImagePromiseCache.set(globalKey, Promise.resolve(url))
         }
         return url
       })
       .catch((error) => {
         imageRequestCacheRef.current.delete(key)
+        globalImagePromiseCache.delete(globalKey)
         throw error
       })
 
     imageRequestCacheRef.current.set(key, promise)
+    globalImagePromiseCache.set(globalKey, promise)
     return promise
   }, [])
   const handleSelectCard = useCallback((card: CardInfo) => {
@@ -1192,6 +1250,37 @@ const originalCardMeta = useMemo(() => {
     }
   }
 
+  // Fast lookup for forgeborn identifiers to avoid treating them as regular cards
+  const forgebornIdSet = useMemo(() => {
+    const ids: string[] = []
+    if (deck?.forgebornId) ids.push(deck.forgebornId)
+    if ((deck as any)?.forgeborn?.id) ids.push((deck as any).forgeborn.id)
+    normalizedCards.forEach((card) => {
+      const data = card as any
+      const type = (data.cardType || data.type || '').toLowerCase()
+      const rarity = (data.rarity || '').toLowerCase()
+      if (type.includes('forgeborn') || rarity === 'forgeborn') ids.push(card.id)
+    })
+    const normalized = ids
+      .filter(Boolean)
+      .map(id => normalizeId(id))
+    return new Set(normalized)
+  }, [deck?.forgebornId, (deck as any)?.forgeborn, normalizedCards])
+
+  const isForgebornCardId = useCallback(
+    (card: CardInfo | string | null | undefined): boolean => {
+      if (!card) return false
+      const id = normalizeId(typeof card === 'string' ? card : card.id)
+      const type = typeof card === 'string' ? '' : ((card as any).cardType || (card as any).type || '').toLowerCase()
+      const rarity = typeof card === 'string' ? '' : ((card as any).rarity || '').toLowerCase()
+      if (id && forgebornIdSet.has(id)) return true
+      if (type.includes('forgeborn')) return true
+      if (rarity === 'forgeborn') return true
+      return false
+    },
+    [forgebornIdSet]
+  )
+
   // Load images only for the selected card (lazy loading for performance)
   useEffect(() => {
     if (!opened || !selectedCard) return
@@ -1199,11 +1288,7 @@ const originalCardMeta = useMemo(() => {
     let isCanceled = false
     
     const loadSelectedCardImages = async () => {
-      const cardData = selectedCard as any
-      const isForgeborn = deck?.forgebornId === selectedCard.id || 
-                         selectedCard.id === deck?.forgebornId ||
-                         selectedCard.type?.toLowerCase().includes('forgeborn') ||
-                         cardData.cardType?.toLowerCase().includes('forgeborn')
+      const isForgeborn = isForgebornCardId(selectedCard)
       
       const existingImages = cardImages[selectedCard.id] || {}
       const levelsToLoad = isForgeborn
@@ -1279,7 +1364,7 @@ const originalCardMeta = useMemo(() => {
     return () => {
       isCanceled = true
     }
-  }, [opened, selectedCard, deck?.forgebornId, cardImages, markLevelsLoading, markLevelDone, isInFlight, startInFlight, finishInFlight, loadImageOnce])
+  }, [opened, selectedCard, deck?.forgebornId, cardImages, markLevelsLoading, markLevelDone, isInFlight, startInFlight, finishInFlight, loadImageOnce, isForgebornCardId])
 
   // Background preload all card images (delayed to not block UI)
   useEffect(() => {
@@ -1292,10 +1377,7 @@ const originalCardMeta = useMemo(() => {
         if (isCanceled) break
 
         const cardData = card as any
-        const isForgeborn = deck?.forgebornId === card.id || 
-                           card.id === deck?.forgebornId ||
-                           card.type?.toLowerCase().includes('forgeborn') ||
-                           cardData.cardType?.toLowerCase().includes('forgeborn')
+        const isForgeborn = isForgebornCardId(card)
         const isSolbind = solbindCardIdsSet.has(card.id) ||
                           cardData.rarity === 'Solbind' || cardData.rarity === 'solbind' ||
                           card.type?.toLowerCase() === 'solbind' ||
@@ -1364,7 +1446,7 @@ const originalCardMeta = useMemo(() => {
     return () => {
       isCanceled = true
     }
-  }, [opened, normalizedCards, deck?.forgebornId, markLevelsLoading, markLevelDone, solbindCardIdsSet, isInFlight, startInFlight, finishInFlight, loadImageOnce])
+  }, [opened, normalizedCards, deck?.forgebornId, markLevelsLoading, markLevelDone, solbindCardIdsSet, isInFlight, startInFlight, finishInFlight, loadImageOnce, isForgebornCardId])
 
   // DISABLED: Old preload all images - too slow
   // Load card images in specific order: Forgeborn -> Creatures/Spells Level 1 -> Level 2 -> Level 3 -> Solbind
@@ -3091,10 +3173,22 @@ const originalCardMeta = useMemo(() => {
       : (card.faction || deck.faction)
     const faction = (factionForIcon || '').toLowerCase()
     const rarity = cardData.rarity || card.rarity
-    
+
+    const factionIconKey = faction ? `faction:${faction}` : null
+    // Cache rarity icon per set+rarity (card id removed to avoid refetching per card)
+    const rarityIconKey = !isForgeborn && rarity ? `rarity:${deck.cardSetNo || ''}:${rarity}` : null
+
+    const factionRawPath = faction ? `/images/icons/${faction}.png` : null
+    const factionIconPath = getCachedIconPath(factionIconKey, factionRawPath)
+
+    const rarityRawPath = !isForgeborn
+      ? getRarityIconPath(deck.cardSetNo, rarity, card.id, cardData)
+      : null
+    const rarityIconPath = getCachedIconPath(rarityIconKey, rarityRawPath)
+
     return {
-      factionIconPath: faction ? `/images/icons/${faction}.png` : null,
-      rarityIconPath: isForgeborn ? null : getRarityIconPath(deck.cardSetNo, rarity, card.id, cardData),
+      factionIconPath,
+      rarityIconPath,
       factionColor: getFactionBadgeColor(factionForIcon),
     }
   }
