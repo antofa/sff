@@ -3722,7 +3722,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         </button>
                       ) : null}
                       style={{ flex: '0 0 120px' }}
-                      disabled={!filters.creatureType}
                       styles={{
                         label: { color: 'white' },
                         input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
