@@ -125,7 +125,13 @@ async function fetchAsDataUrl(url: string): Promise<string> {
   })
 }
 
-// Fetch image as blob/object URL with URL-level caching to avoid duplicate network hits
+// Treat placeholder ids like "card-0" as non-loadable
+const isPlaceholderCardId = (cardId?: string | null): boolean => {
+  if (!cardId) return true
+  return /^card-\d+$/i.test(cardId.trim())
+}
+
+// Load image via HTMLImageElement to avoid CORS issues with fetch
 async function loadImageUrlWithCache(url: string, timeoutMs: number): Promise<string | null> {
   if (!url) return null
 
@@ -135,22 +141,32 @@ async function loadImageUrlWithCache(url: string, timeoutMs: number): Promise<st
   const inFlight = globalImageUrlPromiseCache.get(url)
   if (inFlight) return inFlight
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  const promise = new Promise<string | null>((resolve) => {
+    const img = new window.Image()
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve(null)
+    }, timeoutMs)
 
-  const promise = fetch(url, { signal: controller.signal, cache: 'force-cache' })
-    .then(async (response) => {
-      if (!response.ok) return null
-      const blob = await response.blob()
-      const objectUrl = URL.createObjectURL(blob)
-      globalImageUrlCache.set(url, objectUrl)
-      return objectUrl
-    })
-    .catch(() => null)
-    .finally(() => {
-      clearTimeout(timeoutId)
-      globalImageUrlPromiseCache.delete(url)
-    })
+    img.onload = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      globalImageUrlCache.set(url, url)
+      resolve(url)
+    }
+    img.onerror = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(null)
+    }
+    img.src = url
+  }).finally(() => {
+    globalImageUrlPromiseCache.delete(url)
+  })
 
   globalImageUrlPromiseCache.set(url, promise)
   return promise
@@ -158,6 +174,10 @@ async function loadImageUrlWithCache(url: string, timeoutMs: number): Promise<st
 
 // Helper function to load a single image (stable, outside component to avoid TDZ)
 async function loadSingleImage(cardId: string, level: number, isForgeborn: boolean): Promise<string | null> {
+  if (isPlaceholderCardId(cardId)) {
+    return null
+  }
+
   const cacheKey = makeImageCacheKey(cardId, level, isForgeborn)
   const cachedUrl = globalImageCache.get(cacheKey)
   if (cachedUrl) {
@@ -1000,7 +1020,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
       return getCardInfo(`card-${index}`)
     })
-  }, [deck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, isFusedDeck, halfDetails])
+  }, [deck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, isFusedDeck, halfDetails, allDecks])
 
   // Дедуп уже после нормализации (id в нижнем регистре)
   const uniqueNormalizedCards: CardInfo[] = useMemo(() => {
@@ -1070,6 +1090,10 @@ const originalCardMeta = useMemo(() => {
       next[cardId] = entry
       return next
     })
+  }, [])
+  const markImageReady = useCallback((cardId: string, level: number, imageUrl: string) => {
+    const key = `${cardId}-${level}-${imageUrl}`
+    setImageLoadStatus(prev => (prev[key] ? prev : { ...prev, [key]: true }))
   }, [])
 
   // First, extract all solbind card IDs to avoid circular dependency
@@ -1251,10 +1275,13 @@ const originalCardMeta = useMemo(() => {
   }
 
   // Fast lookup for forgeborn identifiers to avoid treating them as regular cards
+  const forgebornIdFromDeck = deck?.forgebornId
+  const forgebornObjFromDeck = (deck as any)?.forgeborn
+
   const forgebornIdSet = useMemo(() => {
     const ids: string[] = []
-    if (deck?.forgebornId) ids.push(deck.forgebornId)
-    if ((deck as any)?.forgeborn?.id) ids.push((deck as any).forgeborn.id)
+    if (forgebornIdFromDeck) ids.push(forgebornIdFromDeck)
+    if (forgebornObjFromDeck?.id) ids.push(forgebornObjFromDeck.id)
     normalizedCards.forEach((card) => {
       const data = card as any
       const type = (data.cardType || data.type || '').toLowerCase()
@@ -1265,7 +1292,7 @@ const originalCardMeta = useMemo(() => {
       .filter(Boolean)
       .map(id => normalizeId(id))
     return new Set(normalized)
-  }, [deck?.forgebornId, (deck as any)?.forgeborn, normalizedCards])
+  }, [forgebornIdFromDeck, forgebornObjFromDeck, normalizedCards])
 
   const isForgebornCardId = useCallback(
     (card: CardInfo | string | null | undefined): boolean => {
@@ -1312,6 +1339,9 @@ const originalCardMeta = useMemo(() => {
                 ...prev,
                 [selectedCard.id]: { ...prev[selectedCard.id], 1: imageUrl, 2: imageUrl, 3: imageUrl }
               }))
+              markImageReady(selectedCard.id, 1, imageUrl)
+              markImageReady(selectedCard.id, 2, imageUrl)
+              markImageReady(selectedCard.id, 3, imageUrl)
             }
             markLevelDone(selectedCard.id, 1)
             markLevelDone(selectedCard.id, 2)
@@ -1339,6 +1369,9 @@ const originalCardMeta = useMemo(() => {
                 ...prev,
                 [selectedCard.id]: { ...prev[selectedCard.id], ...newImages }
               }))
+              Object.entries(newImages).forEach(([lvl, url]) => {
+                if (url) markImageReady(selectedCard.id, Number(lvl), url as string)
+              })
             }
             if (levelsToLoad.includes(1)) markLevelDone(selectedCard.id, 1)
             if (levelsToLoad.includes(2)) markLevelDone(selectedCard.id, 2)
@@ -1402,6 +1435,7 @@ const originalCardMeta = useMemo(() => {
                   ...prev,
                   [card.id]: { ...prev[card.id], [level]: imageUrl }
                 }))
+                markImageReady(card.id, level, imageUrl)
               }
               if (!isCanceled) {
                 markLevelDone(card.id, level)
@@ -1424,6 +1458,7 @@ const originalCardMeta = useMemo(() => {
                 ...prev,
                 [card.id]: { ...prev[card.id], 1: imageUrl }
               }))
+              markImageReady(card.id, 1, imageUrl)
             }
           } catch {
             // ignore background errors
@@ -2711,6 +2746,9 @@ const originalCardMeta = useMemo(() => {
             ...prev,
             [firstForgeborn.id]: { 1: imageUrl, 2: imageUrl, 3: imageUrl }
           }))
+          markImageReady(firstForgeborn.id, 1, imageUrl)
+          markImageReady(firstForgeborn.id, 2, imageUrl)
+          markImageReady(firstForgeborn.id, 3, imageUrl)
         }
       })
       .finally(() => {
