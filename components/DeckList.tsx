@@ -226,6 +226,7 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
   // Extract Solbind card IDs from solbindCards arrays (same logic as DeckDetails)
   const solbindCardIds = new Set<string>()
   let solbindCount = 0
+  const solbindPlaceholderParents = new Set<string>()
 
   normalizedCards.forEach(card => {
     const cardData = card as any
@@ -342,6 +343,7 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
       const baseId = card.id || card.cardId || cardData.name || 'solbind-parent'
       solbindFallbackIds.add(`${baseId}-sb1`)
       solbindFallbackIds.add(`${baseId}-sb2`)
+      solbindPlaceholderParents.add(baseId)
     }
   })
   solbindFallbackIds.forEach(id => solbindCardIds.add(id))
@@ -378,10 +380,16 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
       cardData.cardType?.toLowerCase().includes('forgeborn')
     if (isForgeborn) return
 
-    // Detect solbind (keep counting as spell/creature too)
+    // Detect solbind (keep counting as spell/creature too) but do not double-count parents
+    const isParentSolbind =
+      solbindPlaceholderParents.has(card.id || card.cardId || card.name) ||
+      (Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0) ||
+      !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
+
     const isSolbindCard =
-      solbindCardsUnique.some(sb => sb.id === card.id) ||
-      (typeof cardData.rarity === 'string' && cardData.rarity.toLowerCase().includes('solbind'))
+      !isParentSolbind &&
+      (solbindCardsUnique.some(sb => sb.id === card.id) ||
+        (typeof cardData.rarity === 'string' && cardData.rarity.toLowerCase().includes('solbind')))
     
     // Get original card data to check cardType properly
     const originalCard = deck.cards && Array.isArray(deck.cards)
@@ -409,7 +417,7 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
     else creatures++
 
     // Count solbind separately (do not exclude from spell/creature counts)
-    if (isSolbindCard) {
+    if (isSolbindCard && !solbindCardIds.has(card.id)) {
       solbindCount += 1
     }
   })

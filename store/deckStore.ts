@@ -159,6 +159,7 @@ const countPlayableCards = (deck: Deck): { total: number; creatures: number; spe
 
   const solbindCardIds = new Set<string>()
   let solbindCount = 0
+  const solbindPlaceholderParents = new Set<string>()
   normalizedCards.forEach(card => {
     const cardData = card as any
     if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
@@ -246,6 +247,7 @@ const countPlayableCards = (deck: Deck): { total: number; creatures: number; spe
       const baseId = card.id || card.cardId || cardData.name || 'solbind-parent'
       solbindFallbackIds.add(`${baseId}-sb1`)
       solbindFallbackIds.add(`${baseId}-sb2`)
+      solbindPlaceholderParents.add(baseId)
     }
   })
   solbindFallbackIds.forEach(id => solbindCardIds.add(id))
@@ -279,9 +281,15 @@ const countPlayableCards = (deck: Deck): { total: number; creatures: number; spe
       cardData.cardType?.toLowerCase().includes('forgeborn')
     if (isForgeborn) return
 
+    const isParentSolbind =
+      solbindPlaceholderParents.has(card.id || card.cardId || card.name) ||
+      (Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0) ||
+      !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
+
     const isSolbindCard =
-      solbindCardsUnique.some(sb => sb.id === card.id) ||
-      (typeof cardData.rarity === 'string' && cardData.rarity.toLowerCase().includes('solbind'))
+      !isParentSolbind &&
+      (solbindCardsUnique.some(sb => sb.id === card.id) ||
+        (typeof cardData.rarity === 'string' && cardData.rarity.toLowerCase().includes('solbind')))
 
     const originalCard = deck.cards && Array.isArray(deck.cards)
       ? deck.cards.find((c: any, idx: number) => {
@@ -300,7 +308,7 @@ const countPlayableCards = (deck: Deck): { total: number; creatures: number; spe
 
     if (isSpell) spells++
     else creatures++
-    if (isSolbindCard) solbindCount += 1
+    if (isSolbindCard && !solbindCardIds.has(card.id)) solbindCount += 1
   })
 
   const total = normalizedCards.filter(card => {
