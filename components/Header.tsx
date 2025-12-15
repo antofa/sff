@@ -30,12 +30,24 @@ export function Header() {
   return (
     <header className="w-full py-4 px-6 bg-slate-800/60 backdrop-blur-md border-b border-sf-primary/20">
       <Container size="xl">
-        <Group justify="space-between" align="center" wrap="nowrap">
-          <Group gap="sm" align="center" wrap="nowrap">
-            {!logoError ? (
-              <Image
-                src={logoSrc}
-                alt="SolForge Fusion"
+        <div
+          style={{
+            width: '100%',
+            maxWidth: '42rem', // align with search panel width
+            margin: '0 auto',
+          }}
+        >
+          <Group
+            justify="space-between"
+            align="center"
+            wrap="wrap"
+            gap="md"
+          >
+            <Group gap="sm" align="center" wrap="nowrap">
+              {!logoError ? (
+                <Image
+                  src={logoSrc}
+                  alt="SolForge Fusion"
                 width={194}
                 height={63}
                 className="h-16 w-auto"
@@ -65,8 +77,10 @@ export function Header() {
               size="sm"
               className="bg-slate-700/40 text-white border border-sf-primary/30 hover:border-sf-primary/60"
             >
-              Search by player
+              Decks
             </Button>
+            {/* Temporarily hidden: My profile entry point; functionality intact */}
+            {/*
             <Button
               component="a"
               href="/my-profile"
@@ -76,6 +90,7 @@ export function Header() {
             >
               My profile
             </Button>
+            */}
             {/*
             <Button
               component="a"
@@ -169,19 +184,12 @@ export function Header() {
               </Menu>
             ) : (
               // User is not authenticated
-              <Button
-                variant="filled"
-                color="indigo"
-                size="sm"
-                leftSection={<IconBrandDiscord size={18} />}
-                onClick={handleDiscordLogin}
-                className="transition-all hover:scale-105"
-              >
-                Sign in with Discord
-              </Button>
+              // Temporarily hidden: Discord auth button; keep logic for future re-enable
+              null
             )}
           </Group>
-        </Group>
+          </Group>
+        </div>
       </Container>
     </header>
   )
