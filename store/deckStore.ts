@@ -172,6 +172,8 @@ const countPlayableCards = (deck: Deck): { total: number; creatures: number; spe
         if (sbId) solbindCardIds.add(sbId)
       })
     }
+    if (cardData.solbindId1 || cardData.solbindid1) solbindCardIds.add(cardData.solbindId1 || cardData.solbindid1)
+    if (cardData.solbindId2 || cardData.solbindid2) solbindCardIds.add(cardData.solbindId2 || cardData.solbindid2)
   })
 
   if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
@@ -181,6 +183,11 @@ const countPlayableCards = (deck: Deck): { total: number; creatures: number; spe
       const sbId = solbindCard.id || solbindCard.cardId || solbindCard.name || `solbind-forgeborn-${sbIdx}`
       if (sbId) solbindCardIds.add(sbId)
     })
+  }
+  if ((deck as any).forgeborn) {
+    const fb: any = (deck as any).forgeborn
+    if (fb.solbindId1 || fb.solbindid1) solbindCardIds.add(fb.solbindId1 || fb.solbindid1)
+    if (fb.solbindId2 || fb.solbindid2) solbindCardIds.add(fb.solbindId2 || fb.solbindid2)
   }
 
   const forgebornId = deck.forgebornId
@@ -213,6 +220,14 @@ const countPlayableCards = (deck: Deck): { total: number; creatures: number; spe
         }
       })
     }
+    const id1 = cardData.solbindId1 || cardData.solbindid1
+    const id2 = cardData.solbindId2 || cardData.solbindid2
+    if (id1 && !solbindCardObjects.some(sb => sb.id === id1)) {
+      solbindCardObjects.push(getCardInfoCached(id1, { id: id1 }))
+    }
+    if (id2 && !solbindCardObjects.some(sb => sb.id === id2)) {
+      solbindCardObjects.push(getCardInfoCached(id2, { id: id2 }))
+    }
   })
 
   if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
@@ -224,6 +239,21 @@ const countPlayableCards = (deck: Deck): { total: number; creatures: number; spe
         solbindCardObjects.push(getCardInfoCached(sbId, { ...solbindCard, id: sbId }))
       }
     })
+  }
+  if ((deck as any).forgeborn) {
+    const fb: any = (deck as any).forgeborn
+    if (fb.solbindId1 || fb.solbindid1) {
+      const id = fb.solbindId1 || fb.solbindid1
+      if (!solbindCardObjects.some(sb => sb.id === id)) {
+        solbindCardObjects.push(getCardInfoCached(id, { id }))
+      }
+    }
+    if (fb.solbindId2 || fb.solbindid2) {
+      const id = fb.solbindId2 || fb.solbindid2
+      if (!solbindCardObjects.some(sb => sb.id === id)) {
+        solbindCardObjects.push(getCardInfoCached(id, { id }))
+      }
+    }
   }
 
   normalizedCards.forEach(card => {
@@ -394,7 +424,19 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
         if (solbindCard && solbindCard.id) solbindCardIds.add(solbindCard.id)
       })
     }
+    if (cardData.solbindId1 || cardData.solbindid1) solbindCardIds.add(cardData.solbindId1 || cardData.solbindid1)
+    if (cardData.solbindId2 || cardData.solbindid2) solbindCardIds.add(cardData.solbindId2 || cardData.solbindid2)
   })
+  if ((deckAny as any)?.forgeborn && Array.isArray((deckAny as any).forgeborn.solbindCards)) {
+    ;(deckAny as any).forgeborn.solbindCards.forEach((solbindCard: any) => {
+      if (solbindCard && solbindCard.id) solbindCardIds.add(solbindCard.id)
+    })
+  }
+  if ((deckAny as any)?.forgeborn) {
+    const fb: any = (deckAny as any).forgeborn
+    if (fb.solbindId1 || fb.solbindid1) solbindCardIds.add(fb.solbindId1 || fb.solbindid1)
+    if (fb.solbindId2 || fb.solbindid2) solbindCardIds.add(fb.solbindId2 || fb.solbindid2)
+  }
 
   normalizedCards.forEach((card, idx) => {
     const cardData = card as any
@@ -421,8 +463,12 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
       if (lower.includes('solbind')) {
         normalizedRarity = 'Solbind'
         solbindCardIds.add(card.id || `card-${idx}`)
+      } else if (lower.includes('darkforge') && lower.includes('rare')) {
+        normalizedRarity = 'Darkforge Rare'
       } else if (lower.includes('common') && lower.includes('rare')) {
         normalizedRarity = 'Common Rare'
+      } else if (lower.includes('darkforge')) {
+        normalizedRarity = 'Darkforge'
       } else if (lower.includes('common')) {
         normalizedRarity = 'Common'
       } else if (lower.includes('rare')) {
@@ -464,7 +510,7 @@ const computeCreatureTypes = (deck: Deck): Record<string, number> => {
 }
 
 const buildDisplayTags = (deck: Deck): string[] => {
-  const tagsToDisplay: string[] = []
+  const tagsSet = new Set<string>()
   if (deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags)) {
     Object.entries(deck.tags).forEach(([key, value]) => {
       if (value === null || value === undefined || value === '') return
@@ -480,10 +526,25 @@ const buildDisplayTags = (deck: Deck): string[] => {
       } else if (key && key.startsWith('tag_')) {
         return
       }
-      if (tagText && tagText.trim() !== '') tagsToDisplay.push(tagText.trim())
+      if (tagText && tagText.trim() !== '') tagsSet.add(tagText.trim())
     })
-  } else if (deck.cards && Array.isArray(deck.cards)) {
-    const providesSet = new Set<string>()
+  }
+
+  // myCategories (act like tags)
+  const cats = (deck as any)?.myCategories
+  if (cats && typeof cats === 'object' && !Array.isArray(cats)) {
+    Object.entries(cats).forEach(([key, value]) => {
+      const addVal = (v?: string | null) => {
+        if (!v || typeof v !== 'string') return
+        const trimmed = v.trim()
+        if (trimmed) tagsSet.add(trimmed)
+      }
+      addVal(key)
+      addVal(value as any)
+    })
+  }
+
+  if (tagsSet.size === 0 && deck.cards && Array.isArray(deck.cards)) {
     deck.cards.forEach((card: any) => {
       if (card && typeof card === 'object') {
         const provides = card.provides || card.Provides
@@ -491,22 +552,22 @@ const buildDisplayTags = (deck: Deck): string[] => {
           if (typeof provides === 'string') {
             provides.split(',').forEach((p: string) => {
               const trimmed = p.trim()
-              if (trimmed) providesSet.add(trimmed)
+              if (trimmed) tagsSet.add(trimmed)
             })
           } else if (Array.isArray(provides)) {
             provides.forEach((p: string) => {
               if (p && typeof p === 'string') {
                 const trimmed = p.trim()
-                if (trimmed) providesSet.add(trimmed)
+                if (trimmed) tagsSet.add(trimmed)
               }
             })
           }
         }
       }
     })
-    tagsToDisplay.push(...Array.from(providesSet).sort())
   }
-  return tagsToDisplay
+
+  return Array.from(tagsSet)
 }
 
 export const addComputedFields = (deck: Deck): Deck => {

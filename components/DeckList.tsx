@@ -594,48 +594,50 @@ const RegularDeckCard = memo(function RegularDeckCard({
         }}
       >
         <Stack gap={6} style={{ flex: 1 }} justify="flex-start" align="stretch">
-          {(deck as any).playerName && (
-            <Group gap="xs" wrap="wrap">
-              <Badge
-                color="teal"
-                variant="light"
-                size="sm"
-                radius="sm"
-                component="a"
-                href={`/player/${encodeURIComponent((deck as any).playerName)}`}
-                style={{ textDecoration: 'none' }}
-              >
-                Owner: {(deck as any).playerName}
-              </Badge>
-              {expiryTs !== null && (
+          <Group gap="xs" wrap="wrap" justify="space-between" align="center">
+            <Group gap="xs" wrap="wrap" align="center">
+              {(deck as any).playerName && (
                 <Badge
-                  color={undefined}
-                  variant="filled"
+                  color="teal"
+                  variant="light"
                   size="sm"
                   radius="sm"
-                  style={
-                    isExpired
-                      ? {
-                          backgroundColor: '#000',
-                          color: '#fff',
-                          border: '1px solid #000',
-                        }
-                      : {
-                          backgroundColor: '#b32626',
-                          color: '#fff',
-                          border: '1px solid #b32626',
-                        }
-                  }
+                  component="a"
+                  href={`/player/${encodeURIComponent((deck as any).playerName)}`}
+                  style={{ textDecoration: 'none' }}
                 >
-                  Expire: {new Date(expiryTs).toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
+                  Owner: {(deck as any).playerName}
                 </Badge>
               )}
             </Group>
-          )}
+            {expiryTs !== null && (
+              <Badge
+                color={undefined}
+                variant="filled"
+                size="sm"
+                radius="sm"
+                style={
+                  isExpired
+                    ? {
+                        backgroundColor: '#000',
+                        color: '#fff',
+                        border: '1px solid #000',
+                      }
+                    : {
+                        backgroundColor: '#b32626',
+                        color: '#fff',
+                        border: '1px solid #b32626',
+                      }
+                }
+              >
+                Expire: {new Date(expiryTs).toLocaleDateString('en-GB', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                })}
+              </Badge>
+            )}
+          </Group>
 
           <Title
             order={4}
@@ -734,17 +736,21 @@ const RegularDeckCard = memo(function RegularDeckCard({
                     {rarityEntries
                       .sort(([a], [b]) => {
                         const order: Record<string, number> = {
+                          Solbind: 0,
                           Common: 1,
                           'Common Rare': 2,
                           Rare: 3,
-                          Solbind: 4,
-                          LS: 5,
+                          'Darkforge Rare': 4,
+                          Darkforge: 5,
+                          LS: 6,
                         }
                         return (order[a] || 99) - (order[b] || 99)
                       })
                       .map(([rarity, count]) => {
                         const getRarityColor = (rarityName: string): string => {
                           const normalized = rarityName.toLowerCase()
+                          if (normalized.includes('darkforge') && normalized.includes('rare')) return '#d07a04'
+                          if (normalized.includes('darkforge')) return '#656464'
                           if (normalized.includes('common') && normalized.includes('rare')) return '#0e87cf'
                           if (normalized.includes('rare') && !normalized.includes('common')) return '#e6b70c'
                           if (normalized.includes('solbind')) return '#75cec4'
@@ -1030,6 +1036,14 @@ const FusedDeckCard = memo(function FusedDeckCard({
         }
       }
     }
+    const maybeAddSolbindById = (id?: string | null) => {
+      if (!id) return
+      const cleanId = String(id).trim()
+      if (!cleanId) return
+      if (solbindSet.has(cleanId)) return
+      solbindSet.add(cleanId)
+      solbindCards.push(getCardInfo(cleanId))
+    }
 
     // From cards' solbindCards
     cards.forEach((card: any, idx: number) => {
@@ -1037,11 +1051,19 @@ const FusedDeckCard = memo(function FusedDeckCard({
       if (cardData && (cardData as any).solbindCards && Array.isArray((cardData as any).solbindCards)) {
         ;(cardData as any).solbindCards.forEach((sb: any) => maybeAddSolbind(sb))
       }
+      const cardDataAny = cardData as any
+      maybeAddSolbindById(cardDataAny?.solbindId1 || cardDataAny?.solbindid1)
+      maybeAddSolbindById(cardDataAny?.solbindId2 || cardDataAny?.solbindid2)
     })
 
     // From deck forgeborn solbindCards
     if (deck && (deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
       ;(deck as any).forgeborn.solbindCards.forEach((sb: any) => maybeAddSolbind(sb))
+    }
+    if (deck && (deck as any).forgeborn) {
+      const fb: any = (deck as any).forgeborn
+      maybeAddSolbindById(fb.solbindId1 || fb.solbindid1)
+      maybeAddSolbindById(fb.solbindId2 || fb.solbindid2)
     }
 
     return [...cards, ...solbindCards]
@@ -1077,7 +1099,8 @@ const FusedDeckCard = memo(function FusedDeckCard({
   }, [factionSets, aggregatedCards, deck])
 
   const counts = useMemo(() => {
-    if (deck.computed?.counts && deck.computed.counts.total > 0) return deck.computed.counts
+    let derived: { total: number; creatures: number; spells: number; solbind: number } | null = null
+
     if (aggregatedCards.length > 0) {
       let creatures = 0
       let spells = 0
@@ -1092,7 +1115,17 @@ const FusedDeckCard = memo(function FusedDeckCard({
         const cardTypeRaw = (cardData.cardType || cardData.card_type || '').toLowerCase()
         const typeRaw = (cardData.type || '').toLowerCase()
         const isForgeborn = cardTypeRaw.includes('forgeborn') || typeRaw.includes('forgeborn')
-        if (isForgeborn) return
+        if (isForgeborn) {
+          if (cardData.solbindId1 || cardData.solbindid1) solbindIds.add(cardData.solbindId1 || cardData.solbindid1)
+          if (cardData.solbindId2 || cardData.solbindid2) solbindIds.add(cardData.solbindId2 || cardData.solbindid2)
+          if (Array.isArray(cardData.solbindCards)) {
+            cardData.solbindCards.forEach((sb: any) => {
+              const sid = sb?.id
+              if (sid) solbindIds.add(sid)
+            })
+          }
+          return
+        }
 
         const isParentSolbind =
           (Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0) ||
@@ -1136,33 +1169,44 @@ const FusedDeckCard = memo(function FusedDeckCard({
       })
 
       solbind += solbindIds.size
+      derived = { total: creatures + spells + solbind, creatures, spells, solbind }
+    }
 
-      if (solbind === 1) {
-        solbind = 2
+    if (!derived) {
+      const sources = pickedSources.filter(Boolean) as Deck[]
+      if (sources.length > 0) {
+        const summed = sources.reduce(
+          (acc, src) => {
+            const c = countPlayableCards(src)
+            return {
+              total: acc.total + c.total,
+              creatures: acc.creatures + c.creatures,
+              spells: acc.spells + c.spells,
+              solbind: acc.solbind + c.solbind,
+            }
+          },
+          { total: 0, creatures: 0, spells: 0, solbind: 0 }
+        )
+        if (summed.total > 0) derived = summed
       }
-      return { total: creatures + spells + solbind, creatures, spells, solbind }
     }
 
-    const sources = pickedSources.filter(Boolean) as Deck[]
-    if (sources.length > 0) {
-      const summed = sources.reduce(
-        (acc, src) => {
-          const c = countPlayableCards(src)
-          return {
-            total: acc.total + c.total,
-            creatures: acc.creatures + c.creatures,
-            spells: acc.spells + c.spells,
-            solbind: acc.solbind + c.solbind,
-          }
-        },
-        { total: 0, creatures: 0, spells: 0, solbind: 0 }
-      )
-      if (summed.total > 0) return summed
+    if (!derived && deck.cards && Array.isArray(deck.cards) && deck.cards.length > 0) {
+      derived = countPlayableCards(deck)
     }
-    if (deck.cards && Array.isArray(deck.cards) && deck.cards.length > 0) {
-      return countPlayableCards(deck)
+
+    if (!derived) {
+      derived = { total: 0, creatures: 0, spells: 0, solbind: 0 }
     }
-    return { total: 0, creatures: 0, spells: 0, solbind: 0 }
+
+    const comp = deck.computed?.counts
+    if (!comp) return derived
+    return {
+      total: Math.max(derived.total, comp.total ?? 0),
+      creatures: Math.max(derived.creatures, comp.creatures ?? 0),
+      spells: Math.max(derived.spells, comp.spells ?? 0),
+      solbind: Math.max(derived.solbind, comp.solbind ?? 0),
+    }
   }, [aggregatedCards, deck, pickedSources])
 
   const rarityCounts = useMemo(() => {
@@ -1191,11 +1235,12 @@ const FusedDeckCard = memo(function FusedDeckCard({
         let normalized = rarity.trim()
         const lower = normalized.toLowerCase()
         if (lower.includes('n/a')) return
-        if (normalized.includes('Common') && normalized.includes('Rare')) normalized = 'Common Rare'
+        if (lower.includes('darkforge') && lower.includes('rare')) normalized = 'Darkforge Rare'
+        else if (lower.includes('common') && lower.includes('rare')) normalized = 'Common Rare'
+        else if (lower.includes('darkforge')) normalized = 'Darkforge'
         else if (lower.includes('common')) normalized = 'Common'
         else if (lower.includes('rare')) normalized = 'Rare'
-        else if (lower.includes('ls') || lower.includes('legendary'))
-          normalized = 'LS'
+        else if (lower.includes('ls') || lower.includes('legendary')) normalized = 'LS'
         counts.set(normalized, (counts.get(normalized) || 0) + 1)
       }
     })
@@ -1280,6 +1325,38 @@ const FusedDeckCard = memo(function FusedDeckCard({
         }}
       >
         <Stack gap={6} style={{ flex: 1 }} justify="flex-start" align="stretch">
+          <Group gap="xs" wrap="wrap" align="center" justify="space-between">
+            <Group gap="xs" wrap="wrap" align="center">
+              {(deck as any).playerName && (
+                <Badge
+                  color="teal"
+                  variant="light"
+                  size="sm"
+                  radius="sm"
+                  component="a"
+                  href={`/player/${encodeURIComponent((deck as any).playerName)}`}
+                  style={{ textDecoration: 'none' }}
+                >
+                  Owner: {(deck as any).playerName}
+                </Badge>
+              )}
+            </Group>
+            {expireLabel && (
+              <Badge
+                variant="filled"
+                size="sm"
+                radius="sm"
+                style={
+                  isExpired
+                    ? { backgroundColor: '#000', color: '#fff', border: '1px solid #000' }
+                    : { backgroundColor: '#b32626', color: '#fff', border: '1px solid #b32626' }
+                }
+              >
+                Expire: {expireLabel}
+              </Badge>
+            )}
+          </Group>
+
           <Group justify="space-between" align="flex-start" wrap="nowrap">
             <Title
               order={4}
@@ -1316,20 +1393,6 @@ const FusedDeckCard = memo(function FusedDeckCard({
                   {label}
                 </Badge>
               ))}
-            {expireLabel && (
-              <Badge
-                variant="filled"
-                size="sm"
-                radius="sm"
-                style={
-                  isExpired
-                    ? { backgroundColor: '#000', color: '#fff', border: '1px solid #000' }
-                    : { backgroundColor: '#b32626', color: '#fff', border: '1px solid #b32626' }
-                }
-              >
-                Expire: {expireLabel}
-              </Badge>
-            )}
             <Badge color="blue" variant="light" size="sm" leftSection={<IconCards size={12} />}>
               {pluralize(counts.total, 'card')}
             </Badge>
@@ -1359,6 +1422,8 @@ const FusedDeckCard = memo(function FusedDeckCard({
             const getRarityColor = (rarityName: string): string => {
               const normalized = rarityName.toLowerCase()
               if (normalized.includes('solbind')) return '#2dd4bf'
+              if (normalized.includes('darkforge') && normalized.includes('rare')) return '#d07a04'
+              if (normalized.includes('darkforge')) return '#656464'
               if (normalized.includes('common') && normalized.includes('rare')) return '#0e87cf'
               if (normalized.includes('rare') && !normalized.includes('common')) return '#e6b70c'
               if (normalized.includes('common')) return '#1199e3'
@@ -1374,7 +1439,9 @@ const FusedDeckCard = memo(function FusedDeckCard({
                       Common: 1,
                       'Common Rare': 2,
                       Rare: 3,
-                      LS: 4,
+                      'Darkforge Rare': 4,
+                      Darkforge: 5,
+                      LS: 6,
                     }
                     return (order[a] || 99) - (order[b] || 99)
                   })
@@ -3015,7 +3082,19 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               }
             })
           }
+          if (cardData.solbindId1 || cardData.solbindid1) solbindCardIds.add(cardData.solbindId1 || cardData.solbindid1)
+          if (cardData.solbindId2 || cardData.solbindid2) solbindCardIds.add(cardData.solbindId2 || cardData.solbindid2)
         })
+        if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
+          ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any) => {
+            if (solbindCard && solbindCard.id) solbindCardIds.add(solbindCard.id)
+          })
+        }
+        if ((deck as any).forgeborn) {
+          const fb: any = (deck as any).forgeborn
+          if (fb.solbindId1 || fb.solbindid1) solbindCardIds.add(fb.solbindId1 || fb.solbindid1)
+          if (fb.solbindId2 || fb.solbindid2) solbindCardIds.add(fb.solbindId2 || fb.solbindid2)
+        }
         
         const solbindCardObjects: any[] = []
         normalizedCards.forEach(card => {
@@ -3029,7 +3108,43 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               }
             })
           }
+          if (cardData.solbindId1 || cardData.solbindid1) {
+            const id = cardData.solbindId1 || cardData.solbindid1
+            if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+              solbindCardObjects.push(getCardInfo(id))
+            }
+          }
+          if (cardData.solbindId2 || cardData.solbindid2) {
+            const id = cardData.solbindId2 || cardData.solbindid2
+            if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+              solbindCardObjects.push(getCardInfo(id))
+            }
+          }
         })
+        if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
+          ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any) => {
+            if (solbindCard && solbindCard.id) {
+              if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+                solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+              }
+            }
+          })
+        }
+        if ((deck as any).forgeborn) {
+          const fb: any = (deck as any).forgeborn
+          if (fb.solbindId1 || fb.solbindid1) {
+            const id = fb.solbindId1 || fb.solbindid1
+            if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+              solbindCardObjects.push(getCardInfo(id))
+            }
+          }
+          if (fb.solbindId2 || fb.solbindid2) {
+            const id = fb.solbindId2 || fb.solbindid2
+            if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+              solbindCardObjects.push(getCardInfo(id))
+            }
+          }
+        }
         normalizedCards.forEach(card => {
           if (forgebornCards.includes(card)) return
           const cardData = card as any
@@ -3062,14 +3177,19 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
           const rarity = cardData.rarity
           if (rarity && typeof rarity === 'string') {
             let normalizedRarity = rarity.trim()
-            if (normalizedRarity.includes('Common') && normalizedRarity.includes('Rare')) {
+            const lower = normalizedRarity.toLowerCase()
+            if (lower.includes('darkforge') && lower.includes('rare')) {
+              normalizedRarity = 'Darkforge Rare'
+            } else if (lower.includes('common') && lower.includes('rare')) {
               normalizedRarity = 'Common Rare'
-            } else if (normalizedRarity.toLowerCase().includes('common')) {
+            } else if (lower.includes('darkforge')) {
+              normalizedRarity = 'Darkforge'
+            } else if (lower.includes('common')) {
               normalizedRarity = 'Common'
-            } else if (normalizedRarity.toLowerCase().includes('rare')) {
+            } else if (lower.includes('rare')) {
               normalizedRarity = 'Rare'
-                        } else if (normalizedRarity.toLowerCase().includes('ls') || normalizedRarity.toLowerCase().includes('legendary')) {
-                          normalizedRarity = 'LS'
+            } else if (lower.includes('ls') || lower.includes('legendary')) {
+              normalizedRarity = 'LS'
             }
             
             const currentCount = rarityCounts.get(normalizedRarity) || 0
@@ -4104,6 +4224,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       data={[
                         { value: 'Common', label: 'Common' },
                         { value: 'Common Rare', label: 'Common Rare' },
+                        { value: 'Darkforge Rare', label: 'Darkforge Rare' },
+                        { value: 'Darkforge', label: 'Darkforge' },
                         { value: 'Rare', label: 'Rare' },
                         { value: 'LS', label: 'LS' },
                         { value: 'Solbind', label: 'Solbind' },

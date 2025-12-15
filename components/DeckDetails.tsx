@@ -14,6 +14,8 @@ import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 
 type CreatureTypeMap = Record<string, number>
 
+const KNOWN_FORGEBORN_NAMES = ['cercee', 'ironbeard', 'xerxes', 'kitaru', 'nova']
+
 const buildCreatureTypeEntries = (
   deckLike: any,
   options: { fallbackCards?: any[] } = {}
@@ -138,6 +140,19 @@ function getFactionBadgeColor(faction?: string): string {
     case 'Nekrium': return '#a855f7'
     default: return '#6b7280'
   }
+}
+
+function getRarityBadgeColor(rarity?: string): string {
+  if (!rarity) return '#1199e3'
+  const normalized = rarity.toLowerCase()
+  if (normalized.includes('darkforge') && normalized.includes('rare')) return '#d07a04'
+  if (normalized.includes('darkforge')) return '#656464'
+  if (normalized.includes('solbind')) return '#2dd4bf'
+  if (normalized.includes('common') && normalized.includes('rare')) return '#0e87cf'
+  if (normalized.includes('rare')) return '#e6b70c'
+  if (normalized.includes('common')) return '#1199e3'
+  if (normalized.includes('ls')) return '#a90100'
+  return '#1199e3'
 }
 
 // Global cache for card images (persists across modal opens)
@@ -1155,14 +1170,16 @@ const originalCardMeta = useMemo(() => {
     if (deckToUse.forgeborn && typeof deckToUse.forgeborn === 'object' && deckToUse.forgeborn.solbindCards && Array.isArray(deckToUse.forgeborn.solbindCards)) {
       deckToUse.forgeborn.solbindCards.forEach((solbindCard: any) => {
         if (solbindCard && solbindCard.id) {
-          // Only add if it's actually a Solbind card (rarity === 'Solbind')
-          // Second forgeborn (e.g., "Blighted Ironbeard") is not a Solbind card
-          const isSolbindCard = solbindCard.rarity === 'Solbind' || solbindCard.rarity === 'solbind'
-          if (isSolbindCard) {
-            ids.add(solbindCard.id)
-          }
+          ids.add(solbindCard.id)
         }
       })
+    }
+    if (deckToUse.forgeborn) {
+      const fb = deckToUse.forgeborn as any
+      const fbId1 = fb.solbindId1 || fb.solbindid1
+      const fbId2 = fb.solbindId2 || fb.solbindid2
+      if (fbId1) ids.add(fbId1)
+      if (fbId2) ids.add(fbId2)
     }
     
     // Add Solbind cards from solbindCards arrays in normalizedCards (prefer richer data if available)
@@ -1249,10 +1266,14 @@ const originalCardMeta = useMemo(() => {
         let normalizedRarity = rarityRaw.trim()
         const lower = normalizedRarity.toLowerCase()
 
-        if (lower.includes('common') && lower.includes('rare')) {
+        if (lower.includes('darkforge') && lower.includes('rare')) {
+          normalizedRarity = 'Darkforge Rare'
+        } else if (lower.includes('common') && lower.includes('rare')) {
           normalizedRarity = 'Common Rare'
         } else if (lower.includes('rare') && !lower.includes('common')) {
           normalizedRarity = 'Rare'
+        } else if (lower.includes('darkforge')) {
+          normalizedRarity = 'Darkforge'
         } else if (lower.includes('solbind')) {
           normalizedRarity = 'Solbind'
         } else if (lower.includes('common')) {
@@ -1269,7 +1290,7 @@ const originalCardMeta = useMemo(() => {
   }, [uniqueNormalizedCards, solbindCardIdsSet])
 
   const deckCounts = useMemo(() => {
-    if (deck?.computed?.counts) return deck.computed.counts
+    let derived = { total: 0, creatures: 0, spells: 0, solbind: 0 }
     let creatures = 0
     let spells = 0
     let solbind = 0
@@ -1280,7 +1301,19 @@ const originalCardMeta = useMemo(() => {
       const cardTypeRaw = (cardData.cardType || cardData.card_type || '').toLowerCase()
       const typeRaw = (cardData.type || '').toLowerCase()
       const isForgeborn = cardTypeRaw.includes('forgeborn') || typeRaw.includes('forgeborn')
-      if (isForgeborn) return
+      if (isForgeborn) {
+        if (Array.isArray(cardData.solbindCards)) {
+          cardData.solbindCards.forEach((sb: any, sbIdx: number) => {
+            const sid = sb?.id || sb?.cardId || sb?.name || `solbind-${cardData.id || idx}-${sbIdx}`
+            if (sid) solbindIds.add(sid)
+          })
+        }
+        const id1 = cardData.solbindId1 || cardData.solbindid1
+        const id2 = cardData.solbindId2 || cardData.solbindid2
+        if (id1) solbindIds.add(id1)
+        if (id2) solbindIds.add(id2)
+        return
+      }
 
       const isParentSolbind =
         Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0
@@ -1297,6 +1330,10 @@ const originalCardMeta = useMemo(() => {
           const sid = sb?.id || sb?.cardId || sb?.name || `solbind-${cardData.id || idx}-${sbIdx}`
           if (sid) solbindIds.add(sid)
         })
+        const id1 = cardData.solbindId1 || cardData.solbindid1
+        const id2 = cardData.solbindId2 || cardData.solbindid2
+        if (id1) solbindIds.add(id1)
+        if (id2) solbindIds.add(id2)
         return
       }
 
@@ -1316,11 +1353,23 @@ const originalCardMeta = useMemo(() => {
         if (sid) solbindIds.add(sid)
       })
     }
+    if ((deck as any)?.forgeborn) {
+      const fb: any = (deck as any).forgeborn
+      if (fb.solbindId1 || fb.solbindid1) solbindIds.add(fb.solbindId1 || fb.solbindid1)
+      if (fb.solbindId2 || fb.solbindid2) solbindIds.add(fb.solbindId2 || fb.solbindid2)
+    }
 
     solbind = solbindIds.size
-    if (solbind === 1) solbind = 2
+    derived = { total: creatures + spells + solbind, creatures, spells, solbind }
 
-    return { total: creatures + spells + solbind, creatures, spells, solbind }
+    const comp = deck?.computed?.counts
+    if (!comp) return derived
+    return {
+      total: Math.max(derived.total, comp.total ?? 0),
+      creatures: Math.max(derived.creatures, comp.creatures ?? 0),
+      spells: Math.max(derived.spells, comp.spells ?? 0),
+      solbind: Math.max(derived.solbind, comp.solbind ?? 0),
+    }
   }, [deck, uniqueNormalizedCards])
 
   const deckTags = useMemo(() => {
@@ -2292,9 +2341,8 @@ const originalCardMeta = useMemo(() => {
     const normalizeForgebornKey = (id?: string, name?: string): string => {
       const lowerId = (id || '').toLowerCase()
       const lowerName = (name || '').toLowerCase()
-      const knownNames = ['cercee', 'ironbeard', 'xerxes', 'kitaru', 'nova']
-      const keyFromName = knownNames.find(n => lowerName.includes(n))
-      const keyFromId = knownNames.find(n => lowerId.includes(n))
+      const keyFromName = KNOWN_FORGEBORN_NAMES.find(n => lowerName.includes(n))
+      const keyFromId = KNOWN_FORGEBORN_NAMES.find(n => lowerId.includes(n))
       if (keyFromName) return keyFromName
       if (keyFromId) return keyFromId
       return lowerId ? lowerId.replace(/[^a-z]/g, '') : ''
@@ -2609,18 +2657,17 @@ const originalCardMeta = useMemo(() => {
             // Check if this is a Forgeborn card (alternative forgeborn, not a Solbind spell)
             // Try different ways to get cardType
             const cardType = solbindCard.cardType || solbindCard.CardType || solbindCard.type || solbindCard.Type
-            const isForgebornCard = cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')
-            
-            // Also check rarity - if it's NOT Solbind and has Forgeborn type, it's a second forgeborn
-            const rarity = solbindCard.rarity || solbindCard.Rarity || ''
-            const isNotSolbind = !rarity || (typeof rarity === 'string' && !rarity.toLowerCase().includes('solbind'))
+            const nameLower = (solbindCard.name || solbindCard.title || '').toLowerCase()
+            const isForgebornCard =
+              (cardType && typeof cardType === 'string' && cardType.toLowerCase().includes('forgeborn')) ||
+              KNOWN_FORGEBORN_NAMES.some(n => nameLower.includes(n))
             
             if (process.env.NODE_ENV === 'development') {
               // Debug logging disabled for performance
               // logWithTimestamp(`[DeckDetails] Checking solbindCard...`)
             }
             
-            if (isForgebornCard && isNotSolbind) {
+            if (isForgebornCard) {
               // Check if this forgeborn is already in the list
               if (!isForgebornInList(solbindCard.id, forgebornList)) {
                 const secondForgeborn = getCardInfo(solbindCard.id, solbindCard)
@@ -2646,41 +2693,53 @@ const originalCardMeta = useMemo(() => {
       (card as any).cardType?.toLowerCase().includes('forgeborn')
     )
     if (forgebornByType) {
-      return [forgebornByType]
+      addForgebornIfNotExists(forgebornByType, forgebornByType.id)
     }
+
+    // Final safety: include any cards that look like Forgeborn by name/type (e.g., Solbind-alt Forgeborn)
+    uniqueNormalizedCards.forEach(card => {
+      const cardData = card as any
+      const nameLower = (cardData.name || cardData.title || '').toLowerCase()
+      const typeLower = (cardData.cardType || cardData.type || '').toLowerCase()
+      const idLower = (cardData.id || cardData.cardId || '').toLowerCase()
+      const matchesKnown = KNOWN_FORGEBORN_NAMES.some(n => nameLower.includes(n) || idLower.includes(n))
+      const looksForgeborn = typeLower.includes('forgeborn') || matchesKnown
+      if (looksForgeborn) {
+        addForgebornIfNotExists(card, card.id || card.cardId || card.name)
+      }
+    })
     
-    return []
+    return forgebornList
   }, [normalizedCards, deck, fullDeckData, getFusedDeckSourceDecks])
 
   const solbindCards: CardInfo[] = useMemo(() => {
     const deckForUse = fullDeckData || deck
     if (!deckForUse) return []
-    
-    // Extract Solbind cards from solbindCards arrays in other cards
+
     const solbindCardObjects: CardInfo[] = []
     const parentSolbindIds = new Set<string>()
-    
-    // First, check forgeborn.solbindCards (solbind cards attached to forgeborn)
-    if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.solbindCards && Array.isArray(deckForUse.forgeborn.solbindCards)) {
+
+    // forgeborn.solbindCards
+    if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && Array.isArray(deckForUse.forgeborn.solbindCards)) {
       deckForUse.forgeborn.solbindCards.forEach((solbindCard: any) => {
-        if (solbindCard && solbindCard.id) {
-          // Only add if it's actually a Solbind card (rarity === 'Solbind')
-          // Second forgeborn (e.g., "Blighted Ironbeard") is not a Solbind card
-          const isSolbindCard = solbindCard.rarity === 'Solbind' || solbindCard.rarity === 'solbind'
-          if (isSolbindCard && !solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-            solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-            if (process.env.NODE_ENV === 'development') {
-              // logWithTimestamp(`[DeckDetails] ✅ Added Solbind card...`)
-            }
-          }
+        if (solbindCard && solbindCard.id && !solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+          solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
         }
       })
     }
-    
-    // Second, find all cards that have solbindCards array and extract those cards
+    // forgeborn solbindId1/solbindId2
+    if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object') {
+      const fb = deckForUse.forgeborn as any
+      ;[fb.solbindId1 || fb.solbindid1, fb.solbindId2 || fb.solbindid2].forEach(id => {
+        if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+          solbindCardObjects.push(getCardInfo(id))
+        }
+      })
+    }
+
+    // Cards with solbindCards arrays
     uniqueNormalizedCards.forEach(card => {
       const cardData = card as any
-
       const solbindList =
         Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0
           ? cardData.solbindCards
@@ -2697,15 +2756,11 @@ const originalCardMeta = useMemo(() => {
       if (hasSolbindChildren && card.id) parentSolbindIds.add(card.id)
 
       solbindList.forEach((solbindCard: any) => {
-        if (solbindCard && solbindCard.id) {
-          // Create CardInfo from solbind card data
-          if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-            solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-          }
+        if (solbindCard && solbindCard.id && !solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+          solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
         }
       })
 
-      // Also add by solbindId1/solbindId2 if provided
       const id1 = cardData.solbindId1 || cardData.solbindid1
       const id2 = cardData.solbindId2 || cardData.solbindid2
       ;[id1, id2].forEach(id => {
@@ -2714,40 +2769,29 @@ const originalCardMeta = useMemo(() => {
         }
       })
     })
-    
-    // Also check for cards in normalizedCards that are solbind cards
+
+    // Solbind rarity cards (non-parent)
     uniqueNormalizedCards.forEach(card => {
       if (forgebornCards.includes(card)) return
-      
       const cardData = card as any
       const cardId = card.id
       const hasSolbindChildren =
         (Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0) ||
         !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
-      
-      // Skip if this card has solbindCards (it's the parent, not the solbind itself)
-      if (hasSolbindChildren) {
-        return
-      }
-      
-      // Check if this card is in any solbindCards array (already added above)
+      if (hasSolbindChildren) return
       if (solbindCardIdsSet.has(cardId)) {
-        // Check if it's already in solbindCardObjects
         if (!solbindCardObjects.some(sb => sb.id === cardId)) {
           solbindCardObjects.push(card)
         }
         return
       }
-      
-      // Check if rarity is Solbind and it's not a parent card
-      // Count ALL cards with Solbind rarity, not just specific names
       if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
         if (!solbindCardObjects.some(sb => sb.id === cardId)) {
           solbindCardObjects.push(card)
         }
       }
     })
-    
+
     // Fallback: ensure all known Solbind IDs are represented
     const existingIds = new Set(solbindCardObjects.map(sb => sb.id).filter(Boolean) as string[])
     solbindCardIdsSet.forEach(id => {
@@ -2758,8 +2802,7 @@ const originalCardMeta = useMemo(() => {
         existingIds.add(id)
       }
     })
-    
-    // Deduplicate by id to be safe
+
     const dedupMap = new Map<string, CardInfo>()
     solbindCardObjects.forEach((sb, idx) => {
       const key = sb.id || sb.cardId || sb.name || `solbind-${idx}`
@@ -2767,7 +2810,7 @@ const originalCardMeta = useMemo(() => {
         dedupMap.set(key, { ...sb, id: sb.id || key })
       }
     })
-    
+
     return Array.from(dedupMap.values())
   }, [uniqueNormalizedCards, forgebornCards, solbindCardIdsSet, deck, fullDeckData])
 
@@ -3206,6 +3249,10 @@ const originalCardMeta = useMemo(() => {
     else if (lowerRarity === 'rare rare' || lowerRarity.match(/^rare\s+rare$/)) {
       normalizedRarity = 'RareRare'
     }
+    // Handle Darkforge Rare
+    else if (lowerRarity.includes('darkforge') && lowerRarity.includes('rare')) {
+      normalizedRarity = 'DarkforgeRare'
+    }
     // Handle "Rare Common" or "rare common" -> "RareCommon" (order matters: Rare first, then Common)
     else if (lowerRarity.match(/^rare\s+common$/i) || (lowerRarity.startsWith('rare') && lowerRarity.includes('common') && !lowerRarity.startsWith('common'))) {
       normalizedRarity = 'RareCommon'
@@ -3505,7 +3552,7 @@ const originalCardMeta = useMemo(() => {
                 </Title>
               </button>
               {/* Don't show faction/set badges for fused decks */}
-              {formattedDeckSet && deck.format !== 'Fused' && (
+              {formattedDeckSet && (deckForDisplay as any)?.format !== 'Fused' && (
                 <Group gap={4} wrap="nowrap">
                   {derivedFaction && (
                     <Image
@@ -3580,100 +3627,120 @@ const originalCardMeta = useMemo(() => {
               })()}
             </Group>
             <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-            {deck.deckRank && (
-              <Badge
-                color={deck.deckRank === 'Unranked' ? 'gray' : 'blue'}
-                variant="light"
-                size="sm"
-              >
-                {deck.deckRank}
-              </Badge>
-            )}
-            {deck.format && (
-                <Badge
-                  color="gray"
-                  variant="light"
-                  size="sm"
-                >
-                {deck.format}
-                </Badge>
-              )}
+              {(() => {
+                const rank = (deckForDisplay as any)?.deckRank ?? (deck as any)?.deckRank
+                if (!rank) return null
+                return (
+                  <Badge
+                    color={rank === 'Unranked' ? 'gray' : 'blue'}
+                    variant="light"
+                    size="sm"
+                  >
+                    {rank}
+                  </Badge>
+                )
+              })()}
+              {(() => {
+                const formatLabel = (deckForDisplay as any)?.format ?? (deck as any)?.format
+                if (!formatLabel) return null
+                return (
+                  <Badge
+                    color="gray"
+                    variant="light"
+                    size="sm"
+                  >
+                    {formatLabel}
+                  </Badge>
+                )
+              })()}
             </Group>
-            {deck && (() => {
-              const isFused = deck.format === 'Fused' || (deck as any).format === 'Fused'
-              const solforgefusionUrl = isFused 
-                ? `https://solforgefusion.com/fused/${deck.id}`
-                : `https://solforgefusion.com/decks/${deck.id}`
-              
-              return (
-                <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-                  {isFused ? (
+            {deck && (
+              (() => {
+                const isFused = ((deckForDisplay as any)?.format ?? (deck as any)?.format) === 'Fused'
+                const solforgefusionUrl = isFused 
+                  ? `https://solforgefusion.com/fused/${deck.id}`
+                  : `https://solforgefusion.com/decks/${deck.id}`
+                
+                return (
+                  <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                    {isFused ? (
+                      <Button
+                        component="a"
+                        href={`https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/fuseddeck/${deck.id}?inclCards=true&inclUsers=true`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        variant="subtle"
+                        size="xs"
+                        color="blue"
+                        leftSection={<IconExternalLink size={14} />}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ flexShrink: 0 }}
+                      >
+                        API
+                      </Button>
+                    ) : (
+                      <Button
+                        component="a"
+                        href={`https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/${deck.id}?inclCards=true&inclUsers=true`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        variant="subtle"
+                        size="xs"
+                        color="blue"
+                        leftSection={<IconExternalLink size={14} />}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ flexShrink: 0 }}
+                      >
+                        API
+                      </Button>
+                    )}
                     <Button
                       component="a"
-                      href={`https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/fuseddeck/${deck.id}?inclCards=true&inclUsers=true`}
+                      href={solforgefusionUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       variant="subtle"
                       size="xs"
                       color="blue"
-                      leftSection={<IconExternalLink size={14} />}
+                      leftSection={<IconWorld size={14} />}
                       onClick={(e) => e.stopPropagation()}
                       style={{ flexShrink: 0 }}
                     >
-                      API
+                      SFF
                     </Button>
-                  ) : (
-                    <Button
-                      component="a"
-                      href={`https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/${deck.id}?inclCards=true&inclUsers=true`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      variant="subtle"
-                      size="xs"
-                      color="blue"
-                      leftSection={<IconExternalLink size={14} />}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ flexShrink: 0 }}
-                    >
-                      API
-                    </Button>
-                  )}
-                  <Button
-                    component="a"
-                    href={solforgefusionUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    variant="subtle"
-                    size="xs"
-                    color="blue"
-                    leftSection={<IconWorld size={14} />}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ flexShrink: 0 }}
-                >
-                  SFF
-                </Button>
-              </Group>
-            )
-          })()}
+                  </Group>
+                )
+              })()
+            )}
             <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-              {(deck as any).deckScore !== undefined && (deck as any).deckScore !== null && (
-                <Badge
-                  color="grape"
-                  variant="light"
-                  size="sm"
-                >
-                  Score: {typeof (deck as any).deckScore === 'number' ? Math.round((deck as any).deckScore * 100) : (deck as any).deckScore}
-                </Badge>
-              )}
-              {(deck as any).elo !== undefined && (deck as any).elo !== null && (
-                <Badge
-                  color="violet"
-                  variant="light"
-                  size="sm"
-                >
-                  ELO: {typeof (deck as any).elo === 'number' ? Math.round((deck as any).elo) : (deck as any).elo}
-                </Badge>
-              )}
+              {(() => {
+                const score = (deckForDisplay as any)?.deckScore ?? (deck as any)?.deckScore
+                if (score === undefined || score === null) return null
+                const val = typeof score === 'number' ? Math.round(score * 100) : score
+                return (
+                  <Badge
+                    color="grape"
+                    variant="light"
+                    size="sm"
+                  >
+                    Score: {val}
+                  </Badge>
+                )
+              })()}
+            {(() => {
+              const elo = (deckForDisplay as any)?.elo ?? (deck as any)?.elo
+              if (elo === undefined || elo === null) return null
+              const val = typeof elo === 'number' ? Math.round(elo) : elo
+              return (
+                  <Badge
+                    color="violet"
+                    variant="light"
+                    size="sm"
+                  >
+                    ELO: {val}
+                  </Badge>
+                )
+              })()}
             </Group>
             {(() => {
               const [sourceDeck1, sourceDeck2] = getFusedDeckSourceDecks
@@ -3809,7 +3876,7 @@ const originalCardMeta = useMemo(() => {
           maxWidth: '1500px',
           width: 'min(1500px, calc(100vw - 64px))',
           minWidth: 'min(1100px, calc(100vw - 64px))',
-          minHeight: '80vh',
+          minHeight: 'calc(80vh + 50px)',
           transition: 'transform 300ms ease-in-out, opacity 300ms ease-in-out',
         },
         header: {
@@ -3818,8 +3885,8 @@ const originalCardMeta = useMemo(() => {
         },
         body: {
           padding: '1.5rem',
-          maxHeight: '80vh',
-          minHeight: '70vh',
+          maxHeight: 'calc(80vh + 50px)',
+          minHeight: 'calc(70vh + 50px)',
           overflowY: 'auto',
         },
         overlay: {
@@ -3830,7 +3897,7 @@ const originalCardMeta = useMemo(() => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ alignItems: 'flex-start' }}>
         {/* Left column - card lists */}
         <div className="lg:col-span-1 flex flex-col h-full">
-          <ScrollArea className="flex-1" style={{ padding: 0, maxHeight: '70vh' }}>
+          <ScrollArea className="flex-1" style={{ padding: 0, maxHeight: 'calc(70vh + 50px)' }}>
             <Stack gap="md" align="flex-start" style={{ padding: 0, margin: 0 }}>
               {/* Forgeborn */}
               {forgebornCards.length > 0 && (
@@ -3963,7 +4030,7 @@ const originalCardMeta = useMemo(() => {
         {/* Right column - detailed card information */}
         <div
           className="lg:col-span-2 flex flex-col h-full"
-          style={{ position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: '70vh' }}
+          style={{ position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: 'calc(70vh + 50px)' }}
         >
           {selectedCard ? (
             <Stack gap="lg">
@@ -4171,12 +4238,19 @@ const originalCardMeta = useMemo(() => {
                           Common: 1,
                           'Common Rare': 2,
                           Rare: 3,
-                          LS: 4,
+                          'Darkforge Rare': 4,
+                          Darkforge: 5,
+                          LS: 6,
                         }
                         return (order[a] ?? 99) - (order[b] ?? 99)
                       })
                       .map(([rarity, count]) => (
-                        <Badge key={`rarity-${rarity}`} variant="light" size="sm">
+                        <Badge
+                          key={`rarity-${rarity}`}
+                          variant="light"
+                          size="sm"
+                          style={{ backgroundColor: getRarityBadgeColor(rarity), color: 'white', border: 'none' }}
+                        >
                           {pluralize(count, rarity)}
                         </Badge>
                       ))}
