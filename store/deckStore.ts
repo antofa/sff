@@ -509,19 +509,21 @@ const buildDisplayTags = (deck: Deck): string[] => {
   return tagsToDisplay
 }
 
+export const addComputedFields = (deck: Deck): Deck => {
+  const creatureType = computeCreatureTypes(deck)
+  const computed: DeckComputed = {
+    expiryTs: getExpiryTimestamp(deck),
+    deckSet: getDeckSetComputed(deck),
+    counts: countPlayableCards(deck),
+    rarityCounts: computeRarityCounts(deck),
+    creatureType,
+    displayTags: buildDisplayTags(deck),
+  }
+  return { ...deck, creatureType, computed }
+}
+
 const attachComputed = (decks: Deck[]): Deck[] => {
-  return decks.map((deck) => {
-    const creatureType = computeCreatureTypes(deck)
-    const computed: DeckComputed = {
-      expiryTs: getExpiryTimestamp(deck),
-      deckSet: getDeckSetComputed(deck),
-      counts: countPlayableCards(deck),
-      rarityCounts: computeRarityCounts(deck),
-      creatureType,
-      displayTags: buildDisplayTags(deck),
-    }
-    return { ...deck, creatureType, computed }
-  })
+  return decks.map((deck) => addComputedFields(deck))
 }
 
 const getForgebornNameFromDeck = (deck: Deck): string | null => {

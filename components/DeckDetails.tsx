@@ -6,6 +6,7 @@ import { notifications } from '@mantine/notifications'
 import { IconCalendar, IconCopy, IconExternalLink, IconWorld } from '@tabler/icons-react'
 import NextImage from 'next/image'
 import type { Deck } from '@/store/deckStore'
+import { addComputedFields } from '@/store/deckStore'
 import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForgebornAlternativeUrl, type CardInfo } from '@/lib/api'
 import { logWithTimestamp } from '@/lib/logger'
 import { pluralize } from '@/lib/pluralize'
@@ -390,6 +391,13 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     cardImagesRef.current = cardImages
   }, [cardImages])
 
+  // Всегда работаем с обогащенной декой (computed поля) для сетов/expiry/тегов
+  const deckForDisplay = useMemo(() => {
+    const base = fullDeckData || deck
+    if (!base) return null
+    return addComputedFields(base)
+  }, [fullDeckData, deck])
+
   // Reset fused-specific caches when a different deck is opened
   useEffect(() => {
     fusedCardsMergedRef.current = false
@@ -630,7 +638,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     
     if (hasSolbindCards) {
       // Use existing deck data
-      setFullDeckData(deck)
+      setFullDeckData(addComputedFields(deck))
       if (process.env.NODE_ENV === 'development') {
         logWithTimestamp('[DeckDetails] ✅ Deck already has forgeborn.solbindCards:', deckAny.forgeborn.solbindCards.length)
       }
@@ -645,13 +653,14 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           // Merge forgeborn data with existing deck data
           const updatedDeck = {
             ...deck,
+            ...fullData,
             forgeborn: fullData.forgeborn || deck.forgeborn,
             cards: fullData.cardList || fullData.cards || deck.cards,
             myDecks: (fullData as any).myDecks || (deck as any).myDecks,
             fusedDeckIds: (fullData as any).fusedDeckIds || (deck as any).fusedDeckIds
           } as Deck
           
-          setFullDeckData(updatedDeck)
+          setFullDeckData(addComputedFields(updatedDeck))
           
           if (process.env.NODE_ENV === 'development') {
             logWithTimestamp('[DeckDetails] ✅ Loaded full deck data:', {
@@ -682,7 +691,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }).catch((error) => {
         console.warn('[DeckDetails] ❌ Error loading full deck data:', error)
         // Fallback to existing deck data
-        setFullDeckData(deck)
+        setFullDeckData(addComputedFields(deck))
       })
     }
   }, [deck, opened, fullDeckData])
@@ -931,7 +940,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
   // Собираем карты для отображения в модалке (чистый сбор для fused)
   const normalizedCards: CardInfo[] = useMemo(() => {
-    const deckToUse = fullDeckData || deck
+    const deckToUse = deckForDisplay || deck
     if (!deckToUse) return []
 
     const normalizeHalf = (half: any): any[] => {
@@ -1059,7 +1068,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
       return getCardInfo(`card-${index}`)
     })
-  }, [deck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, isFusedDeck, halfDetails, allDecks])
+  }, [deck, deckForDisplay, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, isFusedDeck, halfDetails, allDecks])
 
   // Дедуп уже после нормализации (id в нижнем регистре)
   const uniqueNormalizedCards: CardInfo[] = useMemo(() => {
@@ -1077,7 +1086,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   // Метаданные типов из половинок (используются как fallback)
 const originalCardMeta = useMemo(() => {
   const map = new Map<string, { cardType?: string; type?: string }>()
-  const deckToUse = fullDeckData || deck
+  const deckToUse = deckForDisplay || deck
   if (!deckToUse) return map
   const halves: any[] = []
     const [s1, s2] = getFusedDeckSourceDecks
@@ -1105,7 +1114,7 @@ const originalCardMeta = useMemo(() => {
       }
   })
   return map
-}, [deck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks])
+}, [deck, deckForDisplay, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks])
 
   const markLevelsLoading = useCallback((cardId: string, levels: number[]) => {
     setLoadingLevels(prev => {
@@ -1317,6 +1326,12 @@ const originalCardMeta = useMemo(() => {
   const deckTags = useMemo(() => {
     const tagSet = new Set<string>()
     const deckAny = (fullDeckData || deck) as any
+
+    if (Array.isArray(deckAny?.computed?.displayTags) && deckAny.computed.displayTags.length > 0) {
+      deckAny.computed.displayTags.forEach((t: string) => {
+        if (t && typeof t === 'string') tagSet.add(t)
+      })
+    }
 
     if (deckAny?.tags && typeof deckAny.tags === 'object' && !Array.isArray(deckAny.tags)) {
       Object.entries(deckAny.tags).forEach(([key, value]) => {
@@ -3280,13 +3295,63 @@ const originalCardMeta = useMemo(() => {
 
   // Determine deck set (B1 if any card is from B1, otherwise deck.cardSetNo)
   const deckSet = useMemo(() => {
-    if (!deck) return null
-    return getDeckSet(deck, normalizedCards)
-  }, [deck, normalizedCards, getDeckSet])
+    const deckForUse = deckForDisplay
+    if (!deckForUse) return null
+    const byCards = getDeckSet(deckForUse, normalizedCards)
+    if (byCards) return byCards
+    return deckForUse.computed?.deckSet || null
+  }, [deckForDisplay, normalizedCards, getDeckSet])
   
   const formattedDeckSet = useMemo(() => {
     return formatSetName(deckSet)
   }, [deckSet, formatSetName])
+
+  const derivedFaction = useMemo(() => {
+    const d = deckForDisplay as any
+    if (d?.faction) return d.faction
+    const factionCounts = new Map<string, number>()
+    uniqueNormalizedCards.forEach((card) => {
+      const f = (card as any)?.faction || (card as any)?.Faction || (card as any)?.factionName
+      if (f && typeof f === 'string') {
+        factionCounts.set(f, (factionCounts.get(f) || 0) + 1)
+      }
+    })
+    if (factionCounts.size === 0) return null
+    let top: string | null = null
+    let topCount = 0
+    factionCounts.forEach((count, f) => {
+      if (count > topCount) {
+        top = f
+        topCount = count
+      }
+    })
+    return top
+  }, [deckForDisplay, uniqueNormalizedCards])
+
+  const expireInfo = useMemo(() => {
+    const d = deckForDisplay as any
+    if (!d) return { label: null, isExpired: false }
+    const raw =
+      d.expireAt ||
+      d.expire ||
+      d.expireDate ||
+      d.expire_date ||
+      d.expiry ||
+      d.pExpiry ||
+      (Number.isFinite(d.computed?.expiryTs) ? new Date(d.computed.expiryTs).toISOString() : null)
+
+    if (!raw) return { label: null, isExpired: false }
+    const ts = Date.parse(raw)
+    if (!Number.isFinite(ts)) return { label: null, isExpired: false }
+    return {
+      label: new Date(ts).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+      isExpired: ts < Date.now(),
+    }
+  }, [deckForDisplay])
 
   const copyDeckLink = useCallback(() => {
     if (!deck?.id) return
@@ -3436,16 +3501,16 @@ const originalCardMeta = useMemo(() => {
                   className="text-white"
                   style={{ flexShrink: 0, margin: 0, textDecoration: copied ? 'underline' : 'none' }}
                 >
-                  {deck.name || 'Untitled Deck'}
+                  {(deckForDisplay || deck)?.name || 'Untitled Deck'}
                 </Title>
               </button>
               {/* Don't show faction/set badges for fused decks */}
               {formattedDeckSet && deck.format !== 'Fused' && (
                 <Group gap={4} wrap="nowrap">
-                  {deck.faction && (
+                  {derivedFaction && (
                     <Image
-                      src={`/images/icons/${deck.faction.toLowerCase()}.png`}
-                      alt={deck.faction}
+                      src={`/images/icons/${derivedFaction.toLowerCase()}.png`}
+                      alt={derivedFaction}
                       h={20}
                       w="auto"
                       style={{
@@ -3466,41 +3531,27 @@ const originalCardMeta = useMemo(() => {
               )}
               {/* Owner / Expire badges directly under the title */}
               {(() => {
-                const d = deck as any
+                const d = (deckForDisplay || deck) as any
                 const ownerName = d.username || d.playerName || null
-                if (!ownerName) return null
-                const expireAt =
-                  d.expireAt ||
-                  d.expire ||
-                  d.expireDate ||
-                  d.expire_date ||
-                  d.expiry ||
-                  d.pExpiry ||
-                  null
-                const expireLabel =
-                  expireAt &&
-                  new Date(expireAt).toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })
-                const expireTs = expireAt ? Date.parse(expireAt) : NaN
-                const hasExpire = Number.isFinite(expireTs)
-                const isExpired = hasExpire ? expireTs < Date.now() : false
+                const expireLabel = expireInfo.label
+                const isExpired = expireInfo.isExpired
+                if (!ownerName && !expireLabel) return null
 
                 return (
                   <Group gap="xs" wrap="wrap">
-                    <Badge
-                      component="a"
-                      href={`/player/${encodeURIComponent(ownerName)}`}
-                      color="teal"
-                      variant="light"
-                      size="sm"
-                      radius="sm"
-                      style={{ textDecoration: 'none' }}
-                    >
-                      Owner: {ownerName as string}
-                    </Badge>
+                    {ownerName && (
+                      <Badge
+                        component="a"
+                        href={`/player/${encodeURIComponent(ownerName)}`}
+                        color="teal"
+                        variant="light"
+                        size="sm"
+                        radius="sm"
+                        style={{ textDecoration: 'none' }}
+                      >
+                        Owner: {ownerName as string}
+                      </Badge>
+                    )}
                     {expireLabel && (
                       <Badge
                         color={undefined}
@@ -3941,12 +3992,19 @@ const originalCardMeta = useMemo(() => {
                     const levelErrorKey = `${selectedCard.id}-${selectedLevel}`
                     const hasError = imageErrors.has(levelErrorKey)
 
-                    const isForgeborn = deck?.forgebornId === selectedCard.id || 
-                                       selectedCard.id === deck?.forgebornId ||
-                                       (selectedCard.id && deck?.forgebornId && selectedCard.id.includes(deck.forgebornId)) ||
-                                       (deck?.forgebornId && selectedCard.id && deck.forgebornId.includes(selectedCard.id)) ||
-                                       selectedCard.type?.toLowerCase().includes('forgeborn') ||
-                                       (selectedCard as any).cardType?.toLowerCase().includes('forgeborn')
+                    const selectedIdLower = selectedCard.id?.toLowerCase() || ''
+                    const deckForgebornIdLower = deck?.forgebornId?.toLowerCase() || ''
+                    const currentForgebornIdLower = (deck as any)?.currentForgebornId?.toLowerCase() || ''
+                    const deckForgebornObjectIdLower = (deck as any)?.forgeborn?.id?.toLowerCase() || ''
+                    const cardTypeLower = selectedCard.type?.toLowerCase() || ''
+                    const cardTypeAltLower = (selectedCard as any).cardType?.toLowerCase() || ''
+                    
+                    const isForgeborn =
+                      (!!selectedIdLower && !!deckForgebornIdLower && (selectedIdLower === deckForgebornIdLower || selectedIdLower.includes(deckForgebornIdLower) || deckForgebornIdLower.includes(selectedIdLower))) ||
+                      (!!selectedIdLower && !!currentForgebornIdLower && (selectedIdLower === currentForgebornIdLower || selectedIdLower.includes(currentForgebornIdLower) || currentForgebornIdLower.includes(selectedIdLower))) ||
+                      (!!selectedIdLower && !!deckForgebornObjectIdLower && (selectedIdLower === deckForgebornObjectIdLower || selectedIdLower.includes(deckForgebornObjectIdLower) || deckForgebornObjectIdLower.includes(selectedIdLower))) ||
+                      cardTypeLower.includes('forgeborn') ||
+                      cardTypeAltLower.includes('forgeborn')
                     
                     const selectedCardData = selectedCard as any
                     const isSolbind = solbindCardIdsSet.has(selectedCard.id) ||
@@ -3962,10 +4020,10 @@ const originalCardMeta = useMemo(() => {
                     const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
                     
                     const baseFrameWidthPx = 288
-                    const baseFrameHeightPx = 423
+                    const baseFrameHeightPx = 480
                     const frameWidthPx = baseFrameWidthPx
                     const frameHeightPx = baseFrameHeightPx
-                    const forgebornScale = isForgeborn ? 1.2 : 1
+                    const forgebornScale = isForgeborn ? 1.44 : 1
 
                     const imageKey = effectiveImageUrl ? `${selectedCard.id}-${effectiveLevel}-${effectiveImageUrl}` : ''
                     const isImageReady = !!(imageKey && imageLoadStatus[imageKey])
@@ -3973,7 +4031,7 @@ const originalCardMeta = useMemo(() => {
                     return !hasError ? (
                       <div
                         className="relative w-full flex flex-col items-center justify-center"
-                        style={{ gap: '0.35rem' }}
+                        style={{ gap: '0.15rem', marginTop: '-1.5rem' }}
                       >
                         <div
                         className="relative w-full flex items-center justify-center"
@@ -4030,7 +4088,7 @@ const originalCardMeta = useMemo(() => {
                         </div>
 
                         {!isForgeborn && (
-                          <Group gap="xs" justify="center">
+                          <Group gap="xs" justify="center" style={{ marginTop: '-1.5rem' }}>
                             {([1, 2, 3] as const)
                               .filter(level => {
                                 if (!isSolbind) return true

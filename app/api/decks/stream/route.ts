@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server'
 import { fetchFusedDecksFromAPI, getPlayerDecks, getCardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 import { logWithTimestamp } from '@/lib/logger'
-import { getWritableLogsDir } from '@/lib/logPaths'
+import { getLogDirs, shouldFallbackToTmp } from '@/lib/logPaths'
 
 export const dynamic = 'force-dynamic'
 
@@ -148,16 +148,30 @@ export async function GET(request: NextRequest) {
   const t0 = Date.now()
   const elapsed = () => `${Date.now() - t0}ms`
 
-  const logsDir = getWritableLogsDir()
-  const logFilePath = path.join(logsDir, `deck-search-${new Date().toISOString().slice(0, 10)}.log`)
+  const { primary: primaryLogsDir, fallback: fallbackLogsDir } = getLogDirs()
+  let currentLogsDir = primaryLogsDir
+  const buildLogPath = () => path.join(currentLogsDir, `deck-search-${new Date().toISOString().slice(0, 10)}.log`)
+  let logFilePath = buildLogPath()
   const logToFile = async (message: string) => {
     const line = `${new Date().toISOString()} [stream] player=${playerName} ${message} (elapsed=${elapsed()})\n`
     try {
       await appendFile(logFilePath, line)
     } catch (error: any) {
-      if (error?.code === 'ENOENT') {
-        await mkdir(path.dirname(logFilePath), { recursive: true })
-        await appendFile(logFilePath, line)
+      const isFallbackAttempt = currentLogsDir === fallbackLogsDir
+      const shouldFallback = shouldFallbackToTmp(error) && !isFallbackAttempt
+
+      if (shouldFallback) {
+        currentLogsDir = fallbackLogsDir
+        logFilePath = buildLogPath()
+      }
+
+      if (error?.code === 'ENOENT' || shouldFallback) {
+        try {
+          await mkdir(path.dirname(logFilePath), { recursive: true })
+          await appendFile(logFilePath, line)
+        } catch (nestedErr) {
+          console.error('[stream] failed to write log file after fallback', nestedErr)
+        }
       } else {
         console.error('[stream] failed to write log file', error)
       }

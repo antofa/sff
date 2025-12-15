@@ -1,11 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { fetchDeckDetails, normalizeDeck } from '@/lib/api'
+import { fetchDeckDetails, normalizeDeck, getPlayerDecks } from '@/lib/api'
 import type { Database, PlayerDeckRow } from '@/types/database'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey)
+
+const mergeFromPlayerDecks = async (deck: any) => {
+  const owner =
+    deck?.playerName ||
+    deck?.username ||
+    deck?.userName ||
+    deck?.owner ||
+    deck?.users?.[0]?.username ||
+    deck?.Users?.[0]?.UserName ||
+    undefined
+
+  if (!owner) return deck
+
+  try {
+    const { decks: ownerDecks } = await getPlayerDecks(owner, { force: false })
+    const normalizeId = (val?: string | null) =>
+      (val || '')
+        .toString()
+        .toLowerCase()
+        .replace(/^deck[_-]?/i, '')
+        .replace(/^deck[_-]?fused[_-]?/i, '')
+        .replace(/^fused[_-]?/i, '')
+
+    const targetId = normalizeId(deck.id)
+    const matched = ownerDecks.find((d: any) => normalizeId(d.id) === targetId)
+    if (!matched) return deck
+
+    const pickExpire =
+      matched.expireAt ??
+      matched.expire ??
+      matched.expire_date ??
+      matched.expireDate ??
+      matched.pExpiry ??
+      deck.expireAt ??
+      deck.expire ??
+      deck.expire_date ??
+      deck.expireDate ??
+      deck.pExpiry ??
+      undefined
+
+    const merged = {
+      ...deck,
+      ...matched,
+      cards: Array.isArray(matched.cards) && matched.cards.length > 0 ? matched.cards : deck.cards,
+      tags: matched.tags ?? deck.tags,
+      expireAt: pickExpire,
+    }
+    return merged
+  } catch (err) {
+    console.warn('[API] /api/deck enrich from player decks failed:', err)
+    return deck
+  }
+}
 
 const mapSupabaseRowToDeck = (row: PlayerDeckRow, profile?: { player_name?: string | null; display_name?: string | null; discord_name?: string | null }) => {
   const ownerDisplay = profile?.display_name || profile?.player_name || undefined
@@ -119,7 +172,8 @@ export async function GET(
                 price: supabaseDeck.price,
               }
 
-              return NextResponse.json({ deck: hydratedDeck })
+              const enriched = await mergeFromPlayerDecks(hydratedDeck)
+              return NextResponse.json({ deck: enriched })
             }
           } catch (err) {
             console.warn('[API] Hydration from external API failed, using Supabase deck:', err)
@@ -154,7 +208,8 @@ export async function GET(
           if (username && !(deck as any).username) {
             ;(deck as any).username = username
           }
-          return NextResponse.json({ deck })
+          const enriched = await mergeFromPlayerDecks(deck)
+          return NextResponse.json({ deck: enriched })
         } catch (e) {
           console.warn('[API] normalizeDeck failed, will try fused fallback:', e)
         }

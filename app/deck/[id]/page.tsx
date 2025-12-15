@@ -8,6 +8,7 @@ import { BackgroundElements } from '@/components/BackgroundElements'
 import { Header } from '@/components/Header'
 import { DeckDetails } from '@/components/DeckDetails'
 import type { Deck } from '@/store/deckStore'
+import { addComputedFields } from '@/store/deckStore'
 
 export default function DeckPage() {
   const params = useParams<{ id: string }>()
@@ -29,7 +30,8 @@ export default function DeckPage() {
         if (!res.ok) {
           throw new Error(json.error || 'Failed to load deck')
         }
-        setDeck(json.deck as Deck)
+        const enriched = addComputedFields(json.deck as Deck)
+        setDeck(enriched)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load deck')
       } finally {

@@ -1,11 +1,19 @@
 import path from 'path'
 
+const defaultLogsDir = path.join(process.cwd(), 'logs')
+const fallbackTmpDir = process.env.LOGS_FALLBACK_DIR || '/tmp/solforge-logs'
+
 /**
- * Returns a writable directory for logs. On serverless platforms like Netlify
- * the application directory is read-only, so we fall back to /tmp.
+ * Preferred and fallback locations for logs.
+ * - primary: project root /logs (or LOGS_DIR override)
+ * - fallback: tmp directory safe for serverless (or LOGS_FALLBACK_DIR override)
  */
-export const getWritableLogsDir = () => {
-  if (process.env.LOGS_DIR) return process.env.LOGS_DIR
-  const isReadOnlyFs = !!(process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT)
-  return isReadOnlyFs ? '/tmp/solforge-logs' : path.join(process.cwd(), 'logs')
+export const getLogDirs = () => ({
+  primary: process.env.LOGS_DIR || defaultLogsDir,
+  fallback: fallbackTmpDir,
+})
+
+export const shouldFallbackToTmp = (error: any) => {
+  const code = error?.code
+  return code === 'ENOENT' || code === 'EACCES' || code === 'EPERM' || code === 'EROFS'
 }

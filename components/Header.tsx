@@ -9,18 +9,7 @@ import { useState } from 'react'
 export function Header() {
   const { data: session, status } = useSession()
   const [logoError, setLogoError] = useState(false)
-  const [logoSrc, setLogoSrc] = useState('https://solforgefusion.com/images/logo.png')
-
-  const handleLogoError = () => {
-    // Try alternative URLs
-    if (logoSrc.includes('images/logo.png')) {
-      setLogoSrc('https://www.solforgefusion.com/images/logo.png')
-    } else if (logoSrc.includes('www.solforgefusion.com')) {
-      setLogoSrc('https://solforgefusion.com/logo.png')
-    } else {
-      setLogoError(true)
-    }
-  }
+  const logoSrc = '/images/solforge-logo.png'
 
   const handleDiscordLogin = () => {
     signIn('discord')
@@ -51,9 +40,8 @@ export function Header() {
                 height={63}
                 className="h-16 w-auto"
                 style={{ objectFit: 'contain' }}
-                onError={handleLogoError}
+                onError={() => setLogoError(true)}
                 priority
-                unoptimized
               />
             ) : (
               <Text

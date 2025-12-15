@@ -578,6 +578,11 @@ const RegularDeckCard = memo(function RegularDeckCard({
           borderColor,
           boxShadow: '0 2px 4px rgba(0, 0, 0, 0.12)',
           minHeight: 360,
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-start',
+          alignItems: 'stretch',
           transition: 'border-color 0.1s ease',
           overflow: 'hidden',
         }}
@@ -588,7 +593,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
           e.currentTarget.style.borderColor = borderColor
         }}
       >
-        <Stack gap="sm">
+        <Stack gap={6} style={{ flex: 1 }} justify="flex-start" align="stretch">
           {(deck as any).playerName && (
             <Group gap="xs" wrap="wrap">
               <Badge
@@ -632,11 +637,15 @@ const RegularDeckCard = memo(function RegularDeckCard({
             </Group>
           )}
 
-          <Title order={4} className="text-white flex-1" lineClamp={2}>
+          <Title
+            order={4}
+            className="text-white"
+            style={{ margin: 0, lineHeight: 1.25 }}
+          >
             {deck.name || 'Untitled'}
           </Title>
 
-          <Group gap={8}>
+          <Group gap={8} style={{ marginTop: '4px' }}>
             <Group gap={4}>
               {deck.faction && (
                 <Image
@@ -1255,6 +1264,11 @@ const FusedDeckCard = memo(function FusedDeckCard({
           borderColor,
           boxShadow: '0 2px 4px rgba(0, 0, 0, 0.12)',
           minHeight: 360,
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-start',
+          alignItems: 'stretch',
           transition: 'border-color 0.1s ease',
           overflow: 'hidden',
         }}
@@ -1265,14 +1279,18 @@ const FusedDeckCard = memo(function FusedDeckCard({
           e.currentTarget.style.borderColor = borderColor
         }}
       >
-        <Stack gap="sm">
+        <Stack gap={6} style={{ flex: 1 }} justify="flex-start" align="stretch">
           <Group justify="space-between" align="flex-start" wrap="nowrap">
-            <Title order={4} className="text-white flex-1" lineClamp={2}>
+            <Title
+              order={4}
+              className="text-white"
+              style={{ margin: 0, lineHeight: 1.25 }}
+            >
               {deck.name || 'Untitled'}
             </Title>
           </Group>
 
-          <Group gap="xs" wrap="wrap" align="center">
+          <Group gap="xs" wrap="wrap" align="center" style={{ marginTop: '4px' }}>
             {factionSets.map((item, idx) => {
               const setLabel = item.setNo ? formatSetName(item.setNo) : null
               return (
@@ -4268,7 +4286,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                 <div ref={regularListRef} style={{ position: 'relative' }}>
                   {regularRows.map((rowDecks, idx) => (
                     <div key={`regular-row-${idx}`} style={{ paddingBottom: '16px' }}>
-                      <Grid gutter="md">
+                      <Grid gutter="md" align="stretch">
                         {rowDecks.map((deck) => (
                           <RegularDeckCard
                             key={deck.id}
@@ -4371,7 +4389,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                 <div ref={fusedListRef} style={{ position: 'relative' }}>
                   {fusedRows.map((rowDecks, idx) => (
                     <div key={`fused-row-${idx}`} style={{ paddingBottom: '16px' }}>
-                      <Grid gutter="md">
+                      <Grid gutter="md" align="stretch">
                         {rowDecks.map((deck) => {
                           const [d1, d2] = getFusedDeckSourceDecks(deck, [...decks, ...fusedDecks])
                           return (
