@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Badge, Button, Checkbox, Container, Group, Loader, Paper, Progress, Stack, Text, TextInput, Title } from '@mantine/core'
 import { IconAlertTriangle, IconCheck, IconClockHour3, IconSearch } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
@@ -10,11 +11,14 @@ import { Header } from '@/components/Header'
 import { BackgroundElements } from '@/components/BackgroundElements'
 
 export default function Home() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [playerName, setPlayerName] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
   const [forceRefresh, setForceRefresh] = useState(false)
   const searchedNameRef = useRef<string>('')
+  const autoSearchTriggeredRef = useRef(false)
   const {
     decks,
     fusedDecks,
@@ -197,8 +201,15 @@ export default function Home() {
     }
   }, [hasSearched, loading, playerName, decks.length, fusedDecks.length])
 
-  const handleSearch = async () => {
-    if (!playerName.trim()) {
+  const handleSearch = useCallback(async (overrideName?: string | null, overrideForce?: boolean) => {
+    const rawName = overrideName ?? playerName ?? ''
+    const targetName =
+      typeof rawName === 'string'
+        ? rawName.trim()
+        : String(rawName ?? '').trim()
+    const targetForce = overrideForce ?? forceRefresh
+
+    if (!targetName) {
       notifications.show({
         title: 'Error',
         message: 'Please enter a player nickname',
@@ -210,12 +221,29 @@ export default function Home() {
     setIsTyping(false)
     setHasSearched(true)
     // Store the searched name to detect when user starts typing new text
-    searchedNameRef.current = playerName.trim()
-    lastSearchRef.current = playerName.trim()
-    setLastSearchedName(playerName.trim())
+    searchedNameRef.current = targetName
+    lastSearchRef.current = targetName
+    setLastSearchedName(targetName)
+    // Keep input in sync with triggered search
+    if (playerName !== targetName) {
+      setPlayerName(targetName)
+    }
+    if (overrideForce !== undefined && forceRefresh !== targetForce) {
+      setForceRefresh(targetForce)
+    }
+
+    // Update URL with current params
+    const url = new URL(window.location.href)
+    url.searchParams.set('username', targetName)
+    if (targetForce) {
+      url.searchParams.set('forceRefresh', 'true')
+    } else {
+      url.searchParams.delete('forceRefresh')
+    }
+    router.push(url.pathname + url.search)
 
     try {
-      await fetchDecks(playerName.trim(), { force: forceRefresh })
+      await fetchDecks(targetName, { force: targetForce })
       const { decks: loadedDecks, fusedDecks: loadedFusedDecks } = useDeckStore.getState()
       const latestProgress = useDeckStore.getState().progress
       const totalMs =
@@ -260,7 +288,34 @@ export default function Home() {
         color: 'red',
       })
     }
-  }
+  }, [playerName, forceRefresh, formatDuration, fetchDecks])
+
+  // Auto-run search when opened with params (?username=...&forceRefresh=true)
+  useEffect(() => {
+    const usernameParam =
+      searchParams.get('username') ||
+      searchParams.get('player') ||
+      searchParams.get('nick')
+    if (!usernameParam) return
+
+    const forceParam =
+      searchParams.get('forceRefresh') ||
+      searchParams.get('force') ||
+      searchParams.get('refresh')
+    const forceValue =
+      forceParam !== null
+        ? ['1', 'true', 'yes', 'on'].includes(forceParam.toLowerCase())
+        : undefined
+
+    const trimmed = usernameParam.trim()
+    if (!trimmed) return
+    if (autoSearchTriggeredRef.current && searchedNameRef.current === trimmed) return
+    autoSearchTriggeredRef.current = true
+
+    setPlayerName(trimmed)
+    if (forceValue !== undefined) setForceRefresh(forceValue)
+    void handleSearch(trimmed, forceValue)
+  }, [handleSearch, searchParams])
 
   return (
     <main className="min-h-screen relative overflow-hidden">
@@ -318,7 +373,7 @@ export default function Home() {
                 <div className="flex-1" />
                 <Button
                   size="xl"
-                  onClick={handleSearch}
+                  onClick={() => handleSearch()}
                   loading={loading}
                   className="bg-gradient-to-r from-sf-primary to-sf-secondary hover:from-sf-primary/90 hover:to-sf-secondary/90 transition-all shadow-lg hover:shadow-xl"
                   style={{ minWidth: 270, height: 60 }}
