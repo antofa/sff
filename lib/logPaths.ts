@@ -1,12 +1,18 @@
 import path from 'path'
 
-const defaultLogsDir = path.join(process.cwd(), 'logs')
-const fallbackTmpDir = process.env.LOGS_FALLBACK_DIR || path.join(process.cwd(), 'logs-fallback')
+const isNetlify =
+  process.env.NETLIFY === 'true' ||
+  process.env.NETLIFY === '1' ||
+  Boolean(process.env.DEPLOY_PRIME_URL) ||
+  Boolean(process.env.CONTEXT)
+
+const defaultLogsDir = isNetlify ? '/tmp/sff-logs' : path.join(process.cwd(), 'logs')
+const fallbackTmpDir = process.env.LOGS_FALLBACK_DIR || '/tmp/sff-logs'
 
 /**
  * Preferred and fallback locations for logs.
- * - primary: project root /logs (or LOGS_DIR override)
- * - fallback: project root /logs-fallback (or LOGS_FALLBACK_DIR override)
+ * - primary: /tmp on Netlify, otherwise project root /logs (or LOGS_DIR override)
+ * - fallback: /tmp (or LOGS_FALLBACK_DIR override)
  */
 export const getLogDirs = () => ({
   primary: process.env.LOGS_DIR || defaultLogsDir,

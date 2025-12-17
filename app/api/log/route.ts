@@ -3,6 +3,15 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { getLogDirs, shouldFallbackToTmp } from '@/lib/logPaths'
 import { pruneOldLogs } from '@/lib/logRotation'
+import { logWithTimestamp } from '@/lib/logger'
+
+const loggedLogFiles = new Set<string>()
+
+const logTargetOnce = (logFile: string) => {
+  if (loggedLogFiles.has(logFile)) return
+  loggedLogFiles.add(logFile)
+  logWithTimestamp('[Log API] Writing logs to', logFile)
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,6 +41,7 @@ export async function POST(request: NextRequest) {
 
     await ensureDir(logsDir)
     await pruneOldLogs(logsDir)
+    logTargetOnce(logFile)
 
     // Format log entry
     const logEntry = `[${new Date().toISOString()}] ${message}\n${JSON.stringify(data, null, 2)}\n\n`
@@ -44,6 +54,8 @@ export async function POST(request: NextRequest) {
         logsDir = fallback
         logFile = join(logsDir, `deck-details-${date}.log`)
         await mkdir(logsDir, { recursive: true })
+        await pruneOldLogs(logsDir)
+        logTargetOnce(logFile)
         await writeFile(logFile, logEntry, { flag: 'a' })
       } else {
         throw error
