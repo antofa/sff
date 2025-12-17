@@ -4,9 +4,12 @@ import { Notifications } from '@mantine/notifications'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { SessionProvider } from '@/components/SessionProvider'
 import { ErrorHandler } from './error-handler'
+import { installConsoleTimestamp } from '@/lib/consoleTimestamp'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
 import './globals.css'
+
+installConsoleTimestamp()
 
 export const metadata: Metadata = {
   title: 'SolForge Fusion - Deck Viewer',

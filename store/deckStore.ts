@@ -772,6 +772,7 @@ interface DeckStore {
   fusedDecks: Deck[]
   loading: boolean
   error: string | null
+  currentPlayer: string | null
   playerCache: Record<string, DeckCacheEntry>
   progress: FetchProgress
   tagIndex: string[]
@@ -789,6 +790,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   fusedDecks: [],
   loading: false,
   error: null,
+  currentPlayer: null,
   playerCache: {},
   progress: createIdleProgress(),
   tagIndex: [],
@@ -806,7 +808,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     }
 
     // Streaming implementation via SSE
-    set({ loading: true, error: null, progress: createIdleProgress() })
+    set({ loading: true, error: null, progress: createIdleProgress(), currentPlayer: normalizedName })
 
     const startedAt = Date.now()
     const normalizedPlayer = playerName.trim().toLowerCase()
@@ -1359,6 +1361,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     decks: [],
     fusedDecks: [],
     error: null,
+    currentPlayer: null,
     progress: createIdleProgress(),
     tagIndex: [],
     cardNameIndex: [],

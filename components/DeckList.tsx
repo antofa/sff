@@ -3237,18 +3237,12 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                 .map(card => card.name?.toLowerCase())
                 .filter((name): name is string => !!name)
 
-              const hasAllSelectedCards = selected.every(selectedName => 
-                deckCardNames.includes(selectedName.toLowerCase())
-              )
               const hasAnySelectedCard = selected.some(selectedName =>
                 deckCardNames.includes(selectedName.toLowerCase())
               )
 
               const mode = (state.cardNameMode as FilterState['cardNameMode']) || 'include'
-              const match =
-                mode === 'include'
-                  ? hasAllSelectedCards
-                  : !hasAnySelectedCard
+              const match = mode === 'include' ? hasAnySelectedCard : !hasAnySelectedCard
 
               if (!match) {
                 return false

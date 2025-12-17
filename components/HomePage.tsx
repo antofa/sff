@@ -31,6 +31,7 @@ export default function Home() {
     forgebornNameIndex,
     deckTags,
     deckCreatureTypes,
+    currentPlayer,
   } = useDeckStore()
   const lastSearchRef = useRef<string>('')
   const [elapsedMs, setElapsedMs] = useState(0)
@@ -243,7 +244,7 @@ export default function Home() {
       setForceRefresh(targetForce)
     }
 
-    // Update URL with current params
+    // Update URL with current params only if it actually changed
     const url = new URL(window.location.href)
     url.searchParams.set('username', targetName)
     if (targetForce) {
@@ -251,7 +252,11 @@ export default function Home() {
     } else {
       url.searchParams.delete('forceRefresh')
     }
-    router.push(url.pathname + url.search)
+    const nextUrl = url.pathname + url.search
+    const currentUrl = window.location.pathname + window.location.search
+    if (nextUrl !== currentUrl) {
+      router.push(nextUrl)
+    }
 
     try {
       await fetchDecks(targetName, { force: targetForce })
@@ -338,6 +343,23 @@ export default function Home() {
 
     const trimmed = usernameParam.trim()
     if (!trimmed) return
+    const normalizedTrimmed = trimmed.toLowerCase()
+    const normalizedCurrent = currentPlayer?.trim().toLowerCase() || null
+    const hasCachedResults = decks.length > 0 || fusedDecks.length > 0
+    const isReady = ['done', 'cached'].includes(progress.status)
+
+    if (normalizedCurrent === normalizedTrimmed && (loading || (hasCachedResults && isReady))) {
+      autoSearchTriggeredRef.current = true
+      searchedNameRef.current = trimmed
+      lastSearchRef.current = trimmed
+      setLastSearchedName(trimmed)
+      setHasSearched(true)
+      setIsTyping(false)
+      setPlayerName(trimmed)
+      if (forceValue !== undefined) setForceRefresh(forceValue)
+      return
+    }
+
     if (autoSearchTriggeredRef.current && searchedNameRef.current === trimmed) return
     autoSearchTriggeredRef.current = true
 

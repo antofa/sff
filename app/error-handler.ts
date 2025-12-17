@@ -4,9 +4,11 @@ import { useEffect } from 'react'
 import { setupErrorHandling } from '@/lib/errorHandler'
 import { logErrorToFile } from '@/lib/errorLogger'
 import { logWithTimestamp } from '@/lib/logger'
+import { installConsoleTimestamp } from '@/lib/consoleTimestamp'
 
 export function ErrorHandler() {
   useEffect(() => {
+    installConsoleTimestamp()
     logWithTimestamp('[ErrorHandler] Component mounted, setting up error handling')
     setupErrorHandling()
     
