@@ -188,6 +188,10 @@ export async function GET(
     for (const candidate of candidates) {
       const raw = await fetchDeckDetails(candidate)
       if (raw) {
+        const rawId = raw?.id || raw?.deckId || raw?.deck_id
+        if (!rawId) {
+          continue
+        }
         try {
           const deck = normalizeDeck(raw)
           const owner =
@@ -310,6 +314,15 @@ export async function GET(
 
       const cards = mergedCardsFromSources.length > 0 ? mergedCardsFromSources : fusedCards
 
+      const resolveCardSetNo = (setNo: unknown, setId: unknown) => {
+        if (setNo !== undefined && setNo !== null && String(setNo).trim() !== '') return setNo
+        if (setId === undefined || setId === null) return setId
+        const setIdStr = String(setId).trim()
+        if (!setIdStr) return setId
+        if (setIdStr.toLowerCase() === 'd0') return 99
+        return setId
+      }
+
       // Normalize source decks (keep whatever data we already have)
       const myDecksNormalized = sourceDecks.map((d) => ({
         ...d,
@@ -333,11 +346,15 @@ export async function GET(
             const full = await fetchDeckDetails(srcId)
             if (!full) return src
             const normalized = normalizeDeck(full)
+            const resolvedCardSetNo = resolveCardSetNo(
+              (src as any)?.cardSetNo ?? (normalized as any)?.cardSetNo,
+              (src as any)?.cardSetId ?? (normalized as any)?.cardSetId
+            )
             return {
               ...src,
               ...normalized,
               cards: Array.isArray(src.cards) && src.cards.length > 0 ? src.cards : normalized.cards,
-              cardSetNo: (src as any)?.cardSetNo ?? (src as any)?.cardSetId ?? (normalized as any)?.cardSetNo ?? (normalized as any)?.cardSetId,
+              cardSetNo: resolvedCardSetNo,
               cardSetId: (src as any)?.cardSetId ?? (normalized as any)?.cardSetId ?? (normalized as any)?.cardSetNo,
               forgeborn: (src as any)?.forgeborn || (normalized as any)?.forgeborn,
               forgebornId: (src as any)?.forgebornId || (normalized as any)?.forgebornId,

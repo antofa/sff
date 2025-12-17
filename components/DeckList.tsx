@@ -1760,9 +1760,18 @@ const FILTER_BLOCK_OPTIONS: { value: FilterBlockKey; label: string }[] = [
   { value: 'elo', label: FILTER_BLOCK_LABELS.elo },
   { value: 'score', label: FILTER_BLOCK_LABELS.score },
   { value: 'rarity', label: FILTER_BLOCK_LABELS.rarity },
-  { value: 'sort', label: FILTER_BLOCK_LABELS.sort },
 ]
 const FILTER_BLOCK_VALUES = FILTER_BLOCK_OPTIONS.map((opt) => opt.value)
+const SORT_OPTIONS = [
+  { value: 'date-desc', label: 'Date (Newest first)' },
+  { value: 'date-asc', label: 'Date (Oldest first)' },
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+  { value: 'score-desc', label: 'Score (Highest first)' },
+  { value: 'score-asc', label: 'Score (Lowest first)' },
+  { value: 'elo-desc', label: 'ELO (Highest first)' },
+  { value: 'elo-asc', label: 'ELO (Lowest first)' },
+]
 const FILTER_QUERY_KEYS = [
   'activeFilters',
   'deckName',
@@ -2207,6 +2216,9 @@ const buildSearchParamsFromState = (
   })
 
   // Include only non-default status to keep URL short
+  if ((filters.sortBy || defaults.sortBy) !== defaults.sortBy) {
+    params.set('sortBy', filters.sortBy || defaults.sortBy)
+  }
   if ((filters.expiryFilter || defaults.expiryFilter) !== defaults.expiryFilter) {
     params.set('expiryFilter', filters.expiryFilter || defaults.expiryFilter)
   }
@@ -2668,9 +2680,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const resetFiltersByKeys = useCallback((keys: (keyof FilterState)[]) => {
     const defaults = createDefaultFilters()
     setFilters((prev) => {
-      const next = { ...prev }
+      const next: FilterState = { ...prev }
       keys.forEach((key) => {
-        next[key] = defaults[key]
+        ;(next as Record<keyof FilterState, FilterState[keyof FilterState]>)[key] =
+          defaults[key]
       })
       return next
     })
@@ -2779,7 +2792,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
 
   const hasActiveFilters = useMemo(() => {
     const defaults = createDefaultFilters()
-    const nonStatusBlocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status')
+    const nonStatusBlocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status' && block.key !== 'sort')
     for (const block of nonStatusBlocks) {
       const state = getInstanceState(block)
       switch (block.key) {
@@ -3063,7 +3076,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const filterDeckArray = useCallback((deckArray: Deck[]) => {
     if (!hasActiveFilters) return deckArray
 
-    const blocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status')
+    const blocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status' && block.key !== 'sort')
     const blockStates = blocks.map((block) => ({
       block,
       state: getDebouncedInstanceState(block),
@@ -4104,11 +4117,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   }, [activeFilterBlocks, cardSetInstances, deckTagsMap, getDebouncedInstanceState, hasActiveFilters])
   
   const sortByValue = useMemo(() => {
-    const sortBlock = activeFilterBlocks.find((block) => block.key === 'sort')
-    if (!sortBlock) return createDefaultFilters().sortBy
-    const state = getInstanceState(sortBlock)
-    return (state.sortBy as string) || createDefaultFilters().sortBy
-  }, [activeFilterBlocks, getInstanceState])
+    return filters.sortBy || createDefaultFilters().sortBy
+  }, [filters.sortBy])
 
   // Helper function to sort decks
   const sortDecks = useCallback((deckArray: Deck[]): Deck[] => {
@@ -4400,6 +4410,26 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                   />
                 </Stack>
 
+                <Stack gap={4} style={{ flex: '0 1 280px', maxWidth: 280 }}>
+                  <Text size="sm" fw={500} style={{ color: 'white' }}>
+                    Sort
+                  </Text>
+                  <Select
+                    value={filters.sortBy || 'date-desc'}
+                    onChange={(value) => setFilters({ ...filters, sortBy: value || 'date-desc' })}
+                    data={SORT_OPTIONS}
+                    styles={{
+                      input: {
+                        backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                        color: 'white',
+                        borderColor: 'rgba(74, 144, 226, 0.3)',
+                      },
+                      dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                      option: { color: 'white' },
+                    }}
+                  />
+                </Stack>
+
                 <Stack gap={6} align="flex-end" style={{ flex: '1 1 320px', minWidth: 320 }}>
                   <Text size="sm" fw={500} style={{ color: 'white', textAlign: 'right' }}>
                     Deck Status
@@ -4434,7 +4464,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               <Grid gutter="md" columns={12}>
 
                 {activeFilterBlocks
-                  .filter((block) => block.key !== 'deck-status')
+                  .filter((block) => block.key !== 'deck-status' && block.key !== 'sort')
                   .map((block) => {
                     const state = getInstanceState(block) as FilterInstanceState
                     const update = (payload: Partial<FilterInstanceState>) => updateInstanceState(block, payload)
@@ -5516,16 +5546,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                           <Select
                             value={currentSort}
                             onChange={(value) => update({ sortBy: value || 'date-desc' })}
-                            data={[
-                              { value: 'date-desc', label: 'Date (Newest first)' },
-                              { value: 'date-asc', label: 'Date (Oldest first)' },
-                              { value: 'name-asc', label: 'Name (A-Z)' },
-                              { value: 'name-desc', label: 'Name (Z-A)' },
-                              { value: 'score-desc', label: 'Score (Highest first)' },
-                              { value: 'score-asc', label: 'Score (Lowest first)' },
-                              { value: 'elo-desc', label: 'ELO (Highest first)' },
-                              { value: 'elo-asc', label: 'ELO (Lowest first)' },
-                            ]}
+                            data={SORT_OPTIONS}
                             styles={{
                               input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                             }}

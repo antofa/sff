@@ -1496,8 +1496,8 @@ const originalCardMeta = useMemo(() => {
       
       const existingImages = cardImages[selectedCard.id] || {}
       const levelsToLoad = isForgeborn
-        ? [1].filter(level => !existingImages[level] && !isInFlight(selectedCard.id, level))
-        : [1, 2, 3].filter(level => !existingImages[level] && !isInFlight(selectedCard.id, level))
+        ? [1].filter(level => !existingImages[level])
+        : [1, 2, 3].filter(level => !existingImages[level])
       
       if (levelsToLoad.length === 0) {
         return
@@ -2903,7 +2903,7 @@ const originalCardMeta = useMemo(() => {
     if (!firstForgeborn?.id) return
 
     const alreadyLoaded = cardImages[firstForgeborn.id]?.[1]
-    if (alreadyLoaded || isInFlight(firstForgeborn.id, 1)) return
+    if (alreadyLoaded) return
 
     let isCanceled = false
     markLevelsLoading(firstForgeborn.id, [1, 2, 3])

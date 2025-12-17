@@ -27,26 +27,8 @@ const setCached = (cache: Map<string, CacheEntry<ApiDeck[]>>, key: string, data:
   cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, data })
 }
 
-const appendDeckSearchLog = async (message: string) => {
-  // Skip file logging in browser/runtime without fs and in production
-  if (typeof window !== 'undefined') return
-  if (process.env.NODE_ENV === 'production') return
-  const timestamp = new Date().toISOString()
-  const line = `${timestamp} [fused] ${message}\n`
-  try {
-    const { default: fs } = await import('fs/promises')
-    const { default: path } = await import('path')
-    const LOG_DIR = path.join(process.cwd(), 'logs')
-    const fileName = `deck-search-${timestamp.slice(0, 10)}.log`
-    const fullPath = path.join(LOG_DIR, fileName)
-    await fs.mkdir(LOG_DIR, { recursive: true })
-    const { pruneOldLogs } = await import('./logRotation')
-    await pruneOldLogs(LOG_DIR)
-    await fs.appendFile(fullPath, line, 'utf8')
-  } catch (err) {
-    // Swallow file logging errors to avoid breaking the flow
-    console.warn('[logger] appendDeckSearchLog failed:', err)
-  }
+const appendDeckSearchLog = async (_message: string) => {
+  // Keep this a no-op to avoid bundling fs modules into client builds.
 }
 
 const fusedLog = async (message: string) => {
@@ -161,6 +143,14 @@ export function normalizeDeck(deck: any): ApiDeck {
     deck.pExpiry ??
     null
 
+  const cardSetId = deck.cardSetId ?? deck.card_set_id
+  let cardSetNo = deck.cardSetNo ?? deck.card_set_no
+  if ((cardSetNo === undefined || cardSetNo === null) && typeof cardSetId === 'string') {
+    if (cardSetId.trim().toLowerCase() === 'd0') {
+      cardSetNo = 99
+    }
+  }
+
   return {
     id: String(id),
     name: deck.name || deck.deckName || 'Untitled',
@@ -176,8 +166,8 @@ export function normalizeDeck(deck: any): ApiDeck {
     deckRank: deck.deckRank || deck.rank,
     digital: deck.digital,
     tags: normalizedTags,
-    cardSetNo: deck.cardSetNo,
-    cardSetId: deck.cardSetId,
+    cardSetNo: cardSetNo,
+    cardSetId: cardSetId,
     deckScore: deck.deckScore,
     elo: deck.elo,
   }
