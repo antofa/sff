@@ -53,7 +53,20 @@ export default function RootLayout({
           >
             <ErrorHandler />
             <ErrorBoundary>
-              <Notifications position="top-right" />
+              <Notifications
+                position="top-right"
+                limit={1}
+                autoClose={4000}
+                containerWidth={420}
+                notificationMaxHeight={240}
+                transitionDuration={0}
+                zIndex={4500}
+                styles={{
+                  root: {
+                    minWidth: 360,
+                  },
+                }}
+              />
               {children}
             </ErrorBoundary>
           </MantineProvider>

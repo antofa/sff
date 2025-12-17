@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { getLogDirs, shouldFallbackToTmp } from '@/lib/logPaths'
+import { pruneOldLogs } from '@/lib/logRotation'
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     await ensureDir(logsDir)
+    await pruneOldLogs(logsDir)
 
     // Format log entry
     const logEntry = `[${new Date().toISOString()}] ${message}\n${JSON.stringify(data, null, 2)}\n\n`

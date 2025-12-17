@@ -5,6 +5,7 @@ import { fetchFusedDecksFromAPI, getPlayerDecks, getCardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 import { logWithTimestamp } from '@/lib/logger'
 import { getLogDirs, shouldFallbackToTmp } from '@/lib/logPaths'
+import { pruneOldLogs } from '@/lib/logRotation'
 
 export const dynamic = 'force-dynamic'
 
@@ -149,6 +150,10 @@ export async function GET(request: NextRequest) {
   const elapsed = () => `${Date.now() - t0}ms`
 
   const { primary: primaryLogsDir, fallback: fallbackLogsDir } = getLogDirs()
+  void pruneOldLogs(primaryLogsDir)
+  if (fallbackLogsDir !== primaryLogsDir) {
+    void pruneOldLogs(fallbackLogsDir)
+  }
   let currentLogsDir = primaryLogsDir
   const buildLogPath = () => path.join(currentLogsDir, `deck-search-${new Date().toISOString().slice(0, 10)}.log`)
   let logFilePath = buildLogPath()

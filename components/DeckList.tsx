@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef, useLayoutEffect, useTransition, useCallback, memo } from 'react'
+import { useState, useMemo, useEffect, useRef, useLayoutEffect, useTransition, useCallback, memo, ReactNode } from 'react'
 import { pluralize } from '@/lib/pluralize'
-import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image } from '@mantine/core'
+import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image, ActionIcon } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useDebouncedValue, useResizeObserver } from '@mantine/hooks'
 import type { Deck } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
@@ -50,6 +51,12 @@ const buildCreatureTypeEntries = (
       return a[0].localeCompare(b[0])
     })
 }
+
+const applyMode = (match: boolean, mode: 'include' | 'exclude') => (mode === 'include' ? match : !match)
+const MODE_OPTIONS = [
+  { label: 'Include', value: 'include' },
+  { label: 'Exclude', value: 'exclude' },
+]
 
 // Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", etc.
 function formatSetName(setNo: string | number | null | undefined): string | null {
@@ -557,7 +564,8 @@ const RegularDeckCard = memo(function RegularDeckCard({
 }) {
   const [renderNow] = useState(() => Date.now())
   const computedCounts = deck.computed?.counts && deck.computed.counts.total > 0 ? deck.computed.counts : null
-  const displayCounts = computedCounts || getDisplayCounts(deck)
+  // Prefer computed counts (from store) and fall back to a full local count (includes Solbind children)
+  const displayCounts = computedCounts || countPlayableCards(deck)
   const expiryTs = getExpiryTimestamp(deck)
   const isExpired = expiryTs !== null && expiryTs < renderNow
   const { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
@@ -1104,7 +1112,6 @@ const FusedDeckCard = memo(function FusedDeckCard({
     if (aggregatedCards.length > 0) {
       let creatures = 0
       let spells = 0
-      let solbind = 0
       const solbindIds = new Set<string>()
       aggregatedCards.forEach((card: any, idx: number) => {
         const info = typeof card === 'string'
@@ -1120,7 +1127,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
           if (cardData.solbindId2 || cardData.solbindid2) solbindIds.add(cardData.solbindId2 || cardData.solbindid2)
           if (Array.isArray(cardData.solbindCards)) {
             cardData.solbindCards.forEach((sb: any) => {
-              const sid = sb?.id
+              const sid = sb?.id || sb?.cardId || sb?.name
               if (sid) solbindIds.add(sid)
             })
           }
@@ -1131,12 +1138,10 @@ const FusedDeckCard = memo(function FusedDeckCard({
           (Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0) ||
           !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
 
-        const isSpell = cardTypeRaw.includes('spell') && !cardTypeRaw.includes('creature')
-        const isSolbind =
-          !isParentSolbind &&
-          cardData.rarity &&
-          String(cardData.rarity).toLowerCase().includes('solbind')
+        const isSolbindChild = solbindIds.has(cardData.id || cardData.cardId || cardData.name)
+        if (isSolbindChild) return
 
+        const isSpell = cardTypeRaw.includes('spell') && !cardTypeRaw.includes('creature')
         if (isParentSolbind) {
           if (isSpell) {
             spells += 1
@@ -1145,19 +1150,16 @@ const FusedDeckCard = memo(function FusedDeckCard({
           }
           if (Array.isArray(cardData.solbindCards)) {
             cardData.solbindCards.forEach((sb: any) => {
-              const sid = sb?.id
-              if (sid) solbindIds.add(sid)
+              const sid = sb?.id || sb?.cardId || sb?.name
+              if (sid) {
+                solbindIds.add(sid)
+              }
             })
           }
           if (cardData.solbindId1) solbindIds.add(cardData.solbindId1)
           if (cardData.solbindid1) solbindIds.add(cardData.solbindid1)
           if (cardData.solbindId2) solbindIds.add(cardData.solbindId2)
           if (cardData.solbindid2) solbindIds.add(cardData.solbindid2)
-          return
-        }
-
-        if (isSolbind) {
-          solbindIds.add(cardData.id || cardData.cardId || cardData.name || `card-${idx}`)
           return
         }
 
@@ -1168,8 +1170,8 @@ const FusedDeckCard = memo(function FusedDeckCard({
         }
       })
 
-      solbind += solbindIds.size
-      derived = { total: creatures + spells + solbind, creatures, spells, solbind }
+      const solbindTotal = solbindIds.size
+      derived = { total: creatures + spells + solbindTotal, creatures, spells, solbind: solbindTotal }
     }
 
     if (!derived) {
@@ -1587,33 +1589,629 @@ interface DeckListProps {
 
 interface FilterState {
   faction: string[]
+  factionMode: 'include' | 'exclude'
   forgebornName: string[]
+  forgebornMode: 'include' | 'exclude'
   cardName: string[]
+  cardNameMode: 'include' | 'exclude'
   cardText: string
+  cardTextMode: 'include' | 'exclude'
   tags: string[]
+  tagsMode: 'include' | 'exclude'
   rarityType: string
   rarityCount: number | null
+  rarityMode: 'include' | 'exclude'
   expiryFilter: 'all' | 'active' | 'expiring' | 'expired'
   sortBy: string
+  deckNameMode: 'include' | 'exclude'
   creaturesOperator: '>=' | '<=' | '='
   creaturesValue: number | null
+  creaturesMode: 'include' | 'exclude'
   freeCreaturesOperator: '>=' | '<=' | '='
   freeCreaturesValue: number | null
+  freeCreaturesMode: 'include' | 'exclude'
   creatureType: string
   creatureTypeOperator: '>=' | '<=' | '='
   creatureTypeCount: number | null
+  creatureTypeMode: 'include' | 'exclude'
   spellsOperator: '>=' | '<=' | '='
   spellsValue: number | null
+  spellsMode: 'include' | 'exclude'
   freeSpellsOperator: '>=' | '<=' | '='
   freeSpellsValue: number | null
+  freeSpellsMode: 'include' | 'exclude'
   spellType: string
   spellTypeCount: number | null
+  spellTypeMode: 'include' | 'exclude'
   deckName: string
   cardSetNo: string[]
+  cardSetNoMode: 'include' | 'exclude'
   eloOperator: '>=' | '<=' | '='
   eloValue: number | null
+  eloMode: 'include' | 'exclude'
   scoreOperator: '>=' | '<=' | '='
   scoreValue: number | null
+  scoreMode: 'include' | 'exclude'
+}
+
+const createDefaultFilters = (): FilterState => ({
+  faction: [],
+  factionMode: 'include',
+  forgebornName: [],
+  forgebornMode: 'include',
+  cardName: [],
+  cardNameMode: 'include',
+  cardText: '',
+  cardTextMode: 'include',
+  tags: [],
+  tagsMode: 'include',
+  rarityType: '',
+  rarityCount: null,
+  rarityMode: 'include',
+  expiryFilter: 'active', // Default: show active decks (no dates + expiring)
+  sortBy: 'date-desc', // Default: newest first
+  deckNameMode: 'include',
+  creaturesOperator: '>=',
+  creaturesValue: null,
+  creaturesMode: 'include',
+  freeCreaturesOperator: '>=',
+  freeCreaturesValue: null,
+  freeCreaturesMode: 'include',
+  creatureType: '',
+  creatureTypeOperator: '>=',
+  creatureTypeCount: null,
+  creatureTypeMode: 'include',
+  spellsOperator: '>=',
+  spellsValue: null,
+  spellsMode: 'include',
+  freeSpellsOperator: '>=',
+  freeSpellsValue: null,
+  freeSpellsMode: 'include',
+  spellType: '',
+  spellTypeCount: null,
+  spellTypeMode: 'include',
+  deckName: '',
+  cardSetNo: [],
+  cardSetNoMode: 'include',
+  eloOperator: '>=',
+  eloValue: null,
+  eloMode: 'include',
+  scoreOperator: '>=',
+  scoreValue: null,
+  scoreMode: 'include',
+})
+
+type FilterBlockKey =
+  | 'deck-name'
+  | 'faction'
+  | 'forgeborn'
+  | 'card-name'
+  | 'card-text'
+  | 'tags'
+  | 'creatures'
+  | 'free-creatures'
+  | 'creature-type'
+  | 'spells'
+  | 'free-spells'
+  | 'spell-type'
+  | 'card-set'
+  | 'elo'
+  | 'score'
+  | 'rarity'
+  | 'sort'
+  | 'deck-status'
+
+const FILTER_BLOCK_LABELS: Record<FilterBlockKey, string> = {
+  'deck-name': 'Deck Name',
+  faction: 'Faction',
+  forgeborn: 'Forgeborn',
+  'card-name': 'Card Name',
+  'card-text': 'Card Text',
+  tags: 'Tags',
+  creatures: 'Creatures',
+  'free-creatures': 'Free Creatures',
+  'creature-type': 'Creature Type',
+  spells: 'Spells',
+  'free-spells': 'Free Spells',
+  'spell-type': 'Spell Type',
+  'card-set': 'Card Set',
+  elo: 'ELO',
+  score: 'Score',
+  rarity: 'Rarity',
+  sort: 'Sort',
+  'deck-status': 'Deck Status',
+}
+
+const FILTER_BLOCK_FIELDS: Record<FilterBlockKey, (keyof FilterState)[]> = {
+  'deck-name': ['deckName', 'deckNameMode'],
+  faction: ['faction', 'factionMode'],
+  forgeborn: ['forgebornName', 'forgebornMode'],
+  'card-name': ['cardName', 'cardNameMode'],
+  'card-text': ['cardText', 'cardTextMode'],
+  tags: ['tags', 'tagsMode'],
+  creatures: ['creaturesOperator', 'creaturesValue', 'creaturesMode'],
+  'free-creatures': ['freeCreaturesOperator', 'freeCreaturesValue', 'freeCreaturesMode'],
+  'creature-type': ['creatureType', 'creatureTypeOperator', 'creatureTypeCount', 'creatureTypeMode'],
+  spells: ['spellsOperator', 'spellsValue', 'spellsMode'],
+  'free-spells': ['freeSpellsOperator', 'freeSpellsValue', 'freeSpellsMode'],
+  'spell-type': ['spellType', 'spellTypeCount', 'spellTypeMode'],
+  'card-set': ['cardSetNo', 'cardSetNoMode'],
+  elo: ['eloOperator', 'eloValue', 'eloMode'],
+  score: ['scoreOperator', 'scoreValue', 'scoreMode'],
+  rarity: ['rarityType', 'rarityCount', 'rarityMode'],
+  sort: ['sortBy'],
+  'deck-status': ['expiryFilter'],
+}
+
+const FILTER_BLOCK_OPTIONS: { value: FilterBlockKey; label: string }[] = [
+  { value: 'deck-name', label: FILTER_BLOCK_LABELS['deck-name'] },
+  { value: 'faction', label: FILTER_BLOCK_LABELS.faction },
+  { value: 'forgeborn', label: FILTER_BLOCK_LABELS.forgeborn },
+  { value: 'card-name', label: FILTER_BLOCK_LABELS['card-name'] },
+  { value: 'card-text', label: FILTER_BLOCK_LABELS['card-text'] },
+  { value: 'tags', label: FILTER_BLOCK_LABELS.tags },
+  { value: 'creatures', label: FILTER_BLOCK_LABELS.creatures },
+  { value: 'free-creatures', label: FILTER_BLOCK_LABELS['free-creatures'] },
+  { value: 'creature-type', label: FILTER_BLOCK_LABELS['creature-type'] },
+  { value: 'spells', label: FILTER_BLOCK_LABELS.spells },
+  { value: 'free-spells', label: FILTER_BLOCK_LABELS['free-spells'] },
+  { value: 'spell-type', label: FILTER_BLOCK_LABELS['spell-type'] },
+  { value: 'card-set', label: FILTER_BLOCK_LABELS['card-set'] },
+  { value: 'elo', label: FILTER_BLOCK_LABELS.elo },
+  { value: 'score', label: FILTER_BLOCK_LABELS.score },
+  { value: 'rarity', label: FILTER_BLOCK_LABELS.rarity },
+  { value: 'sort', label: FILTER_BLOCK_LABELS.sort },
+]
+const FILTER_BLOCK_VALUES = FILTER_BLOCK_OPTIONS.map((opt) => opt.value)
+const FILTER_QUERY_KEYS = [
+  'activeFilters',
+  'deckName',
+  'deckNameMode',
+  'faction',
+  'factionMode',
+  'forgeborn',
+  'forgebornMode',
+  'cardName',
+  'cardNameMode',
+  'cardText',
+  'cardTextMode',
+  'tags',
+  'tagsMode',
+  'cardSetNo',
+  'cardSetNoMode',
+  'creaturesOperator',
+  'creaturesValue',
+  'creaturesMode',
+  'freeCreaturesOperator',
+  'freeCreaturesValue',
+  'freeCreaturesMode',
+  'creatureType',
+  'creatureTypeOperator',
+  'creatureTypeCount',
+  'creatureTypeMode',
+  'spellsOperator',
+  'spellsValue',
+  'spellsMode',
+  'freeSpellsOperator',
+  'freeSpellsValue',
+  'freeSpellsMode',
+  'spellType',
+  'spellTypeCount',
+  'spellTypeMode',
+  'rarityType',
+  'rarityCount',
+  'rarityMode',
+  'eloOperator',
+  'eloValue',
+  'eloMode',
+  'scoreOperator',
+  'scoreValue',
+  'scoreMode',
+  'sortBy',
+  'expiryFilter',
+]
+
+type FilterBlockInstance = {
+  id: string
+  key: FilterBlockKey
+}
+
+type CardSetInstanceState = {
+  cardSetNo: string[]
+  cardSetNoMode: 'include' | 'exclude'
+}
+
+type FilterInstanceState = Partial<FilterState>
+
+const ARRAY_FIELDS = new Set<keyof FilterState>([
+  'faction',
+  'forgebornName',
+  'cardName',
+  'tags',
+  'cardSetNo',
+])
+
+const NUMBER_FIELDS = new Set<keyof FilterState>([
+  'creaturesValue',
+  'freeCreaturesValue',
+  'creatureTypeCount',
+  'spellsValue',
+  'freeSpellsValue',
+  'spellTypeCount',
+  'rarityCount',
+  'eloValue',
+  'scoreValue',
+])
+
+const getDefaultsForKey = (key: FilterBlockKey): FilterInstanceState => {
+  const defaults = createDefaultFilters()
+  switch (key) {
+    case 'deck-name':
+      return { deckName: defaults.deckName, deckNameMode: defaults.deckNameMode }
+    case 'faction':
+      return { faction: defaults.faction, factionMode: defaults.factionMode }
+    case 'forgeborn':
+      return { forgebornName: defaults.forgebornName, forgebornMode: defaults.forgebornMode }
+    case 'card-name':
+      return { cardName: defaults.cardName, cardNameMode: defaults.cardNameMode }
+    case 'card-text':
+      return { cardText: defaults.cardText, cardTextMode: defaults.cardTextMode }
+    case 'tags':
+      return { tags: defaults.tags, tagsMode: defaults.tagsMode }
+    case 'creatures':
+      return {
+        creaturesOperator: defaults.creaturesOperator,
+        creaturesValue: defaults.creaturesValue,
+        creaturesMode: defaults.creaturesMode,
+      }
+    case 'free-creatures':
+      return {
+        freeCreaturesOperator: defaults.freeCreaturesOperator,
+        freeCreaturesValue: defaults.freeCreaturesValue,
+        freeCreaturesMode: defaults.freeCreaturesMode,
+      }
+    case 'creature-type':
+      return {
+        creatureType: defaults.creatureType,
+        creatureTypeOperator: defaults.creatureTypeOperator,
+        creatureTypeCount: defaults.creatureTypeCount,
+        creatureTypeMode: defaults.creatureTypeMode,
+      }
+    case 'spells':
+      return {
+        spellsOperator: defaults.spellsOperator,
+        spellsValue: defaults.spellsValue,
+        spellsMode: defaults.spellsMode,
+      }
+    case 'free-spells':
+      return {
+        freeSpellsOperator: defaults.freeSpellsOperator,
+        freeSpellsValue: defaults.freeSpellsValue,
+        freeSpellsMode: defaults.freeSpellsMode,
+      }
+    case 'spell-type':
+      return {
+        spellType: defaults.spellType,
+        spellTypeCount: defaults.spellTypeCount,
+        spellTypeMode: defaults.spellTypeMode,
+      }
+    case 'card-set':
+      return {
+        cardSetNo: defaults.cardSetNo,
+        cardSetNoMode: defaults.cardSetNoMode,
+      }
+    case 'elo':
+      return {
+        eloOperator: defaults.eloOperator,
+        eloValue: defaults.eloValue,
+        eloMode: defaults.eloMode,
+      }
+    case 'score':
+      return {
+        scoreOperator: defaults.scoreOperator,
+        scoreValue: defaults.scoreValue,
+        scoreMode: defaults.scoreMode,
+      }
+    case 'rarity':
+      return {
+        rarityType: defaults.rarityType,
+        rarityCount: defaults.rarityCount,
+        rarityMode: defaults.rarityMode,
+      }
+    case 'sort':
+      return { sortBy: defaults.sortBy }
+    case 'deck-status':
+      return { expiryFilter: defaults.expiryFilter }
+    default:
+      return {}
+  }
+}
+
+const isFilterBlockKey = (value: string): value is FilterBlockKey =>
+  FILTER_BLOCK_VALUES.includes(value as FilterBlockKey)
+
+const parseFiltersFromSearch = (
+  params: URLSearchParams
+): {
+  filters: FilterState
+  activeFilterBlocks: FilterBlockInstance[]
+  cardSetInstances: Record<string, CardSetInstanceState>
+  instanceFilters: Record<string, FilterInstanceState>
+} => {
+  const next = createDefaultFilters()
+
+  const getArray = (key: string) => {
+    const raw = params.get(key)
+    if (!raw) return []
+    return raw.split(',').map((item) => item.trim()).filter(Boolean)
+  }
+
+  const getNumber = (key: string) => {
+    const raw = params.get(key)
+    if (raw === null || raw === '') return null
+    const num = Number(raw)
+    return Number.isFinite(num) ? num : null
+  }
+
+  // Map primitives/arrays
+  next.deckName = params.get('deckName') || ''
+  next.deckNameMode = (params.get('deckNameMode') as FilterState['deckNameMode']) || 'include'
+  next.faction = getArray('faction')
+  next.factionMode = (params.get('factionMode') as FilterState['factionMode']) || 'include'
+  next.forgebornName = getArray('forgeborn')
+  next.forgebornMode = (params.get('forgebornMode') as FilterState['forgebornMode']) || 'include'
+  next.cardName = getArray('cardName')
+  next.cardNameMode = (params.get('cardNameMode') as FilterState['cardNameMode']) || 'include'
+  next.cardText = params.get('cardText') || ''
+  next.cardTextMode = (params.get('cardTextMode') as FilterState['cardTextMode']) || 'include'
+  next.tags = getArray('tags')
+  next.tagsMode = (params.get('tagsMode') as FilterState['tagsMode']) || 'include'
+  next.cardSetNo = getArray('cardSetNo')
+  next.cardSetNoMode = (params.get('cardSetNoMode') as FilterState['cardSetNoMode']) || 'include'
+  next.sortBy = (params.get('sortBy') as string) || 'date-desc'
+  next.expiryFilter = ((params.get('expiryFilter') as FilterState['expiryFilter']) || 'active')
+
+  // Numeric/operator pairs
+  const creaturesValue = getNumber('creaturesValue')
+  if (creaturesValue !== null) {
+    next.creaturesValue = creaturesValue
+    next.creaturesOperator = (params.get('creaturesOperator') as FilterState['creaturesOperator']) || next.creaturesOperator
+    next.creaturesMode = (params.get('creaturesMode') as FilterState['creaturesMode']) || 'include'
+  }
+
+  const freeCreaturesValue = getNumber('freeCreaturesValue')
+  if (freeCreaturesValue !== null) {
+    next.freeCreaturesValue = freeCreaturesValue
+    next.freeCreaturesOperator = (params.get('freeCreaturesOperator') as FilterState['freeCreaturesOperator']) || next.freeCreaturesOperator
+    next.freeCreaturesMode = (params.get('freeCreaturesMode') as FilterState['freeCreaturesMode']) || 'include'
+  }
+
+  const creatureType = params.get('creatureType') || ''
+  if (creatureType) {
+    next.creatureType = creatureType
+    next.creatureTypeOperator = (params.get('creatureTypeOperator') as FilterState['creatureTypeOperator']) || next.creatureTypeOperator
+    const creatureTypeCount = getNumber('creatureTypeCount')
+    next.creatureTypeCount = creatureTypeCount
+    next.creatureTypeMode = (params.get('creatureTypeMode') as FilterState['creatureTypeMode']) || 'include'
+  }
+
+  const spellsValue = getNumber('spellsValue')
+  if (spellsValue !== null) {
+    next.spellsValue = spellsValue
+    next.spellsOperator = (params.get('spellsOperator') as FilterState['spellsOperator']) || next.spellsOperator
+    next.spellsMode = (params.get('spellsMode') as FilterState['spellsMode']) || 'include'
+  }
+
+  const freeSpellsValue = getNumber('freeSpellsValue')
+  if (freeSpellsValue !== null) {
+    next.freeSpellsValue = freeSpellsValue
+    next.freeSpellsOperator = (params.get('freeSpellsOperator') as FilterState['freeSpellsOperator']) || next.freeSpellsOperator
+    next.freeSpellsMode = (params.get('freeSpellsMode') as FilterState['freeSpellsMode']) || 'include'
+  }
+
+  const spellType = params.get('spellType') || ''
+  if (spellType) {
+    next.spellType = spellType
+    const spellTypeCount = getNumber('spellTypeCount')
+    next.spellTypeCount = spellTypeCount
+    next.spellTypeMode = (params.get('spellTypeMode') as FilterState['spellTypeMode']) || 'include'
+  }
+
+  next.rarityType = params.get('rarityType') || ''
+  next.rarityCount = getNumber('rarityCount')
+  next.rarityMode = (params.get('rarityMode') as FilterState['rarityMode']) || 'include'
+
+  const eloValue = getNumber('eloValue')
+  if (eloValue !== null) {
+    next.eloValue = eloValue
+    next.eloOperator = (params.get('eloOperator') as FilterState['eloOperator']) || next.eloOperator
+    next.eloMode = (params.get('eloMode') as FilterState['eloMode']) || 'include'
+  }
+
+  const scoreValue = getNumber('scoreValue')
+  if (scoreValue !== null) {
+    next.scoreValue = scoreValue
+    next.scoreOperator = (params.get('scoreOperator') as FilterState['scoreOperator']) || next.scoreOperator
+    next.scoreMode = (params.get('scoreMode') as FilterState['scoreMode']) || 'include'
+  }
+
+  // Active filter blocks (allow duplicates)
+  const activeRaw = params.get('activeFilters')
+  let entries = activeRaw
+    ? activeRaw
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : []
+  if (entries.length === 0) {
+    if (params.get('cardSetNo')) {
+      entries.push('card-set')
+    }
+  }
+
+  const activeFilterBlocks: FilterBlockInstance[] = []
+  entries.forEach((entry, idx) => {
+    const [rawKey, rawId] = entry.split('@')
+    const key = rawKey as FilterBlockKey
+    if (!isFilterBlockKey(key)) return
+    const id = rawId || `${key}-${idx}`
+    activeFilterBlocks.push({ key, id })
+  })
+
+  if (!activeFilterBlocks.some((block) => block.key === 'deck-status')) {
+    activeFilterBlocks.unshift({ key: 'deck-status', id: 'deck-status' })
+  }
+  if (activeFilterBlocks.length === 0) {
+    activeFilterBlocks.push({ key: 'deck-status', id: 'deck-status' })
+  }
+
+  const firstByKey = new Map<FilterBlockKey, string>()
+  activeFilterBlocks.forEach((block) => {
+    if (!firstByKey.has(block.key)) {
+      firstByKey.set(block.key, block.id)
+    }
+  })
+
+  const instanceFilters: Record<string, FilterInstanceState> = {}
+
+  const cardSetInstances: Record<string, CardSetInstanceState> = {}
+  const cardSetBlocks = activeFilterBlocks.filter((block) => block.key === 'card-set')
+  cardSetBlocks.forEach((block, idx) => {
+    const valuesById = getArray(`cardSetNo@${block.id}`)
+    const values = valuesById.length > 0 ? valuesById : idx === 0 ? getArray('cardSetNo') : []
+    const mode =
+      (params.get(`cardSetNoMode@${block.id}`) as CardSetInstanceState['cardSetNoMode']) ||
+      (idx === 0 ? ((params.get('cardSetNoMode') as CardSetInstanceState['cardSetNoMode']) || 'include') : 'include')
+    cardSetInstances[block.id] = {
+      cardSetNo: values,
+      cardSetNoMode: mode || 'include',
+    }
+    instanceFilters[block.id] = {
+      cardSetNo: values,
+      cardSetNoMode: mode || 'include',
+    }
+  })
+
+  activeFilterBlocks.forEach((block) => {
+    if (block.key === 'card-set') return // already handled
+    const defaults = getDefaultsForKey(block.key)
+    const state: FilterInstanceState = { ...defaults }
+    FILTER_BLOCK_FIELDS[block.key]?.forEach((field) => {
+      if (field === 'cardSetNo' || field === 'cardSetNoMode') return
+      const withId = params.get(`${String(field)}@${block.id}`)
+      const base = params.get(String(field))
+      const isFirstForKey = firstByKey.get(block.key) === block.id
+      if (ARRAY_FIELDS.has(field as keyof FilterState)) {
+        const arr = withId ? getArray(`${String(field)}@${block.id}`) : isFirstForKey ? getArray(String(field)) : []
+        if (arr.length > 0) {
+          (state as any)[field] = arr
+        }
+      } else if (NUMBER_FIELDS.has(field as keyof FilterState)) {
+        const num = (() => {
+          const raw = withId ?? (isFirstForKey ? base : null)
+          if (raw === null || raw === undefined || raw === '') return null
+          const n = Number(raw)
+          return Number.isFinite(n) ? n : null
+        })()
+        if (num !== null) {
+          (state as any)[field] = num
+        }
+      } else {
+        const val = withId !== null && withId !== undefined ? withId : isFirstForKey ? base : null
+        if (val !== null && val !== undefined && val !== '') {
+          (state as any)[field] = val
+        }
+      }
+    })
+    instanceFilters[block.id] = state
+  })
+
+  return { filters: next, activeFilterBlocks, cardSetInstances, instanceFilters }
+}
+
+const buildSearchParamsFromState = (
+  filters: FilterState,
+  activeBlocks: FilterBlockInstance[],
+  cardSetInstances: Record<string, CardSetInstanceState>,
+  instanceFilters: Record<string, FilterInstanceState>,
+  baseParams?: URLSearchParams
+) => {
+  const defaults = createDefaultFilters()
+  const params = baseParams ? new URLSearchParams(baseParams) : new URLSearchParams()
+
+  FILTER_QUERY_KEYS.forEach((key) => params.delete(key))
+  // Clean any old instance-scoped params
+  Array.from(params.keys()).forEach((key) => {
+    if (key.includes('@')) {
+      params.delete(key)
+    }
+  })
+
+  const activeKeysWithId = activeBlocks.map((b) => `${b.key}@${b.id}`)
+  const activeKeys = activeBlocks.map((b) => b.key)
+  if (!activeKeys.includes('deck-status')) activeKeys.unshift('deck-status')
+  const hasExtraBlocks = activeKeys.some((key) => key !== 'deck-status')
+  if (hasExtraBlocks) {
+    params.set('activeFilters', activeKeysWithId.join(','))
+  }
+
+  const setArray = (name: string, value: string[]) => {
+    if (value && value.length > 0) {
+      params.set(name, value.join(','))
+    }
+  }
+  const setString = (name: string, value: string) => {
+    if (value) params.set(name, value)
+  }
+  const setNumber = (name: string, value: number | null) => {
+    if (value !== null && value !== undefined && Number.isFinite(value)) params.set(name, String(value))
+  }
+
+  const firstByKey = new Map<FilterBlockKey, string>()
+  activeBlocks.forEach((block) => {
+    if (!firstByKey.has(block.key)) {
+      firstByKey.set(block.key, block.id)
+    }
+  })
+
+  activeBlocks.forEach((block) => {
+    const defaultsForKey = getDefaultsForKey(block.key)
+    const state = instanceFilters[block.id] || defaultsForKey
+    FILTER_BLOCK_FIELDS[block.key]?.forEach((field) => {
+      const value = (state as any)[field]
+      const defaultValue = (defaultsForKey as any)[field]
+      const keyName = `${String(field)}@${block.id}`
+      if (ARRAY_FIELDS.has(field as keyof FilterState)) {
+        if (Array.isArray(value) && value.length > 0) {
+          params.set(keyName, value.join(','))
+          if (firstByKey.get(block.key) === block.id) {
+            params.set(String(field), value.join(','))
+          }
+        }
+      } else if (NUMBER_FIELDS.has(field as keyof FilterState)) {
+        if (value !== null && value !== undefined && Number.isFinite(value)) {
+          params.set(keyName, String(value))
+          if (firstByKey.get(block.key) === block.id) {
+            params.set(String(field), String(value))
+          }
+        }
+      } else {
+        if (value !== undefined && value !== null && value !== '' && value !== defaultValue) {
+          params.set(keyName, String(value))
+          if (firstByKey.get(block.key) === block.id) {
+            params.set(String(field), String(value))
+          }
+        }
+      }
+    })
+  })
+
+  // Include only non-default status to keep URL short
+  if ((filters.expiryFilter || defaults.expiryFilter) !== defaults.expiryFilter) {
+    params.set('expiryFilter', filters.expiryFilter || defaults.expiryFilter)
+  }
+
+  return params
 }
 
 type ViewMode = 'decks' | 'fused'
@@ -1627,41 +2225,84 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const [viewMode, setViewMode] = useState<ViewMode>('decks')
   const [regularPage, setRegularPage] = useState(1)
   const [fusedPage, setFusedPage] = useState(1)
-  
-  const [filters, setFilters] = useState<FilterState>({
-    faction: [],
-    forgebornName: [],
-    cardName: [],
-    cardText: '',
-    tags: [],
-    rarityType: '',
-    rarityCount: null,
-    expiryFilter: 'active', // Default: show active decks (no dates + expiring)
-    sortBy: 'date-desc', // Default: newest first
-    creaturesOperator: '>=',
-    creaturesValue: null,
-    freeCreaturesOperator: '>=',
-    freeCreaturesValue: null,
-    creatureType: '',
-    creatureTypeOperator: '>=',
-    creatureTypeCount: null,
-    spellsOperator: '>=',
-    spellsValue: null,
-    freeSpellsOperator: '>=',
-    freeSpellsValue: null,
-    spellType: '',
-    spellTypeCount: null,
-    deckName: '',
-    cardSetNo: [],
-    eloOperator: '>=',
-    eloValue: null,
-    scoreOperator: '>=',
-    scoreValue: null,
-  })
-  
+  const [activeFilterBlocks, setActiveFilterBlocks] = useState<FilterBlockInstance[]>([
+    { id: 'deck-status', key: 'deck-status' },
+  ])
+  const [filterToAdd, setFilterToAdd] = useState<FilterBlockKey | null>(null)
+  const [cardSetInstances, setCardSetInstances] = useState<Record<string, CardSetInstanceState>>({})
+  const [instanceFilters, setInstanceFilters] = useState<Record<string, FilterInstanceState>>({})
+  const [filters, setFilters] = useState<FilterState>(() => createDefaultFilters())
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const searchParamsString = useMemo(
+    () => (typeof window !== 'undefined' ? window.location.search.slice(1) : searchParams.toString()),
+    [searchParams]
+  )
+  const lastSyncedQueryRef = useRef<string>('')
+  const isHydratedRef = useRef(false)
+
   // Debounced filters for text inputs (0.5 second delay)
   // Use Mantine's useDebouncedValue with trailing: true (default behavior)
   const [debouncedFilters] = useDebouncedValue(filters, 500)
+  const [debouncedInstanceFilters] = useDebouncedValue(instanceFilters, 500)
+
+  const getInstanceState = useCallback(
+    (block: FilterBlockInstance) => {
+      const defaults = getDefaultsForKey(block.key)
+      const state = instanceFilters[block.id] || {}
+      return { ...defaults, ...state }
+    },
+    [instanceFilters]
+  )
+  const getDebouncedInstanceState = useCallback(
+    (block: FilterBlockInstance) => {
+      const defaults = getDefaultsForKey(block.key)
+      const state = debouncedInstanceFilters[block.id] || instanceFilters[block.id] || {}
+      return { ...defaults, ...state }
+    },
+    [debouncedInstanceFilters, instanceFilters]
+  )
+  const updateInstanceState = useCallback((block: FilterBlockInstance, payload: Partial<FilterInstanceState>) => {
+    setInstanceFilters((prev) => ({
+      ...prev,
+      [block.id]: {
+        ...(prev[block.id] || getDefaultsForKey(block.key)),
+        ...payload,
+      },
+    }))
+  }, [])
+
+  // Hydrate filters from URL on first render
+  useEffect(() => {
+    if (isHydratedRef.current) return
+    const paramsString = searchParamsString
+    const parsed = parseFiltersFromSearch(new URLSearchParams(paramsString))
+    setFilters(parsed.filters)
+    setActiveFilterBlocks(parsed.activeFilterBlocks)
+    setCardSetInstances(parsed.cardSetInstances)
+    setInstanceFilters(parsed.instanceFilters)
+    lastSyncedQueryRef.current = paramsString
+    isHydratedRef.current = true
+  }, [searchParamsString])
+
+  useEffect(() => {
+    if (!isHydratedRef.current) return
+    const baseParams =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams(searchParamsString)
+    const params = buildSearchParamsFromState(
+      debouncedFilters,
+      activeFilterBlocks,
+      cardSetInstances,
+      debouncedInstanceFilters,
+      baseParams
+    )
+    const nextString = params.toString()
+    if (nextString === lastSyncedQueryRef.current) return
+    lastSyncedQueryRef.current = nextString
+    router.replace(`?${nextString}`, { scroll: false })
+  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, router, searchParamsString])
   
   // Ref to store scroll position and first visible deck ID
   const scrollPositionRef = useRef<number>(0)
@@ -1997,7 +2638,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     // No DOM scans; rely only on saved scroll position
     firstVisibleDeckIdRef.current = null
     shouldRestoreScrollRef.current = true
-  }, [debouncedFilters])
+  }, [debouncedFilters, debouncedInstanceFilters])
   
   // Disable scroll restoration on mount
   useEffect(() => {
@@ -2024,61 +2665,184 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     })
   }, [startTransition])
   
-  const clearFilters = () => {
-    const emptyFilters = {
-      faction: [],
-      forgebornName: [],
-      cardName: [],
-      cardText: '',
-      tags: [],
-      rarityType: '',
-      rarityCount: null,
-      expiryFilter: 'active' as const,
-      sortBy: 'date-desc',
-      creaturesOperator: '>=' as const,
-      creaturesValue: null,
-      freeCreaturesOperator: '>=' as const,
-      freeCreaturesValue: null,
-      creatureType: '',
-      creatureTypeOperator: '>=' as const,
-      creatureTypeCount: null,
-      spellsOperator: '>=' as const,
-      spellsValue: null,
-      freeSpellsOperator: '>=' as const,
-      freeSpellsValue: null,
-      spellType: '',
-      spellTypeCount: null,
-      deckName: '',
-      cardSetNo: [],
-      eloOperator: '>=' as const,
-      eloValue: null,
-      scoreOperator: '>=' as const,
-      scoreValue: null,
-    }
-    setFilters(emptyFilters)
-    // Note: debouncedFilters will update automatically after 500ms delay
-    // For immediate clear, we need to update filters directly
-  }
+  const resetFiltersByKeys = useCallback((keys: (keyof FilterState)[]) => {
+    const defaults = createDefaultFilters()
+    setFilters((prev) => {
+      const next = { ...prev }
+      keys.forEach((key) => {
+        next[key] = defaults[key]
+      })
+      return next
+    })
+  }, [])
+
+  const clearFilters = useCallback(() => {
+    setFilters(createDefaultFilters())
+    setCardSetInstances({})
+    setInstanceFilters({})
+  }, [])
   
+  const sortedFilterOptions = useMemo(
+    () => [...FILTER_BLOCK_OPTIONS].sort((a, b) => a.label.localeCompare(b.label)),
+    []
+  )
+
+  const addFilterBlock = useCallback((key: FilterBlockKey | null) => {
+    if (!key) return
+    const id = `${key}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    setActiveFilterBlocks((prev) => [...prev, { id, key }])
+    if (key === 'card-set') {
+      setCardSetInstances((prev) => ({
+        ...prev,
+        [id]: { cardSetNo: [], cardSetNoMode: 'include' },
+      }))
+    }
+    setInstanceFilters((prev) => ({
+      ...prev,
+      [id]: getDefaultsForKey(key),
+    }))
+    setFilterToAdd(null)
+  }, [])
+
+  const removeFilterBlock = useCallback(
+    (instanceId: string, key: FilterBlockKey) => {
+      if (key === 'deck-status') return
+    setActiveFilterBlocks((prev) => {
+      const next = prev.filter((item) => item.id !== instanceId)
+      const stillHasSameKey = next.some((item) => item.key === key)
+      if (!stillHasSameKey) {
+        const fieldsToReset = FILTER_BLOCK_FIELDS[key]
+          if (fieldsToReset?.length) {
+            resetFiltersByKeys(fieldsToReset)
+          }
+        }
+        return next
+      })
+      if (key === 'card-set') {
+        setCardSetInstances((prev) => {
+          const next = { ...prev }
+          delete next[instanceId]
+          return next
+        })
+      }
+      setInstanceFilters((prev) => {
+        const next = { ...prev }
+        delete next[instanceId]
+        return next
+      })
+    },
+    [resetFiltersByKeys]
+  )
+
+  const renderFilterCol = useCallback(
+    (
+      block: FilterBlockInstance,
+      children: ReactNode,
+      options: {
+        removable?: boolean
+        span?: { base: number; sm?: number; md?: number }
+        actions?: ReactNode
+        header?: ReactNode
+      } = {}
+    ) => (
+      <Grid.Col key={block.id} span={options.span || { base: 12, sm: 6, md: 6 }}>
+        <div className="h-full">
+          <Stack gap={2}>
+            {(options.header || options.actions || (options.removable !== false && block.key !== 'deck-status')) && (
+              <Group justify="space-between" align="center">
+                <div>{options.header}</div>
+                {(options.actions || (options.removable !== false && block.key !== 'deck-status')) && (
+                  <Group gap={8} align="center">
+                    {options.actions}
+                    {options.removable !== false && block.key !== 'deck-status' && (
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        size="sm"
+                        onClick={() => removeFilterBlock(block.id, block.key)}
+                        aria-label={`Remove ${FILTER_BLOCK_LABELS[block.key]} filter`}
+                      >
+                        <IconX size={14} />
+                      </ActionIcon>
+                    )}
+                  </Group>
+                )}
+              </Group>
+            )}
+            {children}
+          </Stack>
+        </div>
+      </Grid.Col>
+    ),
+    [removeFilterBlock]
+  )
+
   const hasActiveFilters = useMemo(() => {
-    return !!(
-      debouncedFilters.faction.length > 0 ||
-      debouncedFilters.forgebornName.length > 0 ||
-      debouncedFilters.cardName.length > 0 ||
-      debouncedFilters.cardText ||
-      debouncedFilters.tags.length > 0 ||
-      (debouncedFilters.rarityType && debouncedFilters.rarityCount !== null) ||
-      debouncedFilters.creaturesValue !== null ||
-      debouncedFilters.freeCreaturesValue !== null ||
-      debouncedFilters.creatureType ||
-      debouncedFilters.creatureTypeCount !== null ||
-      (debouncedFilters.spellType && debouncedFilters.spellTypeCount !== null) ||
-      debouncedFilters.deckName ||
-      debouncedFilters.cardSetNo.length > 0 ||
-      debouncedFilters.eloValue !== null ||
-      debouncedFilters.scoreValue !== null
-    )
-  }, [debouncedFilters])
+    const defaults = createDefaultFilters()
+    const nonStatusBlocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status')
+    for (const block of nonStatusBlocks) {
+      const state = getInstanceState(block)
+      switch (block.key) {
+        case 'deck-name':
+          if ((state.deckName as string) && (state.deckName as string) !== defaults.deckName) return true
+          break
+        case 'faction':
+          if ((state.faction as string[])?.length) return true
+          break
+        case 'forgeborn':
+          if ((state.forgebornName as string[])?.length) return true
+          break
+        case 'card-name':
+          if ((state.cardName as string[])?.length) return true
+          break
+        case 'card-text':
+          if ((state.cardText as string)?.length) return true
+          break
+        case 'tags':
+          if ((state.tags as string[])?.length) return true
+          break
+        case 'creatures':
+          if (state.creaturesValue !== null && state.creaturesValue !== undefined) return true
+          break
+        case 'free-creatures':
+          if (state.freeCreaturesValue !== null && state.freeCreaturesValue !== undefined) return true
+          break
+        case 'creature-type':
+          if ((state.creatureType as string)?.length && state.creatureTypeCount !== null && state.creatureTypeCount !== undefined) return true
+          break
+        case 'spells':
+          if (state.spellsValue !== null && state.spellsValue !== undefined) return true
+          break
+        case 'free-spells':
+          if (state.freeSpellsValue !== null && state.freeSpellsValue !== undefined) return true
+          break
+        case 'spell-type':
+          if ((state.spellType as string)?.length && state.spellTypeCount !== null && state.spellTypeCount !== undefined) return true
+          break
+        case 'rarity':
+          if ((state.rarityType as string)?.length && state.rarityCount !== null && state.rarityCount !== undefined) return true
+          break
+        case 'card-set': {
+          const override = cardSetInstances[block.id]
+          if (override && override.cardSetNo.length > 0) return true
+          if (!override && (state.cardSetNo as string[])?.length) return true
+          break
+        }
+        case 'elo':
+          if (state.eloValue !== null && state.eloValue !== undefined) return true
+          break
+        case 'score':
+          if (state.scoreValue !== null && state.scoreValue !== undefined) return true
+          break
+        case 'sort':
+          if ((state.sortBy as string) && state.sortBy !== defaults.sortBy) return true
+          break
+        default:
+          break
+      }
+    }
+    return false
+  }, [activeFilterBlocks, cardSetInstances, getInstanceState])
   
   // Helper function to get two source decks from fused deck
   const getFusedDeckSourceDecks = useCallback((fusedDeck: Deck, allDecks: Deck[]): [Deck | null, Deck | null] => {
@@ -2298,25 +3062,14 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   // Helper function to filter a deck array based on filter criteria
   const filterDeckArray = useCallback((deckArray: Deck[]) => {
     if (!hasActiveFilters) return deckArray
-    
-    return deckArray.filter(deck => {
-      // Filter by deck name (single select)
-      if (debouncedFilters.deckName) {
-        if (!deck.name || deck.name.trim() !== debouncedFilters.deckName.trim()) {
-          return false
-        }
-      }
-      
-      // Filter by faction first (multi-select)
-      if (debouncedFilters.faction.length > 0) {
-        if (!deck.faction || !debouncedFilters.faction.some(f => 
-          deck.faction && deck.faction.toLowerCase() === f.toLowerCase()
-        )) {
-          return false
-        }
-      }
-      
-      // Normalize cards for this deck
+
+    const blocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status')
+    const blockStates = blocks.map((block) => ({
+      block,
+      state: getDebouncedInstanceState(block),
+    }))
+
+    return deckArray.filter((deck) => {
       const normalizedCards = deck.cards && Array.isArray(deck.cards) 
         ? deck.cards.map((card: any, index: number) => {
             if (typeof card === 'string') {
@@ -2328,132 +3081,28 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             return getCardInfo(`card-${index}`)
           })
         : []
-      
-      // Find Forgeborn
-      let forgeborn: any = null
-      if (deck.forgebornId) {
-        forgeborn = normalizedCards.find(card => 
-          card.id === deck.forgebornId || 
-          (card.id && deck.forgebornId && card.id.includes(deck.forgebornId)) ||
-          (deck.forgebornId && card.id && deck.forgebornId.includes(card.id))
-        )
-      }
-      if (!forgeborn) {
-        forgeborn = normalizedCards.find(card =>
-          card.type?.toLowerCase().includes('forgeborn') ||
-          (card as any).cardType?.toLowerCase().includes('forgeborn')
-        )
-      }
-      if (!forgeborn && deck.forgeborn) {
-        forgeborn = deck.forgeborn
-      }
-      
-      // Filter by Forgeborn name (multi-select) - must match one of selected Forgeborn
-      if (debouncedFilters.forgebornName.length > 0) {
-        // Use helper function to get Forgeborn name (prefers title for Forgeborn)
-        const forgebornName = getForgebornNameFromDeck(deck)
-        if (!forgebornName || !debouncedFilters.forgebornName.includes(forgebornName)) {
-          return false
-        }
-      }
-      
-      // Filter by card name (multi-select) - must contain ALL selected cards
-      if (debouncedFilters.cardName.length > 0) {
-        const deckCardNames = normalizedCards
-          .map(card => card.name?.toLowerCase())
-          .filter((name): name is string => !!name)
-        
-        const hasAllSelectedCards = debouncedFilters.cardName.every(selectedName => 
-          deckCardNames.includes(selectedName.toLowerCase())
-        )
-        
-        if (!hasAllSelectedCards) {
-          return false
-        }
-      }
-      
-      // Filter by card text (search in abilities, text, description, etc.)
-      if (debouncedFilters.cardText) {
-        const searchText = debouncedFilters.cardText.toLowerCase()
-        const hasMatchingText = normalizedCards.some(card => {
-          const cardData = card as any
-          
-          // Collect all text fields from card - search in original card data too
-          // Get original card from deck.cards if available
-          const originalCard = deck.cards && Array.isArray(deck.cards) 
-            ? deck.cards.find((c: any) => {
-                const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
-                return cId === card.id
-              })
-            : null
-          
-          const cardToSearch = originalCard && typeof originalCard === 'object' ? originalCard : cardData
-          
-          // Collect all text fields
-          const textFields: string[] = []
-          
-          // Helper to recursively extract all string values
-          const extractStrings = (obj: any, depth: number = 0): void => {
-            if (depth > 4) return // Limit recursion depth
-            if (!obj) return
-            
-            if (typeof obj === 'string' && obj.length > 0) {
-              textFields.push(obj)
-              return
-            }
-            
-            if (Array.isArray(obj)) {
-              obj.forEach((item: any) => {
-                extractStrings(item, depth + 1)
-              })
-              return
-            }
-            
-            if (typeof obj !== 'object') return
-            
-            for (const key in obj) {
-              // Skip certain fields
-              if (['id', 'name', 'imageUrl', 'image', 'cardId', 'card_id'].includes(key)) {
-                continue
-              }
-              
-              const value = obj[key]
-              if (value === null || value === undefined) continue
-              
-              if (typeof value === 'string' && value.length > 0) {
-                textFields.push(value)
-              } else {
-                extractStrings(value, depth + 1)
-              }
-            }
-          }
-          
-          // Extract all strings from card data
-          extractStrings(cardToSearch)
-          
-          // Also check normalized card data
-          if (cardToSearch !== cardData) {
-            extractStrings(cardData)
-          }
-          
-          // Search in all collected text fields
-          return textFields.some(field => {
-            if (!field || typeof field !== 'string') return false
-            // Remove HTML tags for better matching
-            const cleanField = field.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-            return cleanField.toLowerCase().includes(searchText)
-          })
-        })
-        if (!hasMatchingText) {
-          return false
-        }
-      }
-      
-      // Filter by tags (must have ALL selected tags)
-      if (debouncedFilters.tags.length > 0) {
-        const searchTags = debouncedFilters.tags.map(t => t.trim().toLowerCase()).filter(Boolean)
-        let deckTags: string[] = []
 
+      let deckTagsCache: string[] | null = null
+      let countsCache: ReturnType<typeof countPlayableCards> | null = null
+      let deckSetCache: string | null | undefined
+
+      const getCounts = () => {
+        if (countsCache === null) {
+          countsCache = countPlayableCards(deck)
+        }
+        return countsCache
+      }
+
+      const getDeckSetString = () => {
+        if (deckSetCache !== undefined) return deckSetCache
+        const deckSet = getDeckSet(deck)
+        deckSetCache = deckSet ? String(deckSet).trim() : null
+        return deckSetCache
+      }
+
+      const getDeckTags = () => {
+        if (deckTagsCache !== null) return deckTagsCache
+        let deckTags: string[] = []
         const preTags = deckTagsMap[deck.id]
         if (preTags && Array.isArray(preTags)) {
           deckTags = preTags.map((t) => t.toLowerCase())
@@ -2465,7 +3114,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               if (value === null || value === undefined || value === '') {
                 return
               }
-              
+
               let tagText: string | null = null
               if (typeof value === 'string' && value.trim() !== '') {
                 tagText = value.trim().toLowerCase()
@@ -2474,13 +3123,13 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               } else if (key && key !== 'none' && !key.startsWith('tag_')) {
                 tagText = key.toLowerCase()
               }
-              
+
               if (tagText) {
                 deckTags.push(tagText)
               }
             })
           }
-          
+
           // Collect tags from card provides
           normalizedCards.forEach((card: any) => {
             const provides = card.provides || card.Provides
@@ -2501,777 +3150,971 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             }
           })
         }
-        
-        // Check if deck has ALL selected tags
-        const hasAllTags = searchTags.every(searchTag => 
-          deckTags.some(deckTag => deckTag === searchTag || deckTag.includes(searchTag))
-        )
-        if (!hasAllTags) {
-          return false
-        }
-      }
-      
-      // Filter by creatures count
-      if (debouncedFilters.creaturesValue !== null) {
-        const counts = countPlayableCards(deck)
-        const creaturesCount = counts.creatures
-        
-        let matches = false
-        switch (debouncedFilters.creaturesOperator) {
-          case '>=':
-            matches = creaturesCount >= debouncedFilters.creaturesValue
-            break
-          case '<=':
-            matches = creaturesCount <= debouncedFilters.creaturesValue
-            break
-          case '=':
-            matches = creaturesCount === debouncedFilters.creaturesValue
-            break
-        }
-        if (!matches) {
-          return false
-        }
-      }
-      
-      // Filter by free creatures count (creatures with cost = 0 or no cost)
-      if (debouncedFilters.freeCreaturesValue !== null) {
-        let freeCreaturesCount = 0
-        
-        // Identify Forgeborn and Solbind cards (same logic as countPlayableCards)
-        const forgebornId = deck.forgebornId
-        const forgebornCards: any[] = []
-        if (forgebornId) {
-          const fb = normalizedCards.find(card => 
-            card.id === forgebornId || 
-            (card.id && forgebornId && card.id.includes(forgebornId)) ||
-            (forgebornId && card.id && forgebornId.includes(card.id))
-          )
-          if (fb) forgebornCards.push(fb)
-        }
-        if (forgebornCards.length === 0) {
-          const fb = normalizedCards.find(card =>
-            card.type?.toLowerCase().includes('forgeborn') ||
-            (card as any).cardType?.toLowerCase().includes('forgeborn')
-          )
-          if (fb) forgebornCards.push(fb)
-        }
-        
-        // Extract Solbind card IDs
-        const solbindCardIds = new Set<string>()
-        normalizedCards.forEach(card => {
-          const cardData = card as any
-          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-            cardData.solbindCards.forEach((solbindCard: any) => {
-              if (solbindCard && solbindCard.id) {
-                solbindCardIds.add(solbindCard.id)
-              }
-            })
-          }
-        })
-        const solbindCardObjects: any[] = []
-        normalizedCards.forEach(card => {
-          if (forgebornCards.includes(card)) return
-          const cardData = card as any
-          const cardId = card.id
-          if (solbindCardIds.has(cardId)) {
-            if (!solbindCardObjects.some((sb: any) => sb.id === cardId)) {
-              solbindCardObjects.push(card)
-            }
-            return
-          }
-          if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
-            if (!solbindCardObjects.some((sb: any) => sb.id === cardId)) {
-              solbindCardObjects.push(card)
-            }
-          }
-        })
-        
-        normalizedCards.forEach(card => {
-          // Skip Forgeborn and Solbind
-          if (forgebornCards.includes(card)) return
-          
-          const cardData = card as any
-          const isSolbindCard = solbindCardObjects.some((sb: any) => sb.id === card.id)
-          if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
-            return
-          }
-          
-          // Check if it's a creature (not a spell) - use ONLY cardType
-          const originalCardForType = deck.cards && Array.isArray(deck.cards)
-            ? deck.cards.find((c: any) => {
-                const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
-                return cId === card.id
-              })
-            : null
-          const originalCardType = originalCardForType && typeof originalCardForType === 'object'
-            ? (originalCardForType.cardType || originalCardForType.card_type || '')
-            : ''
-          const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
-          const lowerCardType = cardType.toLowerCase()
-          const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
-          
-          if (!isSpell) {
-            // It's a creature - check if it's free (has "this is free" in text)
-            // Collect all text fields from card (same logic as cardText filter)
-            const textFields: string[] = []
-            const extractStrings = (obj: any, depth: number = 0): void => {
-              if (depth > 5) return // Prevent infinite recursion
-              if (obj === null || obj === undefined) return
-              
-              // Handle arrays
-              if (Array.isArray(obj)) {
-                obj.forEach(item => {
-                  extractStrings(item, depth + 1)
-                })
-                return
-              }
-              
-              // Handle strings
-              if (typeof obj === 'string' && obj.length > 0) {
-                textFields.push(obj)
-                return
-              }
-              
-              // Handle objects
-              if (typeof obj !== 'object') return
-              
-              // Collect all string values from object
-              for (const key in obj) {
-                if (['id', 'name', 'imageUrl', 'image', 'cardId', 'card_id'].includes(key)) {
-                  continue
-                }
-                
-                const value = obj[key]
-                if (value === null || value === undefined) continue
-                
-                if (typeof value === 'string' && value.length > 0) {
-                  textFields.push(value)
-                } else {
-                  extractStrings(value, depth + 1)
-                }
-              }
-            }
-            
-            // Extract all strings from card data - use original card data from deck, not normalized
-            const cardToSearch = deck.cards && Array.isArray(deck.cards) 
-              ? deck.cards.find((c: any) => {
-                  const cId = typeof c === 'string' ? c : (c.id || c.cardId || c.name)
-                  return cId === card.id || cId === cardData.id
-                })
-              : null
-            
-            if (cardToSearch) {
-              extractStrings(cardToSearch)
-            } else {
-              // Fallback to cardData
-              extractStrings(cardData)
-              extractStrings(card)
-            }
-            
-            // Check if any text field contains "this is free" (case insensitive)
-            const hasFreeText = textFields.some(field => {
-              if (!field || typeof field !== 'string') return false
-              const cleanField = field.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-              return cleanField.toLowerCase().includes('this is free')
-            })
-            
-            if (hasFreeText) {
-              freeCreaturesCount++
-            }
-          }
-        })
-        
-        let matches = false
-        switch (debouncedFilters.freeCreaturesOperator) {
-          case '>=':
-            matches = freeCreaturesCount >= debouncedFilters.freeCreaturesValue
-            break
-          case '<=':
-            matches = freeCreaturesCount <= debouncedFilters.freeCreaturesValue
-            break
-          case '=':
-            matches = freeCreaturesCount === debouncedFilters.freeCreaturesValue
-            break
-        }
-        if (!matches) {
-          return false
-        }
-      }
-      
-      // Filter by creature type (Sub Type only, using precomputed counts)
-      if (debouncedFilters.creatureType) {
-        const selectedType = debouncedFilters.creatureType.toLowerCase()
-        const creatureTypesMap =
-          (deck.computed?.creatureType as Record<string, number> | undefined) ||
-          ((deck as any).creatureType as Record<string, number> | undefined) ||
-          computeCreatureTypesForDeck(deck)
 
-        const typeCount = creatureTypesMap?.[selectedType] ?? 0
-        const required = debouncedFilters.creatureTypeCount ?? 1
-        const operator = debouncedFilters.creatureTypeOperator || '>='
+        deckTagsCache = deckTags
+        return deckTagsCache
+      }
 
-        let matches = false
-        switch (operator) {
-          case '<=':
-            matches = typeCount <= required
+      for (const { block, state } of blockStates) {
+        switch (block.key) {
+          case 'deck-name': {
+            const currentName = (state.deckName as string) || ''
+            if (currentName) {
+              const match = !!deck.name && deck.name.trim() === currentName.trim()
+              if (!applyMode(match, (state.deckNameMode as FilterState['deckNameMode']) || 'include')) {
+                return false
+              }
+            }
             break
-          case '=':
-            matches = typeCount === required
+          }
+          case 'faction': {
+            const selected = (state.faction as string[]) || []
+            if (selected.length > 0) {
+              const match =
+                !!deck.faction &&
+                selected.some((f) => deck.faction && deck.faction.toLowerCase() === f.toLowerCase())
+              if (!applyMode(match, (state.factionMode as FilterState['factionMode']) || 'include')) {
+                return false
+              }
+            }
             break
-          case '>=':
-          default:
-            matches = typeCount >= required
+          }
+          case 'forgeborn': {
+            const selected = (state.forgebornName as string[]) || []
+            if (selected.length > 0) {
+              const forgebornName = getForgebornNameFromDeck(deck)
+              const match = !!forgebornName && selected.includes(forgebornName)
+              if (!applyMode(match, (state.forgebornMode as FilterState['forgebornMode']) || 'include')) {
+                return false
+              }
+            }
             break
-        }
+          }
+          case 'card-name': {
+            const selected = (state.cardName as string[]) || []
+            if (selected.length > 0) {
+              const deckCardNames = normalizedCards
+                .map(card => card.name?.toLowerCase())
+                .filter((name): name is string => !!name)
 
-        if (!matches) {
-          return false
-        }
-      }
-      
-      // Filter by spells count
-      if (debouncedFilters.spellsValue !== null) {
-        const counts = countPlayableCards(deck)
-        const spellsCount = counts.spells
-        
-        let matches = false
-        switch (debouncedFilters.spellsOperator) {
-          case '>=':
-            matches = spellsCount >= debouncedFilters.spellsValue
-            break
-          case '<=':
-            matches = spellsCount <= debouncedFilters.spellsValue
-            break
-          case '=':
-            matches = spellsCount === debouncedFilters.spellsValue
-            break
-        }
-        if (!matches) {
-          return false
-        }
-      }
-      
-      // Filter by free spells count (spells with "this is free" in text)
-      if (debouncedFilters.freeSpellsValue !== null) {
-        let freeSpellsCount = 0
-        
-        // Identify Forgeborn and Solbind cards (same logic as countPlayableCards)
-        const forgebornId = deck.forgebornId
-        const forgebornCardsForFreeSpells: any[] = []
-        if (forgebornId) {
-          const fb = normalizedCards.find(card => 
-            card.id === forgebornId || 
-            (card.id && forgebornId && card.id.includes(forgebornId)) ||
-            (forgebornId && card.id && forgebornId.includes(card.id))
-          )
-          if (fb) forgebornCardsForFreeSpells.push(fb)
-        }
-        if (forgebornCardsForFreeSpells.length === 0) {
-          const fb = normalizedCards.find(card =>
-            card.type?.toLowerCase().includes('forgeborn') ||
-            (card as any).cardType?.toLowerCase().includes('forgeborn')
-          )
-          if (fb) forgebornCardsForFreeSpells.push(fb)
-        }
-        
-        // Extract Solbind card IDs
-        const solbindCardIdsForFreeSpells = new Set<string>()
-        normalizedCards.forEach(card => {
-          const cardData = card as any
-          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-            cardData.solbindCards.forEach((solbindCard: any) => {
-              if (solbindCard && solbindCard.id) {
-                solbindCardIdsForFreeSpells.add(solbindCard.id)
-              }
-            })
-          }
-        })
-        const solbindCardObjectsForFreeSpells: any[] = []
-        normalizedCards.forEach(card => {
-          if (forgebornCardsForFreeSpells.includes(card)) return
-          const cardData = card as any
-          const cardId = card.id
-          if (solbindCardIdsForFreeSpells.has(cardId)) {
-            if (!solbindCardObjectsForFreeSpells.some((sb: any) => sb.id === cardId)) {
-              solbindCardObjectsForFreeSpells.push(card)
-            }
-            return
-          }
-          if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
-            if (!solbindCardObjectsForFreeSpells.some((sb: any) => sb.id === cardId)) {
-              solbindCardObjectsForFreeSpells.push(card)
-            }
-          }
-        })
-        
-        normalizedCards.forEach(card => {
-          // Skip Forgeborn and Solbind
-          if (forgebornCardsForFreeSpells.includes(card)) return
-          
-          const cardData = card as any
-          const isSolbindCard = solbindCardObjectsForFreeSpells.some((sb: any) => sb.id === card.id)
-          if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
-            return
-          }
-          
-          // Check if it's a spell - use ONLY cardType
-          const originalCardForType = deck.cards && Array.isArray(deck.cards)
-            ? deck.cards.find((c: any) => {
-                const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
-                return cId === card.id
-              })
-            : null
-          const originalCardType = originalCardForType && typeof originalCardForType === 'object'
-            ? (originalCardForType.cardType || originalCardForType.card_type || '')
-            : ''
-          const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
-          const lowerCardType = cardType.toLowerCase()
-          const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
-          
-          if (isSpell) {
-            // It's a spell - check if it's free (has "this is free" in text)
-            // Collect all text fields from card (same logic as cardText filter)
-            const spellCardData = card as any
-            
-            // Get original card from deck.cards if available (same logic as cardText filter)
-            const originalCard = deck.cards && Array.isArray(deck.cards) 
-              ? deck.cards.find((c: any) => {
-                  const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
-                  return cId === card.id
-                })
-              : null
-            
-            const cardToSearch = originalCard && typeof originalCard === 'object' ? originalCard : spellCardData
-            
-            // Collect all text fields
-            const textFields: string[] = []
-            
-            // Helper to recursively extract all string values (same as cardText filter)
-            const extractStrings = (obj: any, depth: number = 0): void => {
-              if (depth > 4) return // Limit recursion depth
-              if (!obj) return
-              
-              if (typeof obj === 'string' && obj.length > 0) {
-                textFields.push(obj)
-                return
-              }
-              
-              if (Array.isArray(obj)) {
-                obj.forEach((item: any) => {
-                  extractStrings(item, depth + 1)
-                })
-                return
-              }
-              
-              if (typeof obj !== 'object') return
-              
-              for (const key in obj) {
-                // Skip certain fields
-                if (['id', 'name', 'imageUrl', 'image', 'cardId', 'card_id'].includes(key)) {
-                  continue
-                }
-                
-                const value = obj[key]
-                if (value === null || value === undefined) continue
-                
-                if (typeof value === 'string' && value.length > 0) {
-                  textFields.push(value)
-                } else {
-                  extractStrings(value, depth + 1)
-                }
-              }
-            }
-            
-            // Extract all strings from card data
-            extractStrings(cardToSearch)
-            
-            // Also check normalized card data
-            if (cardToSearch !== spellCardData) {
-              extractStrings(spellCardData)
-            }
-            
-            // Check if any text field contains "this is free" (case insensitive)
-            const searchText = 'this is free'
-            const hasFreeText = textFields.some(field => {
-              if (!field || typeof field !== 'string') return false
-              // Remove HTML tags for better matching
-              const cleanField = field.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-              return cleanField.toLowerCase().includes(searchText)
-            })
-            
-            if (hasFreeText) {
-              freeSpellsCount++
-            }
-          }
-        })
-        
-        let matches = false
-        switch (debouncedFilters.freeSpellsOperator) {
-          case '>=':
-            matches = freeSpellsCount >= debouncedFilters.freeSpellsValue
-            break
-          case '<=':
-            matches = freeSpellsCount <= debouncedFilters.freeSpellsValue
-            break
-          case '=':
-            matches = freeSpellsCount === debouncedFilters.freeSpellsValue
-            break
-        }
-        if (!matches) {
-          return false
-        }
-      }
-      
-      // Filter by spell type (cardSubType only) with count
-      if (debouncedFilters.spellType && debouncedFilters.spellTypeCount !== null) {
-        // Identify Forgeborn and Solbind cards (same logic as above)
-        const forgebornId = deck.forgebornId
-        const forgebornCardsForSpellType: any[] = []
-        if (forgebornId) {
-          const fb = normalizedCards.find(card => 
-            card.id === forgebornId || 
-            (card.id && forgebornId && card.id.includes(forgebornId)) ||
-            (forgebornId && card.id && forgebornId.includes(card.id))
-          )
-          if (fb) forgebornCardsForSpellType.push(fb)
-        }
-        if (forgebornCardsForSpellType.length === 0) {
-          const fb = normalizedCards.find(card =>
-            card.type?.toLowerCase().includes('forgeborn') ||
-            (card as any).cardType?.toLowerCase().includes('forgeborn')
-          )
-          if (fb) forgebornCardsForSpellType.push(fb)
-        }
-        
-        // Extract Solbind card IDs
-        const solbindCardIdsForSpellType = new Set<string>()
-        normalizedCards.forEach(card => {
-          const cardData = card as any
-          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-            cardData.solbindCards.forEach((solbindCard: any) => {
-              if (solbindCard && solbindCard.id) {
-                solbindCardIdsForSpellType.add(solbindCard.id)
-              }
-            })
-          }
-        })
-        const solbindCardObjectsForSpellType: any[] = []
-        normalizedCards.forEach(card => {
-          if (forgebornCardsForSpellType.includes(card)) return
-          const cardData = card as any
-          const cardId = card.id
-          if (solbindCardIdsForSpellType.has(cardId)) {
-            if (!solbindCardObjectsForSpellType.some((sb: any) => sb.id === cardId)) {
-              solbindCardObjectsForSpellType.push(card)
-            }
-            return
-          }
-          if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
-            if (!solbindCardObjectsForSpellType.some((sb: any) => sb.id === cardId)) {
-              solbindCardObjectsForSpellType.push(card)
-            }
-          }
-        })
-        
-        const selectedType = debouncedFilters.spellType
-        // Normalize selected type (same logic as allSpellTypes collection) for consistent comparison
-        const normalizedSelectedType = selectedType && selectedType.trim()
-          ? selectedType.trim().charAt(0).toUpperCase() + selectedType.trim().slice(1).toLowerCase()
-          : ''
-        
-        // If no valid selected type, skip this filter
-        if (!normalizedSelectedType) {
-          // This shouldn't happen if spellType is set, but just in case
-          return true
-        }
-        
-        let spellTypeCount = 0
-        
-        normalizedCards.forEach(card => {
-          // Skip Forgeborn and Solbind
-          if (forgebornCardsForSpellType.includes(card)) return
-          
-          const cardData = card as any
-          const isSolbindCard = solbindCardObjectsForSpellType.some((sb: any) => sb.id === card.id)
-          if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
-            return
-          }
-          
-          // Get original card data from deck.cards by ID to ensure we have all fields
-          const originalCard = deck.cards && Array.isArray(deck.cards)
-            ? deck.cards.find((c: any) => {
-                const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
-                return cId === card.id
-              })
-            : null
-          
-          // Check if it's a spell - use ONLY cardType
-          const originalCardType = originalCard && typeof originalCard === 'object' 
-            ? (originalCard.cardType || originalCard.card_type || '')
-            : ''
-          const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
-          const lowerCardType = cardType.toLowerCase()
-          const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
-          
-          if (isSpell) {
-            // It's a spell - check if cardSubType contains the selected type
-            // Check both normalized card data and original card data
-            // Prefer original data as it may have more complete information
-            const originalSubType = originalCard && typeof originalCard === 'object'
-              ? (originalCard.cardSubType || originalCard.CardSubType || originalCard.CARDSUBTYPE ||
-                 originalCard.SubType || originalCard.subType || originalCard.SUBTYPE || '')
-              : ''
-            const normalizedSubType = cardData.cardSubType || cardData.CardSubType || cardData.CARDSUBTYPE ||
-                                      cardData.SubType || cardData.subType || cardData.SUBTYPE || ''
-            // Prefer original data if available, otherwise use normalized
-            const subType = (originalSubType || normalizedSubType || '').toString()
-            
-            if (subType && subType.trim()) {
-              // Split cardSubType by spaces and normalize each type (same logic as allSpellTypes collection)
-              // Normalize: first char uppercase, rest lowercase (e.g., "Exalt" from "exalt" or "EXALT")
-              const types = subType.trim().split(/\s+/).filter((t: string) => t.length > 0)
-              const normalizedTypes = types.map((type: string) => 
-                type.charAt(0).toUpperCase() + type.slice(1).toLowerCase()
+              const hasAllSelectedCards = selected.every(selectedName => 
+                deckCardNames.includes(selectedName.toLowerCase())
               )
-              // Compare normalized selected type with normalized card types
-              if (normalizedTypes.includes(normalizedSelectedType)) {
-                spellTypeCount++
+              const hasAnySelectedCard = selected.some(selectedName =>
+                deckCardNames.includes(selectedName.toLowerCase())
+              )
+
+              const mode = (state.cardNameMode as FilterState['cardNameMode']) || 'include'
+              const match =
+                mode === 'include'
+                  ? hasAllSelectedCards
+                  : !hasAnySelectedCard
+
+              if (!match) {
+                return false
               }
             }
+            break
           }
-        })
-        
-        // Check if deck has at least the required number of cards with this type
-        // Allow spellTypeCount to be 0 (show all decks if count is 0)
-        if (debouncedFilters.spellTypeCount! > 0 && spellTypeCount < debouncedFilters.spellTypeCount!) {
-          return false
-        }
-      }
-      
-      // Filter by rarity count
-      if (debouncedFilters.rarityType && debouncedFilters.rarityCount !== null) {
-        // Count cards by rarity (same logic as display)
-        const rarityCounts = new Map<string, number>()
-        
-        // Identify Forgeborn and Solbind (same logic as countPlayableCards)
-        const forgebornId = deck.forgebornId
-        const forgebornCards: any[] = []
-        if (forgebornId) {
-          const fb = normalizedCards.find(card => 
-            card.id === forgebornId || 
-            (card.id && forgebornId && card.id.includes(forgebornId)) ||
-            (forgebornId && card.id && forgebornId.includes(card.id))
-          )
-          if (fb) forgebornCards.push(fb)
-        }
-        if (forgebornCards.length === 0) {
-          const fb = normalizedCards.find(card =>
-            card.type?.toLowerCase().includes('forgeborn') ||
-            (card as any).cardType?.toLowerCase().includes('forgeborn')
-          )
-          if (fb) forgebornCards.push(fb)
-        }
-        
-        const solbindCardIds = new Set<string>()
-        normalizedCards.forEach(card => {
-          const cardData = card as any
-          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-            cardData.solbindCards.forEach((solbindCard: any) => {
-              if (solbindCard && solbindCard.id) {
-                solbindCardIds.add(solbindCard.id)
+          case 'card-text': {
+            const searchValue = (state.cardText as string) || ''
+            if (searchValue) {
+              const searchText = searchValue.toLowerCase()
+              const hasMatchingText = normalizedCards.some(card => {
+                const cardData = card as any
+
+                // Collect all text fields from card - search in original card data too
+                // Get original card from deck.cards if available
+                const originalCard = deck.cards && Array.isArray(deck.cards) 
+                  ? deck.cards.find((c: any) => {
+                      const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+                      return cId === card.id
+                    })
+                  : null
+
+                const cardToSearch = originalCard && typeof originalCard === 'object' ? originalCard : cardData
+
+                // Collect all text fields
+                const textFields: string[] = []
+
+                // Helper to recursively extract all string values
+                const extractStrings = (obj: any, depth: number = 0): void => {
+                  if (depth > 4) return // Limit recursion depth
+                  if (!obj) return
+
+                  if (typeof obj === 'string' && obj.length > 0) {
+                    textFields.push(obj)
+                    return
+                  }
+
+                  if (Array.isArray(obj)) {
+                    obj.forEach((item: any) => {
+                      extractStrings(item, depth + 1)
+                    })
+                    return
+                  }
+
+                  if (typeof obj !== 'object') return
+
+                  for (const key in obj) {
+                    // Skip certain fields
+                    if (['id', 'name', 'imageUrl', 'image', 'cardId', 'card_id'].includes(key)) {
+                      continue
+                    }
+
+                    const value = obj[key]
+                    if (value === null || value === undefined) continue
+
+                    if (typeof value === 'string' && value.length > 0) {
+                      textFields.push(value)
+                    } else {
+                      extractStrings(value, depth + 1)
+                    }
+                  }
+                }
+
+                // Extract all strings from card data
+                extractStrings(cardToSearch)
+
+                // Also check normalized card data
+                if (cardToSearch !== cardData) {
+                  extractStrings(cardData)
+                }
+
+                // Search in all collected text fields
+                return textFields.some(field => {
+                  if (!field || typeof field !== 'string') return false
+                  // Remove HTML tags for better matching
+                  const cleanField = field.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+                  return cleanField.toLowerCase().includes(searchText)
+                })
+              })
+              if (!applyMode(hasMatchingText, (state.cardTextMode as FilterState['cardTextMode']) || 'include')) {
+                return false
               }
-            })
+            }
+            break
           }
-          if (cardData.solbindId1 || cardData.solbindid1) solbindCardIds.add(cardData.solbindId1 || cardData.solbindid1)
-          if (cardData.solbindId2 || cardData.solbindid2) solbindCardIds.add(cardData.solbindId2 || cardData.solbindid2)
-        })
-        if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
-          ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any) => {
-            if (solbindCard && solbindCard.id) solbindCardIds.add(solbindCard.id)
-          })
-        }
-        if ((deck as any).forgeborn) {
-          const fb: any = (deck as any).forgeborn
-          if (fb.solbindId1 || fb.solbindid1) solbindCardIds.add(fb.solbindId1 || fb.solbindid1)
-          if (fb.solbindId2 || fb.solbindid2) solbindCardIds.add(fb.solbindId2 || fb.solbindid2)
-        }
-        
-        const solbindCardObjects: any[] = []
-        normalizedCards.forEach(card => {
-          const cardData = card as any
-          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-            cardData.solbindCards.forEach((solbindCard: any) => {
-              if (solbindCard && solbindCard.id) {
-                if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-                  solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+          case 'tags': {
+            const selected = (state.tags as string[]) || []
+            if (selected.length > 0) {
+              const searchTags = selected.map(t => t.trim().toLowerCase()).filter(Boolean)
+              const deckTags = getDeckTags()
+
+              const hasAllTags = searchTags.every(searchTag =>
+                deckTags.some(deckTag => deckTag === searchTag || deckTag.includes(searchTag))
+              )
+              const hasAnyTag = searchTags.some(searchTag =>
+                deckTags.some(deckTag => deckTag === searchTag || deckTag.includes(searchTag))
+              )
+              const mode = (state.tagsMode as FilterState['tagsMode']) || 'include'
+              const match =
+                mode === 'include'
+                  ? hasAllTags
+                  : !hasAnyTag
+              if (!match) {
+                return false
+              }
+            }
+            break
+          }
+          case 'creatures': {
+            const value = state.creaturesValue as number | null | undefined
+            if (value !== null && value !== undefined) {
+              const counts = getCounts()
+              const creaturesCount = counts.creatures
+
+              let matches = false
+              switch (state.creaturesOperator as FilterState['creaturesOperator']) {
+                case '>=':
+                  matches = creaturesCount >= value
+                  break
+                case '<=':
+                  matches = creaturesCount <= value
+                  break
+                case '=':
+                  matches = creaturesCount === value
+                  break
+              }
+              if (!applyMode(matches, (state.creaturesMode as FilterState['creaturesMode']) || 'include')) {
+                return false
+              }
+            }
+            break
+          }
+          case 'free-creatures': {
+            const value = state.freeCreaturesValue as number | null | undefined
+            if (value !== null && value !== undefined) {
+              let freeCreaturesCount = 0
+
+              // Identify Forgeborn and Solbind cards (same logic as countPlayableCards)
+              const forgebornId = deck.forgebornId
+              const forgebornCards: any[] = []
+              if (forgebornId) {
+                const fb = normalizedCards.find(card => 
+                  card.id === forgebornId || 
+                  (card.id && forgebornId && card.id.includes(forgebornId)) ||
+                  (forgebornId && card.id && forgebornId.includes(card.id))
+                )
+                if (fb) forgebornCards.push(fb)
+              }
+              if (forgebornCards.length === 0) {
+                const fb = normalizedCards.find(card =>
+                  card.type?.toLowerCase().includes('forgeborn') ||
+                  (card as any).cardType?.toLowerCase().includes('forgeborn')
+                )
+                if (fb) forgebornCards.push(fb)
+              }
+
+              // Extract Solbind card IDs
+              const solbindCardIds = new Set<string>()
+              normalizedCards.forEach(card => {
+                const cardData = card as any
+                if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                  cardData.solbindCards.forEach((solbindCard: any) => {
+                    if (solbindCard && solbindCard.id) {
+                      solbindCardIds.add(solbindCard.id)
+                    }
+                  })
+                }
+              })
+              const solbindCardObjects: any[] = []
+              normalizedCards.forEach(card => {
+                if (forgebornCards.includes(card)) return
+                const cardData = card as any
+                const cardId = card.id
+                if (solbindCardIds.has(cardId)) {
+                  if (!solbindCardObjects.some((sb: any) => sb.id === cardId)) {
+                    solbindCardObjects.push(card)
+                  }
+                  return
+                }
+                if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+                  if (!solbindCardObjects.some((sb: any) => sb.id === cardId)) {
+                    solbindCardObjects.push(card)
+                  }
+                }
+              })
+
+              normalizedCards.forEach(card => {
+                // Skip Forgeborn and Solbind
+                if (forgebornCards.includes(card)) return
+
+                const cardData = card as any
+                const isSolbindCard = solbindCardObjects.some((sb: any) => sb.id === card.id)
+                if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
+                  return
+                }
+
+                // Check if it's a creature (not a spell) - use ONLY cardType
+                const originalCardForType = deck.cards && Array.isArray(deck.cards)
+                  ? deck.cards.find((c: any) => {
+                      const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+                      return cId === card.id
+                    })
+                  : null
+                const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+                  ? (originalCardForType.cardType || originalCardForType.card_type || '')
+                  : ''
+                const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+                const lowerCardType = cardType.toLowerCase()
+                const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+
+                if (!isSpell) {
+                  // It's a creature - check if it's free (has "this is free" in text)
+                  // Collect all text fields from card (same logic as cardText filter)
+                  const textFields: string[] = []
+                  const extractStrings = (obj: any, depth: number = 0): void => {
+                    if (depth > 5) return // Prevent infinite recursion
+                    if (obj === null || obj === undefined) return
+
+                    // Handle arrays
+                    if (Array.isArray(obj)) {
+                      obj.forEach(item => {
+                        extractStrings(item, depth + 1)
+                      })
+                      return
+                    }
+
+                    // Handle strings
+                    if (typeof obj === 'string' && obj.length > 0) {
+                      textFields.push(obj)
+                      return
+                    }
+
+                    // Handle objects
+                    if (typeof obj !== 'object') return
+
+                    // Collect all string values from object
+                    for (const key in obj) {
+                      if (['id', 'name', 'imageUrl', 'image', 'cardId', 'card_id'].includes(key)) {
+                        continue
+                      }
+
+                      const value = obj[key]
+                      if (value === null || value === undefined) continue
+
+                      if (typeof value === 'string' && value.length > 0) {
+                        textFields.push(value)
+                      } else {
+                        extractStrings(value, depth + 1)
+                      }
+                    }
+                  }
+
+                  // Extract all strings from card data - use original card data from deck, not normalized
+                  const cardToSearch = deck.cards && Array.isArray(deck.cards) 
+                    ? deck.cards.find((c: any) => {
+                        const cId = typeof c === 'string' ? c : (c.id || c.cardId || c.name)
+                        return cId === card.id || cId === cardData.id
+                      })
+                    : null
+
+                  if (cardToSearch) {
+                    extractStrings(cardToSearch)
+                  } else {
+                    // Fallback to cardData
+                    extractStrings(cardData)
+                    extractStrings(card)
+                  }
+
+                  // Check if any text field contains "this is free" (case insensitive)
+                  const hasFreeText = textFields.some(field => {
+                    if (!field || typeof field !== 'string') return false
+                    const cleanField = field.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+                    return cleanField.toLowerCase().includes('this is free')
+                  })
+
+                  if (hasFreeText) {
+                    freeCreaturesCount++
+                  }
+                }
+              })
+
+              let matches = false
+              switch (state.freeCreaturesOperator as FilterState['freeCreaturesOperator']) {
+                case '>=':
+                  matches = freeCreaturesCount >= value
+                  break
+                case '<=':
+                  matches = freeCreaturesCount <= value
+                  break
+                case '=':
+                  matches = freeCreaturesCount === value
+                  break
+              }
+              if (!applyMode(matches, (state.freeCreaturesMode as FilterState['freeCreaturesMode']) || 'include')) {
+                return false
+              }
+            }
+            break
+          }
+          case 'creature-type': {
+            const selectedTypeRaw = (state.creatureType as string) || ''
+            const required = state.creatureTypeCount as number | null | undefined
+            if (selectedTypeRaw && required !== null && required !== undefined) {
+              const selectedType = selectedTypeRaw.toLowerCase()
+              const creatureTypesMap =
+                (deck.computed?.creatureType as Record<string, number> | undefined) ||
+                ((deck as any).creatureType as Record<string, number> | undefined) ||
+                computeCreatureTypesForDeck(deck)
+
+              const typeCount = creatureTypesMap?.[selectedType] ?? 0
+              const operator = (state.creatureTypeOperator as FilterState['creatureTypeOperator']) || '>='
+
+              let matches = false
+              switch (operator) {
+                case '<=':
+                  matches = typeCount <= required
+                  break
+                case '=':
+                  matches = typeCount === required
+                  break
+                case '>=':
+                default:
+                  matches = typeCount >= required
+                  break
+              }
+
+              if (!applyMode(matches, (state.creatureTypeMode as FilterState['creatureTypeMode']) || 'include')) {
+                return false
+              }
+            }
+            break
+          }
+          case 'spells': {
+            const value = state.spellsValue as number | null | undefined
+            if (value !== null && value !== undefined) {
+              const counts = getCounts()
+              const spellsCount = counts.spells
+
+              let matches = false
+              switch (state.spellsOperator as FilterState['spellsOperator']) {
+                case '>=':
+                  matches = spellsCount >= value
+                  break
+                case '<=':
+                  matches = spellsCount <= value
+                  break
+                case '=':
+                  matches = spellsCount === value
+                  break
+              }
+              if (!applyMode(matches, (state.spellsMode as FilterState['spellsMode']) || 'include')) {
+                return false
+              }
+            }
+            break
+          }
+          case 'free-spells': {
+            const value = state.freeSpellsValue as number | null | undefined
+            if (value !== null && value !== undefined) {
+              let freeSpellsCount = 0
+
+              // Identify Forgeborn and Solbind cards (same logic as countPlayableCards)
+              const forgebornId = deck.forgebornId
+              const forgebornCardsForFreeSpells: any[] = []
+              if (forgebornId) {
+                const fb = normalizedCards.find(card => 
+                  card.id === forgebornId || 
+                  (card.id && forgebornId && card.id.includes(forgebornId)) ||
+                  (forgebornId && card.id && forgebornId.includes(card.id))
+                )
+                if (fb) forgebornCardsForFreeSpells.push(fb)
+              }
+              if (forgebornCardsForFreeSpells.length === 0) {
+                const fb = normalizedCards.find(card =>
+                  card.type?.toLowerCase().includes('forgeborn') ||
+                  (card as any).cardType?.toLowerCase().includes('forgeborn')
+                )
+                if (fb) forgebornCardsForFreeSpells.push(fb)
+              }
+
+              // Extract Solbind card IDs
+              const solbindCardIdsForFreeSpells = new Set<string>()
+              normalizedCards.forEach(card => {
+                const cardData = card as any
+                if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                  cardData.solbindCards.forEach((solbindCard: any) => {
+                    if (solbindCard && solbindCard.id) {
+                      solbindCardIdsForFreeSpells.add(solbindCard.id)
+                    }
+                  })
+                }
+              })
+              const solbindCardObjectsForFreeSpells: any[] = []
+              normalizedCards.forEach(card => {
+                if (forgebornCardsForFreeSpells.includes(card)) return
+                const cardData = card as any
+                const cardId = card.id
+                if (solbindCardIdsForFreeSpells.has(cardId)) {
+                  if (!solbindCardObjectsForFreeSpells.some((sb: any) => sb.id === cardId)) {
+                    solbindCardObjectsForFreeSpells.push(card)
+                  }
+                  return
+                }
+                if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+                  if (!solbindCardObjectsForFreeSpells.some((sb: any) => sb.id === cardId)) {
+                    solbindCardObjectsForFreeSpells.push(card)
+                  }
+                }
+              })
+
+              normalizedCards.forEach(card => {
+                // Skip Forgeborn and Solbind
+                if (forgebornCardsForFreeSpells.includes(card)) return
+
+                const cardData = card as any
+                const isSolbindCard = solbindCardObjectsForFreeSpells.some((sb: any) => sb.id === card.id)
+                if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
+                  return
+                }
+
+                // Check if it's a spell - use ONLY cardType
+                const originalCardForType = deck.cards && Array.isArray(deck.cards)
+                  ? deck.cards.find((c: any) => {
+                      const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+                      return cId === card.id
+                    })
+                  : null
+                const originalCardType = originalCardForType && typeof originalCardForType === 'object'
+                  ? (originalCardForType.cardType || originalCardForType.card_type || '')
+                  : ''
+                const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+                const lowerCardType = cardType.toLowerCase()
+                const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+
+                if (isSpell) {
+                  // It's a spell - check if it's free (has "this is free" in text)
+                  // Collect all text fields from card (same logic as cardText filter)
+                  const spellCardData = card as any
+
+                  // Get original card from deck.cards if available (same logic as cardText filter)
+                  const originalCard = deck.cards && Array.isArray(deck.cards) 
+                    ? deck.cards.find((c: any) => {
+                        const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+                        return cId === card.id
+                      })
+                    : null
+
+                  const cardToSearch = originalCard && typeof originalCard === 'object' ? originalCard : spellCardData
+
+                  // Collect all text fields
+                  const textFields: string[] = []
+
+                  // Helper to recursively extract all string values (same as cardText filter)
+                  const extractStrings = (obj: any, depth: number = 0): void => {
+                    if (depth > 4) return // Limit recursion depth
+                    if (!obj) return
+
+                    if (typeof obj === 'string' && obj.length > 0) {
+                      textFields.push(obj)
+                      return
+                    }
+
+                    if (Array.isArray(obj)) {
+                      obj.forEach((item: any) => {
+                        extractStrings(item, depth + 1)
+                      })
+                      return
+                    }
+
+                    if (typeof obj !== 'object') return
+
+                    for (const key in obj) {
+                      // Skip certain fields
+                      if (['id', 'name', 'imageUrl', 'image', 'cardId', 'card_id'].includes(key)) {
+                        continue
+                      }
+
+                      const value = obj[key]
+                      if (value === null || value === undefined) continue
+
+                      if (typeof value === 'string' && value.length > 0) {
+                        textFields.push(value)
+                      } else {
+                        extractStrings(value, depth + 1)
+                      }
+                    }
+                  }
+
+                  // Extract all strings from card data
+                  extractStrings(cardToSearch)
+
+                  // Also check normalized card data
+                  if (cardToSearch !== spellCardData) {
+                    extractStrings(spellCardData)
+                  }
+
+                  // Check if any text field contains "this is free" (case insensitive)
+                  const searchText = 'this is free'
+                  const hasFreeText = textFields.some(field => {
+                    if (!field || typeof field !== 'string') return false
+                    // Remove HTML tags for better matching
+                    const cleanField = field.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+                    return cleanField.toLowerCase().includes(searchText)
+                  })
+
+                  if (hasFreeText) {
+                    freeSpellsCount++
+                  }
+                }
+              })
+
+              let matches = false
+              switch (state.freeSpellsOperator as FilterState['freeSpellsOperator']) {
+                case '>=':
+                  matches = freeSpellsCount >= value
+                  break
+                case '<=':
+                  matches = freeSpellsCount <= value
+                  break
+                case '=':
+                  matches = freeSpellsCount === value
+                  break
+              }
+              if (!applyMode(matches, (state.freeSpellsMode as FilterState['freeSpellsMode']) || 'include')) {
+                return false
+              }
+            }
+            break
+          }
+          case 'spell-type': {
+            const selectedType = (state.spellType as string) || ''
+            const requiredCount = state.spellTypeCount as number | null | undefined
+            if (selectedType && requiredCount !== null && requiredCount !== undefined) {
+              // Identify Forgeborn and Solbind cards (same logic as above)
+              const forgebornId = deck.forgebornId
+              const forgebornCardsForSpellType: any[] = []
+              if (forgebornId) {
+                const fb = normalizedCards.find(card => 
+                  card.id === forgebornId || 
+                  (card.id && forgebornId && card.id.includes(forgebornId)) ||
+                  (forgebornId && card.id && forgebornId.includes(card.id))
+                )
+                if (fb) forgebornCardsForSpellType.push(fb)
+              }
+              if (forgebornCardsForSpellType.length === 0) {
+                const fb = normalizedCards.find(card =>
+                  card.type?.toLowerCase().includes('forgeborn') ||
+                  (card as any).cardType?.toLowerCase().includes('forgeborn')
+                )
+                if (fb) forgebornCardsForSpellType.push(fb)
+              }
+
+              // Extract Solbind card IDs
+              const solbindCardIdsForSpellType = new Set<string>()
+              normalizedCards.forEach(card => {
+                const cardData = card as any
+                if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                  cardData.solbindCards.forEach((solbindCard: any) => {
+                    if (solbindCard && solbindCard.id) {
+                      solbindCardIdsForSpellType.add(solbindCard.id)
+                    }
+                  })
+                }
+              })
+              const solbindCardObjectsForSpellType: any[] = []
+              normalizedCards.forEach(card => {
+                if (forgebornCardsForSpellType.includes(card)) return
+                const cardData = card as any
+                const cardId = card.id
+                if (solbindCardIdsForSpellType.has(cardId)) {
+                  if (!solbindCardObjectsForSpellType.some((sb: any) => sb.id === cardId)) {
+                    solbindCardObjectsForSpellType.push(card)
+                  }
+                  return
+                }
+                if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+                  if (!solbindCardObjectsForSpellType.some((sb: any) => sb.id === cardId)) {
+                    solbindCardObjectsForSpellType.push(card)
+                  }
+                }
+              })
+
+              // Normalize selected type for consistent comparison
+              const normalizedSelectedType = selectedType && selectedType.trim()
+                ? selectedType.trim().charAt(0).toUpperCase() + selectedType.trim().slice(1).toLowerCase()
+                : ''
+
+              if (!normalizedSelectedType) {
+                break
+              }
+
+              let spellTypeCount = 0
+
+              normalizedCards.forEach(card => {
+                // Skip Forgeborn and Solbind
+                if (forgebornCardsForSpellType.includes(card)) return
+
+                const cardData = card as any
+                const isSolbindCard = solbindCardObjectsForSpellType.some((sb: any) => sb.id === card.id)
+                if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
+                  return
+                }
+
+                // Get original card data from deck.cards by ID to ensure we have all fields
+                const originalCard = deck.cards && Array.isArray(deck.cards)
+                  ? deck.cards.find((c: any) => {
+                      const cId = typeof c === 'string' ? c : (c?.id || c?.cardId)
+                      return cId === card.id
+                    })
+                  : null
+
+                // Check if it's a spell - use ONLY cardType
+                const originalCardType = originalCard && typeof originalCard === 'object' 
+                  ? (originalCard.cardType || originalCard.card_type || '')
+                  : ''
+                const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
+                const lowerCardType = cardType.toLowerCase()
+                const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
+
+                if (isSpell) {
+                  // It's a spell - check if cardSubType contains the selected type
+                  const originalSubType = originalCard && typeof originalCard === 'object'
+                    ? (originalCard.cardSubType || originalCard.CardSubType || originalCard.CARDSUBTYPE ||
+                       originalCard.SubType || originalCard.subType || originalCard.SUBTYPE || '')
+                    : ''
+                  const normalizedSubType = cardData.cardSubType || cardData.CardSubType || cardData.CARDSUBTYPE ||
+                                            cardData.SubType || cardData.subType || cardData.SUBTYPE || ''
+                  const subType = (originalSubType || normalizedSubType || '').toString()
+
+                  if (subType && subType.trim()) {
+                    const types = subType.trim().split(/\s+/).filter((t: string) => t.length > 0)
+                    const normalizedTypes = types.map((type: string) => 
+                      type.charAt(0).toUpperCase() + type.slice(1).toLowerCase()
+                    )
+                    if (normalizedTypes.includes(normalizedSelectedType)) {
+                      spellTypeCount++
+                    }
+                  }
+                }
+              })
+
+              const matchesType = !(requiredCount > 0 && spellTypeCount < requiredCount)
+              if (!applyMode(matchesType, (state.spellTypeMode as FilterState['spellTypeMode']) || 'include')) {
+                return false
+              }
+            }
+            break
+          }
+          case 'rarity': {
+            const rarityType = (state.rarityType as string) || ''
+            const rarityCount = state.rarityCount as number | null | undefined
+            if (rarityType && rarityCount !== null && rarityCount !== undefined) {
+              // Count cards by rarity (same logic as display)
+              const rarityCounts = new Map<string, number>()
+
+              // Identify Forgeborn and Solbind (same logic as countPlayableCards)
+              const forgebornId = deck.forgebornId
+              const forgebornCards: any[] = []
+              if (forgebornId) {
+                const fb = normalizedCards.find(card => 
+                  card.id === forgebornId || 
+                  (card.id && forgebornId && card.id.includes(forgebornId)) ||
+                  (forgebornId && card.id && forgebornId.includes(card.id))
+                )
+                if (fb) forgebornCards.push(fb)
+              }
+              if (forgebornCards.length === 0) {
+                const fb = normalizedCards.find(card =>
+                  card.type?.toLowerCase().includes('forgeborn') ||
+                  (card as any).cardType?.toLowerCase().includes('forgeborn')
+                )
+                if (fb) forgebornCards.push(fb)
+              }
+
+              const solbindCardIds = new Set<string>()
+              normalizedCards.forEach(card => {
+                const cardData = card as any
+                if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                  cardData.solbindCards.forEach((solbindCard: any) => {
+                    if (solbindCard && solbindCard.id) {
+                      solbindCardIds.add(solbindCard.id)
+                    }
+                  })
+                }
+                if (cardData.solbindId1 || cardData.solbindid1) solbindCardIds.add(cardData.solbindId1 || cardData.solbindid1)
+                if (cardData.solbindId2 || cardData.solbindid2) solbindCardIds.add(cardData.solbindId2 || cardData.solbindid2)
+              })
+              if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
+                ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any) => {
+                  if (solbindCard && solbindCard.id) solbindCardIds.add(solbindCard.id)
+                })
+              }
+              if ((deck as any).forgeborn) {
+                const fb: any = (deck as any).forgeborn
+                if (fb.solbindId1 || fb.solbindid1) solbindCardIds.add(fb.solbindId1 || fb.solbindid1)
+                if (fb.solbindId2 || fb.solbindid2) solbindCardIds.add(fb.solbindId2 || fb.solbindid2)
+              }
+
+              const solbindCardObjects: any[] = []
+              normalizedCards.forEach(card => {
+                const cardData = card as any
+                if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                  cardData.solbindCards.forEach((solbindCard: any) => {
+                    if (solbindCard && solbindCard.id) {
+                      if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+                        solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+                      }
+                    }
+                  })
+                }
+                if (cardData.solbindId1 || cardData.solbindid1) {
+                  const id = cardData.solbindId1 || cardData.solbindid1
+                  if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+                    solbindCardObjects.push(getCardInfo(id))
+                  }
+                }
+                if (cardData.solbindId2 || cardData.solbindid2) {
+                  const id = cardData.solbindId2 || cardData.solbindid2
+                  if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+                    solbindCardObjects.push(getCardInfo(id))
+                  }
+                }
+              })
+              if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
+                ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any) => {
+                  if (solbindCard && solbindCard.id) {
+                    if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+                      solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+                    }
+                  }
+                })
+              }
+              if ((deck as any).forgeborn) {
+                const fb: any = (deck as any).forgeborn
+                if (fb.solbindId1 || fb.solbindid1) {
+                  const id = fb.solbindId1 || fb.solbindid1
+                  if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+                    solbindCardObjects.push(getCardInfo(id))
+                  }
+                }
+                if (fb.solbindId2 || fb.solbindid2) {
+                  const id = fb.solbindId2 || fb.solbindid2
+                  if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+                    solbindCardObjects.push(getCardInfo(id))
+                  }
                 }
               }
-            })
-          }
-          if (cardData.solbindId1 || cardData.solbindid1) {
-            const id = cardData.solbindId1 || cardData.solbindid1
-            if (id && !solbindCardObjects.some(sb => sb.id === id)) {
-              solbindCardObjects.push(getCardInfo(id))
-            }
-          }
-          if (cardData.solbindId2 || cardData.solbindid2) {
-            const id = cardData.solbindId2 || cardData.solbindid2
-            if (id && !solbindCardObjects.some(sb => sb.id === id)) {
-              solbindCardObjects.push(getCardInfo(id))
-            }
-          }
-        })
-        if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
-          ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any) => {
-            if (solbindCard && solbindCard.id) {
-              if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-                solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+              normalizedCards.forEach(card => {
+                if (forgebornCards.includes(card)) return
+                const cardData = card as any
+                const cardId = card.id
+                if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+                  return
+                }
+                if (solbindCardIds.has(cardId)) {
+                  if (!solbindCardObjects.some(sb => sb.id === cardId)) {
+                    solbindCardObjects.push(card)
+                  }
+                  return
+                }
+                if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
+                  if (!solbindCardObjects.some(sb => sb.id === cardId)) {
+                    solbindCardObjects.push(card)
+                  }
+                }
+              })
+
+              // Count rarity for creatures and spells
+              normalizedCards.forEach(card => {
+                if (forgebornCards.includes(card)) return
+                const cardData = card as any
+                const isSolbindCard = solbindCardObjects.some(sb => sb.id === card.id)
+                if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
+                  return
+                }
+
+                const rarity = cardData.rarity
+                if (rarity && typeof rarity === 'string') {
+                  let normalizedRarity = rarity.trim()
+                  const lower = normalizedRarity.toLowerCase()
+                  if (lower.includes('darkforge') && lower.includes('rare')) {
+                    normalizedRarity = 'Darkforge Rare'
+                  } else if (lower.includes('common') && lower.includes('rare')) {
+                    normalizedRarity = 'Common Rare'
+                  } else if (lower.includes('darkforge')) {
+                    normalizedRarity = 'Darkforge'
+                  } else if (lower.includes('common')) {
+                    normalizedRarity = 'Common'
+                  } else if (lower.includes('rare')) {
+                    normalizedRarity = 'Rare'
+                  } else if (lower.includes('ls') || lower.includes('legendary')) {
+                    normalizedRarity = 'LS'
+                  }
+
+                  const currentCount = rarityCounts.get(normalizedRarity) || 0
+                  rarityCounts.set(normalizedRarity, currentCount + 1)
+                }
+              })
+
+              const deckRarityCount = rarityCounts.get(rarityType) || 0
+              const rarityMatch = !(deckRarityCount < rarityCount)
+              if (!applyMode(rarityMatch, (state.rarityMode as FilterState['rarityMode']) || 'include')) {
+                return false
               }
             }
-          })
-        }
-        if ((deck as any).forgeborn) {
-          const fb: any = (deck as any).forgeborn
-          if (fb.solbindId1 || fb.solbindid1) {
-            const id = fb.solbindId1 || fb.solbindid1
-            if (id && !solbindCardObjects.some(sb => sb.id === id)) {
-              solbindCardObjects.push(getCardInfo(id))
-            }
-          }
-          if (fb.solbindId2 || fb.solbindid2) {
-            const id = fb.solbindId2 || fb.solbindid2
-            if (id && !solbindCardObjects.some(sb => sb.id === id)) {
-              solbindCardObjects.push(getCardInfo(id))
-            }
-          }
-        }
-        normalizedCards.forEach(card => {
-          if (forgebornCards.includes(card)) return
-          const cardData = card as any
-          const cardId = card.id
-          if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-            return
-          }
-          if (solbindCardIds.has(cardId)) {
-            if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-              solbindCardObjects.push(card)
-            }
-            return
-          }
-          if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
-            if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-              solbindCardObjects.push(card)
-            }
-          }
-        })
-        
-        // Count rarity for creatures and spells
-        normalizedCards.forEach(card => {
-          if (forgebornCards.includes(card)) return
-          const cardData = card as any
-          const isSolbindCard = solbindCardObjects.some(sb => sb.id === card.id)
-          if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
-            return
-          }
-          
-          const rarity = cardData.rarity
-          if (rarity && typeof rarity === 'string') {
-            let normalizedRarity = rarity.trim()
-            const lower = normalizedRarity.toLowerCase()
-            if (lower.includes('darkforge') && lower.includes('rare')) {
-              normalizedRarity = 'Darkforge Rare'
-            } else if (lower.includes('common') && lower.includes('rare')) {
-              normalizedRarity = 'Common Rare'
-            } else if (lower.includes('darkforge')) {
-              normalizedRarity = 'Darkforge'
-            } else if (lower.includes('common')) {
-              normalizedRarity = 'Common'
-            } else if (lower.includes('rare')) {
-              normalizedRarity = 'Rare'
-            } else if (lower.includes('ls') || lower.includes('legendary')) {
-              normalizedRarity = 'LS'
-            }
-            
-            const currentCount = rarityCounts.get(normalizedRarity) || 0
-            rarityCounts.set(normalizedRarity, currentCount + 1)
-          }
-        })
-        
-        const deckRarityCount = rarityCounts.get(debouncedFilters.rarityType) || 0
-        if (deckRarityCount < debouncedFilters.rarityCount) {
-          return false
-        }
-      }
-      
-      // Filter by card set number (multi-select)
-      // Use getDeckSet to get the actual set (B1 if any card is from B1, otherwise deck.cardSetNo)
-      if (debouncedFilters.cardSetNo.length > 0) {
-        const deckSet = getDeckSet(deck)
-        const deckSetStr = deckSet ? String(deckSet).trim() : null
-        if (!deckSetStr || !debouncedFilters.cardSetNo.includes(deckSetStr)) {
-          return false
-        }
-      }
-      
-      // Filter by ELO
-      if (debouncedFilters.eloValue !== null) {
-        const deckElo = (deck as any).elo !== undefined && (deck as any).elo !== null 
-          ? Number((deck as any).elo) 
-          : null
-        
-        if (deckElo === null) {
-          return false // Deck has no ELO, exclude it
-        }
-        
-        switch (debouncedFilters.eloOperator) {
-          case '>=':
-            if (deckElo < debouncedFilters.eloValue) return false
             break
-          case '<=':
-            if (deckElo > debouncedFilters.eloValue) return false
+          }
+          case 'card-set': {
+            const cardSetState =
+              cardSetInstances[block.id] || {
+                cardSetNo: (state.cardSetNo as string[]) || [],
+                cardSetNoMode: ((state.cardSetNoMode as 'include' | 'exclude') || 'include'),
+              }
+            if (cardSetState.cardSetNo.length > 0) {
+              const deckSetStr = getDeckSetString()
+              const match = !!deckSetStr && cardSetState.cardSetNo.includes(deckSetStr)
+              if (!applyMode(match, cardSetState.cardSetNoMode || 'include')) {
+                return false
+              }
+            }
             break
-          case '=':
-            if (deckElo !== debouncedFilters.eloValue) return false
+          }
+          case 'elo': {
+            const value = state.eloValue as number | null | undefined
+            if (value !== null && value !== undefined) {
+              const deckElo = (deck as any).elo !== undefined && (deck as any).elo !== null 
+                ? Number((deck as any).elo) 
+                : null
+
+              if (deckElo === null) {
+                return false // Deck has no ELO, exclude it
+              }
+
+              let matches = false
+              switch (state.eloOperator as FilterState['eloOperator']) {
+                case '>=':
+                  matches = deckElo >= value
+                  break
+                case '<=':
+                  matches = deckElo <= value
+                  break
+                case '=':
+                  matches = deckElo === value
+                  break
+              }
+              if (!applyMode(matches, (state.eloMode as FilterState['eloMode']) || 'include')) {
+                return false
+              }
+            }
+            break
+          }
+          case 'score': {
+            const value = state.scoreValue as number | null | undefined
+            if (value !== null && value !== undefined) {
+              const deckScore = (deck as any).deckScore !== undefined && (deck as any).deckScore !== null 
+                ? Number((deck as any).deckScore) 
+                : null
+
+              if (deckScore === null) {
+                return false // Deck has no score, exclude it
+              }
+
+              // Convert deckScore to 0-100 scale (like in display)
+              const deckScoreScaled = Math.round(deckScore * 100)
+
+              let matches = false
+              switch (state.scoreOperator as FilterState['scoreOperator']) {
+                case '>=':
+                  matches = deckScoreScaled >= value
+                  break
+                case '<=':
+                  matches = deckScoreScaled <= value
+                  break
+                case '=':
+                  matches = deckScoreScaled === value
+                  break
+              }
+              if (!applyMode(matches, (state.scoreMode as FilterState['scoreMode']) || 'include')) {
+                return false
+              }
+            }
+            break
+          }
+          case 'sort':
+          default:
             break
         }
       }
-      
-      // Filter by deck score
-      // scoreValue is stored as 0-100 (multiplied by 100, like in display)
-      if (debouncedFilters.scoreValue !== null) {
-        const deckScore = (deck as any).deckScore !== undefined && (deck as any).deckScore !== null 
-          ? Number((deck as any).deckScore) 
-          : null
-        
-        if (deckScore === null) {
-          return false // Deck has no score, exclude it
-        }
-        
-        // Convert deckScore to 0-100 scale (like in display)
-        const deckScoreScaled = Math.round(deckScore * 100)
-        
-        switch (debouncedFilters.scoreOperator) {
-          case '>=':
-            if (deckScoreScaled < debouncedFilters.scoreValue) return false
-            break
-          case '<=':
-            if (deckScoreScaled > debouncedFilters.scoreValue) return false
-            break
-          case '=':
-            if (deckScoreScaled !== debouncedFilters.scoreValue) return false
-            break
-        }
-      }
-      
+
       return true
     })
-  }, [debouncedFilters, hasActiveFilters, deckTagsMap])
+  }, [activeFilterBlocks, cardSetInstances, deckTagsMap, getDebouncedInstanceState, hasActiveFilters])
   
+  const sortByValue = useMemo(() => {
+    const sortBlock = activeFilterBlocks.find((block) => block.key === 'sort')
+    if (!sortBlock) return createDefaultFilters().sortBy
+    const state = getInstanceState(sortBlock)
+    return (state.sortBy as string) || createDefaultFilters().sortBy
+  }, [activeFilterBlocks, getInstanceState])
+
   // Helper function to sort decks
   const sortDecks = useCallback((deckArray: Deck[]): Deck[] => {
     const sorted = [...deckArray]
     
-    switch (debouncedFilters.sortBy) {
+    switch (sortByValue) {
       case 'date-desc': // Newest first
         return sorted.sort((a, b) => {
           // Use updatedAt for sorting (updated at), fallback to created if updatedAt is not available
@@ -3325,7 +4168,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       default:
         return sorted
     }
-  }, [debouncedFilters.sortBy])
+  }, [sortByValue])
   
   // Filter half decks based on filter criteria
   const filteredHalfDecks = useMemo(() => {
@@ -3532,813 +4375,1203 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               <Title order={4} className="text-white">
                 Filter Decks
               </Title>
-              
-              <Grid gutter="md">
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+
+              <Group gap="md" align="flex-start" justify="space-between" wrap="nowrap">
+                <Stack gap={4} style={{ flex: '0 1 420px', maxWidth: 420 }}>
+                  <Text size="sm" fw={500} style={{ color: 'white' }}>
+                    Add filter
+                  </Text>
                   <Select
-                    label="Deck Name"
-                    placeholder={allDeckNames.length > 0 ? "Select deck name..." : "No decks available"}
-                    data={allDeckNames.map(name => ({ value: name, label: name }))}
-                    value={filters.deckName || null}
-                    onChange={(value) => setFilters({ ...filters, deckName: value || '' })}
+                    placeholder="Choose filter..."
+                    data={sortedFilterOptions}
+                    value={filterToAdd}
+                    onChange={(value) => addFilterBlock((value as FilterBlockKey) || null)}
                     clearable
-                    searchable
+                    allowDeselect
                     styles={{
-                      label: { color: 'white' },
-                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                      input: {
+                        backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                        color: 'white',
+                        borderColor: 'rgba(74, 144, 226, 0.3)',
+                      },
                       dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                      option: { color: 'white' }
-                    }}
-                    disabled={allDeckNames.length === 0}
-                  />
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <MultiSelect
-                    label="Faction"
-                    placeholder="Select factions..."
-                    value={filters.faction}
-                    onChange={(value) => setFilters({ ...filters, faction: value })}
-                    data={[
-                      { value: 'Alloyin', label: 'Alloyin' },
-                      { value: 'Uterra', label: 'Uterra' },
-                      { value: 'Tempys', label: 'Tempys' },
-                      { value: 'Nekrium', label: 'Nekrium' },
-                    ]}
-                    clearable
-                    styles={{
-                      label: { color: 'white' },
-                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      option: { color: 'white' },
                     }}
                   />
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <MultiSelect
-                    label="Forgeborn Name"
-                    placeholder="Select Forgeborn..."
-                    data={allForgebornNames}
-                    value={filters.forgebornName}
-                    onChange={(value) => setFilters({ ...filters, forgebornName: value })}
-                    clearable
-                    searchable
-                    className="text-white"
-                    styles={{
-                      label: { color: 'white' },
-                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                      dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                      option: { color: 'white' }
-                    }}
-                  />
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <MultiSelect
-                    label="Card Name"
-                    placeholder="Select cards..."
-                    value={filters.cardName}
+                </Stack>
+
+                <Stack gap={6} align="flex-end" style={{ flex: '1 1 320px', minWidth: 320 }}>
+                  <Text size="sm" fw={500} style={{ color: 'white', textAlign: 'right' }}>
+                    Deck Status
+                  </Text>
+                  <SegmentedControl
+                    value={filters.expiryFilter}
                     onChange={(value) => {
-                      // Save scroll position before changing filter
-                      scrollPositionRef.current = window.scrollY || window.pageYOffset || document.documentElement.scrollTop
-                      shouldRestoreScrollRef.current = true
-                      setFilters({ ...filters, cardName: value })
+                      const expiryValue = value as 'all' | 'active' | 'expiring' | 'expired'
+                      setFilters({ ...filters, expiryFilter: expiryValue })
                     }}
-                    data={allCardNames.map(name => ({ value: name, label: name }))}
-                    searchable
-                    clearable
-                    maxDropdownHeight={300}
-                    styles={{
-                      label: { color: 'white' },
-                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                    }}
-                  />
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <TextInput
-                    label="Card Text"
-                    placeholder="Search in card text/abilities..."
-                    value={filters.cardText}
-                    onChange={(e) => setFilters({ ...filters, cardText: e.target.value })}
-                    className="text-white"
-                    styles={{
-                      label: { color: 'white' },
-                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                    }}
-                  />
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <MultiSelect
-                    label="Tags"
-                    placeholder="Select tags..."
-                    data={allTags.map(tag => ({ value: tag, label: tag }))}
-                    value={filters.tags}
-                    onChange={(value) => setFilters({ ...filters, tags: value })}
-                    clearable
-                    searchable
-                    styles={{
-                      label: { color: 'white' },
-                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                      dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                      option: { color: 'white' }
-                    }}
-                  />
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Group gap="xs" align="flex-end">
-                    <Select
-                      label="Creatures"
-                      value={filters.creaturesOperator}
-                      onChange={(value) => setFilters({ ...filters, creaturesOperator: value as any })}
-                      data={[
-                        { value: '>=', label: '≥' },
-                        { value: '<=', label: '≤' },
-                        { value: '=', label: '=' },
-                      ]}
-                      style={{ flex: '0 0 80px' }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                    <NumberInput
-                      placeholder="Count"
-                      value={filters.creaturesValue ?? ''}
-                      onChange={(value) =>
-                        setFilters(prev => ({
-                          ...prev,
-                          creaturesValue: typeof value === 'number' ? value : null,
-                        }))
-                      }
-                      min={0}
-                      rightSection={filters.creaturesValue !== null ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setFilters(prev => ({ ...prev, creaturesValue: null }))
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <IconX
-                            size={16}
-                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                          />
-                        </button>
-                      ) : null}
-                      style={{ flex: 1 }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                  </Group>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Stack gap={4}>
-                    <Text size="sm" className="text-white" style={{ fontWeight: 500 }}>
-                      Free Creatures
-                    </Text>
-                    <Group gap="xs" align="flex-end" wrap="nowrap">
-                      <Select
-                        value={filters.freeCreaturesOperator}
-                        onChange={(value) => setFilters({ ...filters, freeCreaturesOperator: value as any })}
-                        data={[
-                          { value: '>=', label: '≥' },
-                          { value: '<=', label: '≤' },
-                          { value: '=', label: '=' },
-                        ]}
-                        style={{ flex: '0 0 60px', minWidth: '60px' }}
-                        styles={{
-                          input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
-                        }}
-                      />
-                      <NumberInput
-                        placeholder="Count"
-                        value={filters.freeCreaturesValue ?? undefined}
-                        onChange={(value) => setFilters({ ...filters, freeCreaturesValue: typeof value === 'number' ? value : null })}
-                        min={0}
-                        rightSection={filters.freeCreaturesValue !== null && filters.freeCreaturesValue !== undefined ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              setFilters({ ...filters, freeCreaturesValue: null })
-                            }}
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                            }}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              padding: 0,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <IconX
-                              size={16}
-                              style={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                            />
-                          </button>
-                        ) : null}
-                        style={{ flex: 1, minWidth: 0 }}
-                        styles={{
-                          input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
-                        }}
-                      />
-                    </Group>
-                  </Stack>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Group gap="xs" align="flex-end">
-                    <Select
-                      label="Creature Type"
-                      placeholder={allCreatureTypes.length > 0 ? "Select creature type..." : "No types available"}
-                      data={allCreatureTypes.map(type => ({ value: type.value, label: type.label }))}
-                      value={filters.creatureType || null}
-                      onChange={(value) =>
-                        setFilters(prev => ({
-                          ...prev,
-                          creatureType: value || '',
-                          creatureTypeCount: value ? (prev.creatureTypeCount ?? 1) : null, // Default to 1 when type is selected
-                          creatureTypeOperator: value ? prev.creatureTypeOperator : '>=',
-                        }))
-                      }
-                      clearable
-                      searchable
-                      disabled={allCreatureTypes.length === 0}
-                      style={{ flex: 1 }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                        dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                        option: { color: 'white' }
-                      }}
-                    />
-                    <Select
-                      label="Op"
-                      data={[
-                        { value: '>=', label: '>=' },
-                        { value: '=', label: '=' },
-                        { value: '<=', label: '<=' },
-                      ]}
-                      value={filters.creatureTypeOperator}
-                      onChange={(value) =>
-                        setFilters(prev => ({
-                          ...prev,
-                          creatureTypeOperator: (value as '>=' | '<=' | '=') || '>=',
-                        }))
-                      }
-                      disabled={!filters.creatureType}
-                      w={90}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                        dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                        option: { color: 'white' },
-                      }}
-                    />
-                    <NumberInput
-                      placeholder="Count"
-                      value={filters.creatureTypeCount ?? ''}
-                      onChange={(value) =>
-                        setFilters(prev => ({
-                          ...prev,
-                          creatureTypeCount: typeof value === 'number' ? value : null,
-                        }))
-                      }
-                      min={0}
-                      disabled={!filters.creatureType}
-                      rightSection={filters.creatureTypeCount !== null ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setFilters(prev => ({ ...prev, creatureTypeCount: null }))
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <IconX
-                            size={16}
-                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                          />
-                        </button>
-                      ) : null}
-                      style={{ flex: '0 0 120px' }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                  </Group>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Group gap="xs" align="flex-end">
-                    <Select
-                      label="Spells"
-                      value={filters.spellsOperator}
-                      onChange={(value) => setFilters({ ...filters, spellsOperator: value as any })}
-                      data={[
-                        { value: '>=', label: '≥' },
-                        { value: '<=', label: '≤' },
-                        { value: '=', label: '=' },
-                      ]}
-                      style={{ flex: '0 0 80px' }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                    <NumberInput
-                      placeholder="Count"
-                      value={filters.spellsValue ?? ''}
-                      onChange={(value) =>
-                        setFilters(prev => ({
-                          ...prev,
-                          spellsValue: typeof value === 'number' ? value : null,
-                        }))
-                      }
-                      min={0}
-                      rightSection={filters.spellsValue !== null ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setFilters(prev => ({ ...prev, spellsValue: null }))
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <IconX
-                            size={16}
-                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                          />
-                        </button>
-                      ) : null}
-                      style={{ flex: 1 }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                  </Group>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Stack gap={4}>
-                    <Text size="sm" className="text-white" style={{ fontWeight: 500 }}>
-                      Free Spells
-                    </Text>
-                    <Group gap="xs" align="flex-end" wrap="nowrap">
-                      <Select
-                        value={filters.freeSpellsOperator}
-                        onChange={(value) => setFilters({ ...filters, freeSpellsOperator: value as any })}
-                        data={[
-                          { value: '>=', label: '≥' },
-                          { value: '<=', label: '≤' },
-                          { value: '=', label: '=' },
-                        ]}
-                        style={{ flex: '0 0 60px', minWidth: '60px' }}
-                        styles={{
-                          input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
-                        }}
-                      />
-                      <NumberInput
-                        placeholder="Count"
-                        value={filters.freeSpellsValue ?? undefined}
-                        onChange={(value) => setFilters({ ...filters, freeSpellsValue: typeof value === 'number' ? value : null })}
-                        min={0}
-                        rightSection={filters.freeSpellsValue !== null && filters.freeSpellsValue !== undefined ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              setFilters({ ...filters, freeSpellsValue: null })
-                            }}
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                            }}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              padding: 0,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <IconX
-                              size={16}
-                              style={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                            />
-                          </button>
-                        ) : null}
-                        style={{ flex: 1, minWidth: 0 }}
-                        styles={{
-                          input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
-                        }}
-                      />
-                    </Group>
-                  </Stack>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Group gap="xs" align="flex-end">
-                    <Select
-                      label="Spell Type"
-                      placeholder={allSpellTypes.length > 0 ? "Select spell type..." : "No types available"}
-                      data={allSpellTypes.map(type => ({ value: type, label: type }))}
-                      value={filters.spellType || null}
-                      onChange={(value) => setFilters({ 
-                        ...filters, 
-                        spellType: value || '',
-                        spellTypeCount: value ? 1 : null // Set default value to 1 when type is selected
-                      })}
-                      clearable
-                      searchable
-                      disabled={allSpellTypes.length === 0}
-                      style={{ flex: 1 }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                        dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                        option: { color: 'white' }
-                      }}
-                    />
-                    <NumberInput
-                      placeholder="Min count"
-                      value={filters.spellTypeCount ?? ''}
-                      onChange={(value) =>
-                        setFilters(prev => ({
-                          ...prev,
-                          spellTypeCount: typeof value === 'number' ? value : null,
-                        }))
-                      }
-                      min={0}
-                      rightSection={filters.spellTypeCount !== null ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setFilters(prev => ({ ...prev, spellTypeCount: null }))
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <IconX
-                            size={16}
-                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                          />
-                        </button>
-                      ) : null}
-                      style={{ flex: '0 0 120px' }}
-                      disabled={!filters.spellType}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                  </Group>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <MultiSelect
-                    label="Card Set"
-                    placeholder="Select sets..."
-                    data={allCardSetNos.map(setNo => ({ value: setNo, label: formatSetName(setNo) || `Set ${setNo}` }))}
-                    value={filters.cardSetNo}
-                    onChange={(value) => setFilters({ ...filters, cardSetNo: value })}
-                    clearable
-                    searchable
-                    styles={{
-                      label: { color: 'white' },
-                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                      dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                      option: { color: 'white' }
-                    }}
-                    disabled={allCardSetNos.length === 0}
-                  />
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Group gap="xs" align="flex-end">
-                    <Select
-                      label="ELO"
-                      value={filters.eloOperator}
-                      onChange={(value) => setFilters({ ...filters, eloOperator: value as any })}
-                      data={[
-                        { value: '>=', label: '≥' },
-                        { value: '<=', label: '≤' },
-                        { value: '=', label: '=' },
-                      ]}
-                      style={{ flex: '0 0 80px' }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                    <NumberInput
-                      placeholder="ELO value"
-                      value={filters.eloValue ?? ''}
-                      onChange={(value) => {
-                        setFilters(prev => ({ ...prev, eloValue: typeof value === 'number' ? value : null }))
-                      }}
-                      min={0}
-                      rightSection={filters.eloValue !== null ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setFilters(prev => ({ ...prev, eloValue: null }))
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <IconX
-                            size={16}
-                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                          />
-                        </button>
-                      ) : null}
-                      style={{ flex: 1 }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                  </Group>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Group gap="xs" align="flex-end">
-                    <Select
-                      label="Score"
-                      value={filters.scoreOperator}
-                      onChange={(value) => setFilters({ ...filters, scoreOperator: value as any })}
-                      data={[
-                        { value: '>=', label: '≥' },
-                        { value: '<=', label: '≤' },
-                        { value: '=', label: '=' },
-                      ]}
-                      style={{ flex: '0 0 80px' }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                    <NumberInput
-                      placeholder="Score value (0-100)"
-                      value={filters.scoreValue ?? ''}
-                      onChange={(value) =>
-                        setFilters(prev => ({
-                          ...prev,
-                          scoreValue: typeof value === 'number' ? value : null,
-                        }))
-                      }
-                      min={0}
-                      max={100}
-                      step={1}
-                      rightSection={filters.scoreValue !== null ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setFilters(prev => ({ ...prev, scoreValue: null }))
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <IconX
-                            size={16}
-                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                          />
-                        </button>
-                      ) : null}
-                      style={{ flex: 1 }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                  </Group>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Group gap="xs" align="flex-end">
-                    <Select
-                      label="Rarity"
-                      placeholder="Select rarity..."
-                      value={filters.rarityType}
-                      onChange={(value) => setFilters({ 
-                        ...filters, 
-                        rarityType: value || '',
-                        rarityCount: value ? 1 : null // Set default value to 1 when rarity is selected
-                      })}
-                      data={[
-                        { value: 'Common', label: 'Common' },
-                        { value: 'Common Rare', label: 'Common Rare' },
-                        { value: 'Darkforge Rare', label: 'Darkforge Rare' },
-                        { value: 'Darkforge', label: 'Darkforge' },
-                        { value: 'Rare', label: 'Rare' },
-                        { value: 'LS', label: 'LS' },
-                        { value: 'Solbind', label: 'Solbind' },
-                      ]}
-                      clearable
-                      style={{ flex: 1 }}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                    <NumberInput
-                      placeholder="Min count"
-                      value={filters.rarityCount ?? ''}
-                      onChange={(value) =>
-                        setFilters(prev => ({
-                          ...prev,
-                          rarityCount: typeof value === 'number' ? value : null,
-                        }))
-                      }
-                      min={0}
-                      rightSection={filters.rarityCount !== null ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setFilters(prev => ({ ...prev, rarityCount: null }))
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <IconX
-                            size={16}
-                            style={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                          />
-                        </button>
-                      ) : null}
-                      style={{ flex: '0 0 120px' }}
-                      disabled={!filters.rarityType}
-                      styles={{
-                        label: { color: 'white' },
-                        input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                      }}
-                    />
-                  </Group>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Select
-                    label="Sort by"
-                    value={filters.sortBy}
-                    onChange={(value) => setFilters({ ...filters, sortBy: value || 'date-desc' })}
                     data={[
-                      { value: 'date-desc', label: 'Date (Newest first)' },
-                      { value: 'date-asc', label: 'Date (Oldest first)' },
-                      { value: 'name-asc', label: 'Name (A-Z)' },
-                      { value: 'name-desc', label: 'Name (Z-A)' },
-                      { value: 'score-desc', label: 'Score (Highest first)' },
-                      { value: 'score-asc', label: 'Score (Lowest first)' },
-                      { value: 'elo-desc', label: 'ELO (Highest first)' },
-                      { value: 'elo-asc', label: 'ELO (Lowest first)' },
+                      { label: 'All', value: 'all' },
+                      { label: 'Active', value: 'active' },
+                      { label: 'Expiring', value: 'expiring' },
+                      { label: 'Expired', value: 'expired' },
                     ]}
                     styles={{
-                      label: { color: 'white' },
-                      input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                      root: {
+                        backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                      },
+                      label: {
+                        color: 'white',
+                      },
+                      indicator: {
+                        backgroundColor: 'rgba(74, 144, 226, 0.8)',
+                      },
                     }}
                   />
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                  <Stack gap="xs">
-                    <Text size="sm" fw={500} style={{ color: 'white' }}>
-                      Deck Status
-                    </Text>
-                    <SegmentedControl
-                      value={filters.expiryFilter}
-                      onChange={(value) => {
-                        const expiryValue = value as 'all' | 'active' | 'expiring' | 'expired'
-                        setFilters({ ...filters, expiryFilter: expiryValue })
-                      }}
-                      data={[
-                        { label: 'All', value: 'all' },
-                        { label: 'Active', value: 'active' },
-                        { label: 'Expiring', value: 'expiring' },
-                        { label: 'Expired', value: 'expired' },
-                      ]}
-                      fullWidth
-                    styles={{
-                        root: {
-                          backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                        },
-                        label: {
-                          color: 'white',
-                        },
-                        indicator: {
-                          backgroundColor: 'rgba(74, 144, 226, 0.8)',
-                        },
-                      }}
-                    />
-                  </Stack>
-                </Grid.Col>
+                </Stack>
+              </Group>
+
+              <Grid gutter="md" columns={12}>
+
+                {activeFilterBlocks
+                  .filter((block) => block.key !== 'deck-status')
+                  .map((block) => {
+                    const state = getInstanceState(block) as FilterInstanceState
+                    const update = (payload: Partial<FilterInstanceState>) => updateInstanceState(block, payload)
+                    switch (block.key) {
+                    case 'deck-name': {
+                      const currentName = (state.deckName as string) || ''
+                      const currentMode = (state.deckNameMode as FilterState['deckNameMode']) || 'include'
+                      const header = (
+                        <Text size="sm" fw={500} style={{ color: 'white' }}>
+                          Deck Name
+                        </Text>
+                      )
+                      const modeControl = (
+                        <SegmentedControl
+                          size="xs"
+                          value={currentMode}
+                          onChange={(value) => update({ deckNameMode: value as 'include' | 'exclude' })}
+                          data={MODE_OPTIONS}
+                        />
+                      )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <Select
+                            placeholder={allDeckNames.length > 0 ? "Select deck name..." : "No decks available"}
+                            data={allDeckNames.map(name => ({ value: name, label: name }))}
+                            value={currentName || null}
+                            onChange={(value) => update({ deckName: value || '' })}
+                            clearable
+                            searchable
+                            styles={{
+                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                              dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                              option: { color: 'white' }
+                            }}
+                            disabled={allDeckNames.length === 0}
+                          />
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                    }
+                    case 'faction': {
+                      const currentValues = (state.faction as string[]) || []
+                      const currentMode = (state.factionMode as FilterState['factionMode']) || 'include'
+                      const header = (
+                        <Text size="sm" fw={500} style={{ color: 'white' }}>
+                          Faction
+                        </Text>
+                      )
+                      const modeControl = (
+                        <SegmentedControl
+                          size="xs"
+                          value={currentMode}
+                          onChange={(value) => update({ factionMode: value as 'include' | 'exclude' })}
+                          data={MODE_OPTIONS}
+                        />
+                      )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <MultiSelect
+                            placeholder="Select factions..."
+                            value={currentValues}
+                            onChange={(value) => update({ faction: value })}
+                            data={[
+                              { value: 'Alloyin', label: 'Alloyin' },
+                              { value: 'Uterra', label: 'Uterra' },
+                              { value: 'Tempys', label: 'Tempys' },
+                              { value: 'Nekrium', label: 'Nekrium' },
+                            ]}
+                            clearable
+                            styles={{
+                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                            }}
+                          />
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                    }
+                    case 'forgeborn': {
+                      const currentValues = (state.forgebornName as string[]) || []
+                      const currentMode = (state.forgebornMode as FilterState['forgebornMode']) || 'include'
+                      const header = (
+                        <Text size="sm" fw={500} style={{ color: 'white' }}>
+                          Forgeborn Name
+                        </Text>
+                      )
+                      const modeControl = (
+                        <SegmentedControl
+                          size="xs"
+                          value={currentMode}
+                          onChange={(value) => update({ forgebornMode: value as 'include' | 'exclude' })}
+                          data={MODE_OPTIONS}
+                        />
+                      )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <MultiSelect
+                            placeholder="Select Forgeborn..."
+                            data={allForgebornNames}
+                            value={currentValues}
+                            onChange={(value) => update({ forgebornName: value })}
+                            clearable
+                            searchable
+                            className="text-white"
+                            styles={{
+                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                              dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                              option: { color: 'white' }
+                            }}
+                          />
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                    }
+                    case 'card-name': {
+                      const currentValues = (state.cardName as string[]) || []
+                      const currentMode = (state.cardNameMode as FilterState['cardNameMode']) || 'include'
+                      const header = (
+                        <Text size="sm" fw={500} style={{ color: 'white' }}>
+                          Card Name
+                        </Text>
+                      )
+                      const modeControl = (
+                        <SegmentedControl
+                          size="xs"
+                          value={currentMode}
+                          onChange={(value) => update({ cardNameMode: value as 'include' | 'exclude' })}
+                          data={MODE_OPTIONS}
+                        />
+                      )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <MultiSelect
+                            placeholder="Select cards..."
+                            value={currentValues}
+                            onChange={(value) => {
+                              scrollPositionRef.current = window.scrollY || window.pageYOffset || document.documentElement.scrollTop
+                              shouldRestoreScrollRef.current = true
+                              update({ cardName: value })
+                            }}
+                            data={allCardNames.map(name => ({ value: name, label: name }))}
+                            searchable
+                            clearable
+                            maxDropdownHeight={300}
+                            styles={{
+                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                            }}
+                          />
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                    }
+                    case 'card-text': {
+                      const currentValue = (state.cardText as string) || ''
+                      const currentMode = (state.cardTextMode as FilterState['cardTextMode']) || 'include'
+                      const header = (
+                        <Text size="sm" fw={500} style={{ color: 'white' }}>
+                          Card Text
+                        </Text>
+                      )
+                      const modeControl = (
+                        <SegmentedControl
+                          size="xs"
+                          value={currentMode}
+                          onChange={(value) => update({ cardTextMode: value as 'include' | 'exclude' })}
+                          data={MODE_OPTIONS}
+                        />
+                      )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <TextInput
+                            placeholder="Search in card text/abilities..."
+                            value={currentValue}
+                            onChange={(e) => update({ cardText: e.target.value })}
+                            className="text-white"
+                            styles={{
+                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                            }}
+                          />
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                    }
+                    case 'tags': {
+                      const currentValues = (state.tags as string[]) || []
+                      const currentMode = (state.tagsMode as FilterState['tagsMode']) || 'include'
+                      const header = (
+                        <Text size="sm" fw={500} style={{ color: 'white' }}>
+                          Tags
+                        </Text>
+                      )
+                      const modeControl = (
+                        <SegmentedControl
+                          size="xs"
+                          value={currentMode}
+                          onChange={(value) => update({ tagsMode: value as 'include' | 'exclude' })}
+                          data={MODE_OPTIONS}
+                        />
+                      )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <MultiSelect
+                            placeholder="Select tags..."
+                            data={allTags.map(tag => ({ value: tag, label: tag }))}
+                            value={currentValues}
+                            onChange={(value) => update({ tags: value })}
+                            clearable
+                            searchable
+                            styles={{
+                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                              dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                              option: { color: 'white' }
+                            }}
+                          />
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                    }
+                    case 'creatures':
+                      {
+                        const currentMode = (state.creaturesMode as FilterState['creaturesMode']) || 'include'
+                        const currentOperator = (state.creaturesOperator as FilterState['creaturesOperator']) || '>='
+                        const currentValue = state.creaturesValue as number | null | undefined
+                        const header = (
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            Creatures
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ creaturesMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <Group gap="xs" align="flex-end">
+                            <Select
+                              value={currentOperator}
+                              onChange={(value) => update({ creaturesOperator: value as any })}
+                              data={[
+                                { value: '>=', label: '≥' },
+                                { value: '<=', label: '≤' },
+                                { value: '=', label: '=' },
+                              ]}
+                              style={{ flex: '0 0 80px' }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                            <NumberInput
+                              placeholder="Count"
+                              value={currentValue ?? ''}
+                              onChange={(value) =>
+                                update({
+                                  creaturesValue: typeof value === 'number' ? value : null,
+                                })
+                              }
+                              min={0}
+                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    update({ creaturesValue: null })
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <IconX
+                                    size={16}
+                                    style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                  />
+                                </button>
+                              ) : null}
+                              style={{ flex: 1 }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                          </Group>
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                      }
+                    case 'free-creatures':
+                      {
+                        const currentMode = (state.freeCreaturesMode as FilterState['freeCreaturesMode']) || 'include'
+                        const currentOperator = (state.freeCreaturesOperator as FilterState['freeCreaturesOperator']) || '>='
+                        const currentValue = state.freeCreaturesValue as number | null | undefined
+                        const header = (
+                          <Text size="sm" className="text-white" style={{ fontWeight: 500 }}>
+                            Free Creatures
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ freeCreaturesMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={4}>
+                          <Group gap="xs" align="flex-end" wrap="nowrap">
+                            <Select
+                              value={currentOperator}
+                              onChange={(value) => update({ freeCreaturesOperator: value as any })}
+                              data={[
+                                { value: '>=', label: '≥' },
+                                { value: '<=', label: '≤' },
+                                { value: '=', label: '=' },
+                              ]}
+                              style={{ flex: '0 0 60px', minWidth: '60px' }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
+                              }}
+                            />
+                            <NumberInput
+                              placeholder="Count"
+                              value={currentValue ?? undefined}
+                              onChange={(value) => update({ freeCreaturesValue: typeof value === 'number' ? value : null })}
+                              min={0}
+                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    update({ freeCreaturesValue: null })
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <IconX
+                                    size={16}
+                                    style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                  />
+                                </button>
+                              ) : null}
+                              style={{ flex: 1, minWidth: 0 }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
+                              }}
+                            />
+                          </Group>
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                      }
+                    case 'creature-type':
+                      {
+                        const currentMode = (state.creatureTypeMode as FilterState['creatureTypeMode']) || 'include'
+                        const currentType = (state.creatureType as string) || ''
+                        const currentOperator = (state.creatureTypeOperator as FilterState['creatureTypeOperator']) || '>='
+                        const currentCount = state.creatureTypeCount as number | null | undefined
+                        const header = (
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            Creature Type
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ creatureTypeMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <Group gap="xs" align="flex-end">
+                            <Select
+                              placeholder={allCreatureTypes.length > 0 ? "Select creature type..." : "No types available"}
+                              data={allCreatureTypes.map(type => ({ value: type.value, label: type.label }))}
+                              value={currentType || null}
+                              onChange={(value) =>
+                                update({
+                                  creatureType: value || '',
+                                  creatureTypeCount: value ? (currentCount ?? 1) : null,
+                                  creatureTypeOperator: value ? currentOperator : '>=',
+                                })
+                              }
+                              clearable
+                              searchable
+                              disabled={allCreatureTypes.length === 0}
+                              style={{ flex: 1 }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                                dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                                option: { color: 'white' }
+                              }}
+                            />
+                            <Select
+                              data={[
+                                { value: '>=', label: '>=' },
+                                { value: '=', label: '=' },
+                                { value: '<=', label: '<=' },
+                              ]}
+                              value={currentOperator}
+                              onChange={(value) =>
+                                update({
+                                  creatureTypeOperator: (value as '>=' | '<=' | '=') || '>=',
+                                })
+                              }
+                              disabled={!currentType}
+                              aria-label="Operator"
+                              w={90}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                                dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                                option: { color: 'white' },
+                              }}
+                            />
+                            <NumberInput
+                              placeholder="Count"
+                              value={currentCount ?? ''}
+                              onChange={(value) =>
+                                update({
+                                  creatureTypeCount: typeof value === 'number' ? value : null,
+                                })
+                              }
+                              min={0}
+                              disabled={!currentType}
+                              rightSection={currentCount !== null && currentCount !== undefined ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    update({ creatureTypeCount: null })
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <IconX
+                                    size={16}
+                                    style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                  />
+                                </button>
+                              ) : null}
+                              style={{ flex: '0 0 120px' }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                          </Group>
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                      }
+                    case 'spells':
+                      {
+                        const currentMode = (state.spellsMode as FilterState['spellsMode']) || 'include'
+                        const currentOperator = (state.spellsOperator as FilterState['spellsOperator']) || '>='
+                        const currentValue = state.spellsValue as number | null | undefined
+                        const header = (
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            Spells
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ spellsMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <Group gap="xs" align="flex-end">
+                            <Select
+                              value={currentOperator}
+                              onChange={(value) => update({ spellsOperator: value as any })}
+                              data={[
+                                { value: '>=', label: '≥' },
+                                { value: '<=', label: '≤' },
+                                { value: '=', label: '=' },
+                              ]}
+                              style={{ flex: '0 0 80px' }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                            <NumberInput
+                              placeholder="Count"
+                              value={currentValue ?? ''}
+                              onChange={(value) =>
+                                update({
+                                  spellsValue: typeof value === 'number' ? value : null,
+                                })
+                              }
+                              min={0}
+                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    update({ spellsValue: null })
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <IconX
+                                    size={16}
+                                    style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                  />
+                                </button>
+                              ) : null}
+                              style={{ flex: 1 }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                          </Group>
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                      }
+                    case 'free-spells':
+                      {
+                        const currentMode = (state.freeSpellsMode as FilterState['freeSpellsMode']) || 'include'
+                        const currentOperator = (state.freeSpellsOperator as FilterState['freeSpellsOperator']) || '>='
+                        const currentValue = state.freeSpellsValue as number | null | undefined
+                        const header = (
+                          <Text size="sm" className="text-white" style={{ fontWeight: 500 }}>
+                            Free Spells
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ freeSpellsMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={4}>
+                          <Group gap="xs" align="flex-end" wrap="nowrap">
+                            <Select
+                              value={currentOperator}
+                              onChange={(value) => update({ freeSpellsOperator: value as any })}
+                              data={[
+                                { value: '>=', label: '≥' },
+                                { value: '<=', label: '≤' },
+                                { value: '=', label: '=' },
+                              ]}
+                              style={{ flex: '0 0 60px', minWidth: '60px' }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
+                              }}
+                            />
+                            <NumberInput
+                              placeholder="Count"
+                              value={currentValue ?? undefined}
+                              onChange={(value) => update({ freeSpellsValue: typeof value === 'number' ? value : null })}
+                              min={0}
+                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    update({ freeSpellsValue: null })
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <IconX
+                                    size={16}
+                                    style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                  />
+                                </button>
+                              ) : null}
+                              style={{ flex: 1, minWidth: 0 }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
+                              }}
+                            />
+                          </Group>
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                      }
+                    case 'spell-type':
+                      {
+                        const currentMode = (state.spellTypeMode as FilterState['spellTypeMode']) || 'include'
+                        const currentType = (state.spellType as string) || ''
+                        const currentCount = state.spellTypeCount as number | null | undefined
+                        const header = (
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            Spell Type
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ spellTypeMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <Group gap="xs" align="flex-end">
+                            <Select
+                              placeholder={allSpellTypes.length > 0 ? "Select spell type..." : "No types available"}
+                              data={allSpellTypes.map(type => ({ value: type, label: type }))}
+                              value={currentType || null}
+                              onChange={(value) =>
+                                update({
+                                  spellType: value || '',
+                                  spellTypeCount: value ? (currentCount ?? 1) : null,
+                                })
+                              }
+                              clearable
+                              searchable
+                              disabled={allSpellTypes.length === 0}
+                              style={{ flex: 1 }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                                dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                                option: { color: 'white' }
+                              }}
+                            />
+                            <NumberInput
+                              placeholder="Min count"
+                              value={currentCount ?? ''}
+                              onChange={(value) =>
+                                update({
+                                  spellTypeCount: typeof value === 'number' ? value : null,
+                                })
+                              }
+                              min={0}
+                              rightSection={currentCount !== null && currentCount !== undefined ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    update({ spellTypeCount: null })
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <IconX
+                                    size={16}
+                                    style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                  />
+                                </button>
+                              ) : null}
+                              style={{ flex: '0 0 120px' }}
+                              disabled={!currentType}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                          </Group>
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                      }
+                    case 'card-set': {
+                      const cardSetState =
+                        cardSetInstances[block.id] || {
+                          cardSetNo: (state.cardSetNo as string[]) || [],
+                          cardSetNoMode: ((state.cardSetNoMode as 'include' | 'exclude') || 'include'),
+                        }
+                      const header = (
+                        <Text size="sm" fw={500} style={{ color: 'white' }}>
+                          Card Set
+                        </Text>
+                      )
+                      const updateCardSetState = (nextState: CardSetInstanceState) => {
+                        setCardSetInstances((prev) => ({
+                          ...prev,
+                          [block.id]: nextState,
+                        }))
+                        setInstanceFilters((prev) => ({
+                          ...prev,
+                          [block.id]: {
+                            ...(prev[block.id] || getDefaultsForKey('card-set')),
+                            cardSetNo: nextState.cardSetNo,
+                            cardSetNoMode: nextState.cardSetNoMode,
+                          },
+                        }))
+                      }
+                      const modeControl = (
+                        <SegmentedControl
+                          size="xs"
+                          value={cardSetState.cardSetNoMode}
+                          onChange={(value) =>
+                            updateCardSetState({
+                              ...cardSetState,
+                              cardSetNoMode: value as 'include' | 'exclude',
+                            })
+                          }
+                          data={MODE_OPTIONS}
+                        />
+                      )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <MultiSelect
+                            placeholder="Select sets..."
+                            data={allCardSetNos.map(setNo => ({ value: setNo, label: formatSetName(setNo) || `Set ${setNo}` }))}
+                            value={cardSetState.cardSetNo}
+                            onChange={(value) =>
+                              updateCardSetState({
+                                ...cardSetState,
+                                cardSetNo: value,
+                              })
+                            }
+                            clearable
+                            searchable
+                            styles={{
+                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                              dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
+                              option: { color: 'white' }
+                            }}
+                            disabled={allCardSetNos.length === 0}
+                          />
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                    }
+                    case 'elo':
+                      {
+                        const currentMode = (state.eloMode as FilterState['eloMode']) || 'include'
+                        const currentOperator = (state.eloOperator as FilterState['eloOperator']) || '>='
+                        const currentValue = state.eloValue as number | null | undefined
+                        const header = (
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            ELO
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ eloMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <Group gap="xs" align="flex-end">
+                            <Select
+                              value={currentOperator}
+                              onChange={(value) => update({ eloOperator: value as any })}
+                              data={[
+                                { value: '>=', label: '≥' },
+                                { value: '<=', label: '≤' },
+                                { value: '=', label: '=' },
+                              ]}
+                              style={{ flex: '0 0 80px' }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                            <NumberInput
+                              placeholder="ELO value"
+                              value={currentValue ?? ''}
+                              onChange={(value) => {
+                                update({ eloValue: typeof value === 'number' ? value : null })
+                              }}
+                              min={0}
+                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    update({ eloValue: null })
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <IconX
+                                    size={16}
+                                    style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                  />
+                                </button>
+                              ) : null}
+                              style={{ flex: 1 }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                          </Group>
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                      }
+                    case 'score':
+                      {
+                        const currentMode = (state.scoreMode as FilterState['scoreMode']) || 'include'
+                        const currentOperator = (state.scoreOperator as FilterState['scoreOperator']) || '>='
+                        const currentValue = state.scoreValue as number | null | undefined
+                        const header = (
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            Score
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ scoreMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <Group gap="xs" align="flex-end">
+                            <Select
+                              value={currentOperator}
+                              onChange={(value) => update({ scoreOperator: value as any })}
+                              data={[
+                                { value: '>=', label: '≥' },
+                                { value: '<=', label: '≤' },
+                                { value: '=', label: '=' },
+                              ]}
+                              style={{ flex: '0 0 80px' }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                            <NumberInput
+                              placeholder="Score value (0-100)"
+                              value={currentValue ?? ''}
+                              onChange={(value) =>
+                                update({
+                                  scoreValue: typeof value === 'number' ? value : null,
+                                })
+                              }
+                              min={0}
+                              max={100}
+                              step={1}
+                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    update({ scoreValue: null })
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <IconX
+                                    size={16}
+                                    style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                  />
+                                </button>
+                              ) : null}
+                              style={{ flex: 1 }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                          </Group>
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                      }
+                    case 'rarity':
+                      {
+                        const currentMode = (state.rarityMode as FilterState['rarityMode']) || 'include'
+                        const currentType = (state.rarityType as string) || ''
+                        const currentCount = state.rarityCount as number | null | undefined
+                        const header = (
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            Rarity
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ rarityMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                      return renderFilterCol(
+                        block,
+                        <Stack gap={6}>
+                          <Group gap="xs" align="flex-end">
+                            <Select
+                              placeholder="Select rarity..."
+                              value={currentType}
+                              onChange={(value) =>
+                                update({
+                                  rarityType: value || '',
+                                  rarityCount: value ? (currentCount ?? 1) : null,
+                                })
+                              }
+                              data={[
+                                { value: 'Common', label: 'Common' },
+                                { value: 'Common Rare', label: 'Common Rare' },
+                                { value: 'Darkforge Rare', label: 'Darkforge Rare' },
+                                { value: 'Darkforge', label: 'Darkforge' },
+                                { value: 'Rare', label: 'Rare' },
+                                { value: 'LS', label: 'LS' },
+                                { value: 'Solbind', label: 'Solbind' },
+                              ]}
+                              clearable
+                              style={{ flex: 1 }}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                            <NumberInput
+                              placeholder="Min count"
+                              value={currentCount ?? ''}
+                              onChange={(value) =>
+                                update({
+                                  rarityCount: typeof value === 'number' ? value : null,
+                                })
+                              }
+                              min={0}
+                              rightSection={currentCount !== null && currentCount !== undefined ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    update({ rarityCount: null })
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <IconX
+                                    size={16}
+                                    style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                  />
+                                </button>
+                              ) : null}
+                              style={{ flex: '0 0 120px' }}
+                              disabled={!currentType}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
+                          </Group>
+                        </Stack>,
+                        { header, actions: modeControl }
+                      )
+                      }
+                    case 'sort':
+                      {
+                        const currentSort = (state.sortBy as string) || 'date-desc'
+                        const header = (
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            Sort
+                          </Text>
+                        )
+                        return renderFilterCol(
+                          block,
+                          <Select
+                            value={currentSort}
+                            onChange={(value) => update({ sortBy: value || 'date-desc' })}
+                            data={[
+                              { value: 'date-desc', label: 'Date (Newest first)' },
+                              { value: 'date-asc', label: 'Date (Oldest first)' },
+                              { value: 'name-asc', label: 'Name (A-Z)' },
+                              { value: 'name-desc', label: 'Name (Z-A)' },
+                              { value: 'score-desc', label: 'Score (Highest first)' },
+                              { value: 'score-asc', label: 'Score (Lowest first)' },
+                              { value: 'elo-desc', label: 'ELO (Highest first)' },
+                              { value: 'elo-asc', label: 'ELO (Lowest first)' },
+                            ]}
+                            styles={{
+                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                            }}
+                          />,
+                          { header }
+                        )
+                      }
+                    case 'deck-status':
+                      return renderFilterCol(
+                        block,
+                        <Stack gap="xs">
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            Deck Status
+                          </Text>
+                          <SegmentedControl
+                            value={filters.expiryFilter}
+                            onChange={(value) => {
+                              const expiryValue = value as 'all' | 'active' | 'expiring' | 'expired'
+                              setFilters({ ...filters, expiryFilter: expiryValue })
+                            }}
+                            data={[
+                              { label: 'All', value: 'all' },
+                              { label: 'Active', value: 'active' },
+                              { label: 'Expiring', value: 'expiring' },
+                              { label: 'Expired', value: 'expired' },
+                            ]}
+                            fullWidth
+                            styles={{
+                              root: {
+                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                              },
+                              label: {
+                                color: 'white',
+                              },
+                              indicator: {
+                                backgroundColor: 'rgba(74, 144, 226, 0.8)',
+                              },
+                            }}
+                          />
+                        </Stack>,
+                        { removable: false }
+                      )
+                    default:
+                      return null
+                  }
+                })}
               </Grid>
             </Stack>
           </Paper>

@@ -1207,20 +1207,6 @@ const originalCardMeta = useMemo(() => {
       if (id1) ids.add(id1)
       if (id2) ids.add(id2)
     })
-    
-    // Also add cards that have rarity === 'Solbind' directly in normalizedCards
-    uniqueNormalizedCards.forEach(card => {
-      const cardData = card as any
-      // Skip if this card has solbindCards (it's the parent, not the solbind itself)
-      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-        return
-      }
-      // Add if rarity is Solbind
-      if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
-        ids.add(card.id)
-      }
-    })
-    
     if (process.env.NODE_ENV === 'development' && ids.size > 0) {
       // logWithTimestamp(`[DeckDetails] Solbind card IDs:`, Array.from(ids))
     }
@@ -1318,11 +1304,6 @@ const originalCardMeta = useMemo(() => {
       const isParentSolbind =
         Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0
       const isSpell = cardTypeRaw.includes('spell') && !cardTypeRaw.includes('creature')
-      const isSolbind =
-        !isParentSolbind &&
-        cardData.rarity &&
-        String(cardData.rarity).toLowerCase().includes('solbind')
-
       if (isParentSolbind) {
         if (isSpell) spells += 1
         else creatures += 1
@@ -1334,12 +1315,6 @@ const originalCardMeta = useMemo(() => {
         const id2 = cardData.solbindId2 || cardData.solbindid2
         if (id1) solbindIds.add(id1)
         if (id2) solbindIds.add(id2)
-        return
-      }
-
-      if (isSolbind) {
-        const sid = cardData.id || cardData.cardId || cardData.name || `solbind-${idx}`
-        solbindIds.add(sid)
         return
       }
 
@@ -1359,7 +1334,7 @@ const originalCardMeta = useMemo(() => {
       if (fb.solbindId2 || fb.solbindid2) solbindIds.add(fb.solbindId2 || fb.solbindid2)
     }
 
-    solbind = solbindIds.size
+    solbind = Math.max(solbindIds.size, solbindCardIdsSet.size)
     derived = { total: creatures + spells + solbind, creatures, spells, solbind }
 
     const comp = deck?.computed?.counts

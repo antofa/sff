@@ -202,6 +202,17 @@ export default function Home() {
   }, [hasSearched, loading, playerName, decks.length, fusedDecks.length])
 
   const handleSearch = useCallback(async (overrideName?: string | null, overrideForce?: boolean) => {
+    const notify = (payload: { title: string; message: string; color: string }) => {
+      notifications.hide('search-result')
+      notifications.cleanQueue()
+      notifications.show({
+        id: 'search-result',
+        withCloseButton: true,
+        autoClose: 4000,
+        ...payload,
+      })
+    }
+
     const rawName = overrideName ?? playerName ?? ''
     const targetName =
       typeof rawName === 'string'
@@ -210,7 +221,7 @@ export default function Home() {
     const targetForce = overrideForce ?? forceRefresh
 
     if (!targetName) {
-      notifications.show({
+      notify({
         title: 'Error',
         message: 'Please enter a player nickname',
         color: 'red',
@@ -254,13 +265,13 @@ export default function Home() {
 
       if (loadedDecks.length > 0 || loadedFusedDecks.length > 0) {
         const totalDecks = loadedDecks.length + loadedFusedDecks.length
-        notifications.show({
+        notify({
           title: 'Success',
           message: `Found ${totalDecks} deck${totalDecks !== 1 ? 's' : ''}${timeLabel ? ` in ${timeLabel}` : ''}`,
           color: 'green',
         })
       } else {
-        notifications.show({
+        notify({
           title: 'Information',
           message: `No decks found. Please check the player nickname.${timeLabel ? ` Search time: ${timeLabel}.` : ''}`,
           color: 'blue',
@@ -282,13 +293,31 @@ export default function Home() {
         userMessage = 'Player not found. Please check the nickname.'
       }
       
-      notifications.show({
+      notify({
         title: 'Error',
         message: userMessage,
         color: 'red',
       })
     }
   }, [playerName, forceRefresh, formatDuration, fetchDecks])
+
+  useEffect(() => {
+    const hideNotification = () => {
+      notifications.hide('search-result')
+      notifications.cleanQueue()
+      notifications.clean()
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('visibilitychange', hideNotification)
+      window.addEventListener('focus', hideNotification)
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('visibilitychange', hideNotification)
+        window.removeEventListener('focus', hideNotification)
+      }
+    }
+  }, [])
 
   // Auto-run search when opened with params (?username=...&forceRefresh=true)
   useEffect(() => {

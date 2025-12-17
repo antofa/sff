@@ -40,6 +40,8 @@ const appendDeckSearchLog = async (message: string) => {
     const fileName = `deck-search-${timestamp.slice(0, 10)}.log`
     const fullPath = path.join(LOG_DIR, fileName)
     await fs.mkdir(LOG_DIR, { recursive: true })
+    const { pruneOldLogs } = await import('./logRotation')
+    await pruneOldLogs(LOG_DIR)
     await fs.appendFile(fullPath, line, 'utf8')
   } catch (err) {
     // Swallow file logging errors to avoid breaking the flow

@@ -1,10 +1,9 @@
 import fs from 'fs'
 import path from 'path'
 import { logWithTimestamp } from './logger'
+import { pruneOldLogs } from './logRotation'
 
 const ERROR_LOG_DIR = path.join(process.cwd(), 'logs')
-const ERROR_LOG_FILE = path.join(ERROR_LOG_DIR, 'nextjs-errors.log')
-
 // Ensure logs directory exists
 if (!fs.existsSync(ERROR_LOG_DIR)) {
   fs.mkdirSync(ERROR_LOG_DIR, { recursive: true })
@@ -14,8 +13,11 @@ if (!fs.existsSync(ERROR_LOG_DIR)) {
  * Log error to file (server-side only)
  */
 export function logErrorToFileServer(error: Error | string, context?: Record<string, any>) {
+  const timestamp = new Date().toISOString()
+  const dateStamp = timestamp.slice(0, 10)
+  const errorLogFile = path.join(ERROR_LOG_DIR, `nextjs-errors-${dateStamp}.log`)
+
   try {
-    const timestamp = new Date().toISOString()
     const errorMessage = error instanceof Error ? error.message : error
     const errorStack = error instanceof Error ? error.stack : undefined
     
@@ -28,11 +30,12 @@ export function logErrorToFileServer(error: Error | string, context?: Record<str
     
     const logLine = JSON.stringify(logEntry, null, 2) + '\n' + '---\n'
     
-    logWithTimestamp('[Error Logger Server] Writing error to file:', ERROR_LOG_FILE)
+    logWithTimestamp('[Error Logger Server] Writing error to file:', errorLogFile)
     logWithTimestamp('[Error Logger Server] Error message:', errorMessage)
+    void pruneOldLogs(ERROR_LOG_DIR)
     
     // Append to log file
-    fs.appendFileSync(ERROR_LOG_FILE, logLine, 'utf-8')
+    fs.appendFileSync(errorLogFile, logLine, 'utf-8')
     
     logWithTimestamp('[Error Logger Server] Error written to file successfully')
     
@@ -43,8 +46,8 @@ export function logErrorToFileServer(error: Error | string, context?: Record<str
   } catch (logError) {
     // Fallback to console if file logging fails
     console.error('[Error Logger] Failed to write to log file:', logError)
-    console.error('[Error Logger] File path:', ERROR_LOG_FILE)
-    console.error('[Error Logger] File exists:', fs.existsSync(ERROR_LOG_FILE))
+    console.error('[Error Logger] File path:', errorLogFile)
+    console.error('[Error Logger] File exists:', fs.existsSync(errorLogFile))
     console.error('[Error Logger] Directory exists:', fs.existsSync(ERROR_LOG_DIR))
     console.error('[Error Logger] Original error:', error)
   }

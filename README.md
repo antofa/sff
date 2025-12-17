@@ -1,99 +1,52 @@
 # SolForge Fusion Deck Viewer
 
-Веб-приложение для просмотра колод игроков SolForge Fusion по их нику.
+A Next.js app for browsing SolForge Fusion decks by player nickname with rich filtering, tagging, and detail views.
 
-## Технологии
+## Features
+- Search decks by player nickname; fetches all pages from the official SolForge Fusion API.
+- Deck and fused deck display with counts, tags, set info, scores/ELO, and expiry status highlighting.
+- Filter panel with default `Deck Status` (defaults to active) and on-demand addable filters (faction, tags, card name/text, card set, rarity, counts, ELO/score, sort, etc.), sorted alphabetically and allowing duplicates.
+- Per-filter include/exclude mode; filters persist in the URL so copying the address restores the same results.
+- Debounced text filters and pagination for large result sets.
+- Adaptive, dark-styled UI built with Mantine and Tailwind.
 
-- **Next.js 14** - React фреймворк с App Router
-- **TypeScript** - типизация
-- **Tailwind CSS** - стилизация
-- **Mantine UI** - компоненты UI
-- **@mantine/notifications** - уведомления
-- **@tabler/icons-react** - иконки
-- **Zod** - валидация данных
-- **Zustand** - управление состоянием
+## Tech Stack
+- Next.js 14 (App Router) + TypeScript
+- Tailwind CSS for styling
+- Mantine UI + @mantine/notifications + @tabler/icons-react
+- Zustand for state
+- Zod for validation
 
-## Установка
-
+## Getting Started
 ```bash
 npm install
-```
-
-## Запуск
-
-```bash
 npm run dev
+# open http://localhost:3000
 ```
 
-Приложение будет доступно по адресу [http://localhost:3000](http://localhost:3000)
+## API Notes
+- Endpoint: `https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/app`
+- Params: `?inclPve=true&username={username}`
+- Response: JSON with `Items` array and optional `LastEvaluatedKey` for pagination.
 
-## API
-
-Приложение использует реальный API SolForge Fusion, реализованный на основе кода Apps Script из Google таблицы.
-
-### API Эндпоинт
-
-- **URL**: `https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/app`
-- **Параметры**: `?inclPve=true&username={username}`
-- **Метод**: GET
-- **Формат ответа**: JSON с полем `Items` (массив колод) и опциональным `LastEvaluatedKey` для пагинации
-
-### Пагинация
-
-API поддерживает пагинацию через параметры `exclusiveStartKeyPK` и `exclusiveStartKeySK`. Приложение автоматически получает все страницы, если они доступны.
-
-### Формат данных колоды
-
-Каждая колода содержит следующие поля:
-- `id` - уникальный идентификатор колоды
-- `name` - название колоды
-- `faction` - фракция (Alloyin, Uterra, Tempys, Nekrium)
-- `deckRank` - ранг колоды (Unranked, Bronze, Silver, Gold, Platinum)
-- `cardIds` - массив ID карт
-- `cardSetNo` - номер сета
-- `digital` - флаг цифровой/физической колоды
-- `tags` - теги колоды
-- и другие поля
-
-### Обработка ошибок
-
-Приложение корректно обрабатывает следующие ситуации:
-- Игрок не найден или не имеет колод (возвращает пустой массив)
-- Ошибки сети (показывает сообщение об ошибке)
-- Неверный формат данных (валидация через Zod)
-
-## Структура проекта
-
+## Project Layout
 ```
-├── app/
-│   ├── api/
-│   │   └── decks/
-│   │       └── route.ts      # API route для получения колод
-│   ├── globals.css           # Глобальные стили
-│   ├── layout.tsx            # Корневой layout
-│   └── page.tsx              # Главная страница
-├── components/
-│   ├── BackgroundElements.tsx # Фоновые элементы
-│   ├── DeckList.tsx          # Список колод
-│   └── Header.tsx            # Шапка сайта
-└── store/
-    └── deckStore.ts          # Zustand store для колод
+app/
+  api/decks/route.ts     # API route proxy for decks
+  globals.css            # Global styles
+  layout.tsx             # Root layout
+  page.tsx               # Main page
+components/
+  BackgroundElements.tsx # Background visuals
+  DeckList.tsx           # Deck list, filters, cards, pagination
+  Header.tsx             # Top bar
+store/
+  deckStore.ts           # Zustand store for decks and filters
 ```
 
-## Функционал
+## Error Handling
+- Handles missing players (empty list), network failures (notification), and schema mismatches (Zod validation).
 
-- Поиск колод по нику игрока
-- Отображение списка колод с информацией
-- Валидация данных с помощью Zod
-- Уведомления об успехе/ошибках
-- Адаптивный дизайн
-- Темная тема в стиле игры
-
-## Дизайн
-
-Дизайн вдохновлен оригинальным сайтом SolForge Fusion и игровым клиентом:
-- Темная цветовая схема
-- Фиолетовые и бирюзовые акценты
-- Звездное небо на фоне
-- Стилизованные карточки колод
-
+## Notes on Filters
+- `Deck Status` is always present by default.
+- Add any other filter from the “Add filter” selector; removing a filter resets its values so hidden filters do not affect results.
