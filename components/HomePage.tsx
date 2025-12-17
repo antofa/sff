@@ -19,6 +19,7 @@ export default function Home() {
   const [forceRefresh, setForceRefresh] = useState(false)
   const searchedNameRef = useRef<string>('')
   const autoSearchTriggeredRef = useRef(false)
+  const autoSearchKeyRef = useRef<string>('')
   const {
     decks,
     fusedDecks,
@@ -220,6 +221,9 @@ export default function Home() {
         ? rawName.trim()
         : String(rawName ?? '').trim()
     const targetForce = overrideForce ?? forceRefresh
+    const autoKey = `${targetName.toLowerCase()}|${targetForce ? '1' : '0'}`
+    autoSearchKeyRef.current = autoKey
+    autoSearchTriggeredRef.current = true
 
     if (!targetName) {
       notify({
@@ -343,6 +347,14 @@ export default function Home() {
 
     const trimmed = usernameParam.trim()
     if (!trimmed) return
+
+    const autoKey = `${trimmed.toLowerCase()}|${forceValue ? '1' : '0'}`
+    if (autoSearchKeyRef.current === autoKey) return
+    autoSearchKeyRef.current = autoKey
+
+    setPlayerName(trimmed)
+    if (forceValue !== undefined) setForceRefresh(forceValue)
+
     const normalizedTrimmed = trimmed.toLowerCase()
     const normalizedCurrent = currentPlayer?.trim().toLowerCase() || null
     const hasCachedResults = decks.length > 0 || fusedDecks.length > 0
@@ -355,18 +367,13 @@ export default function Home() {
       setLastSearchedName(trimmed)
       setHasSearched(true)
       setIsTyping(false)
-      setPlayerName(trimmed)
-      if (forceValue !== undefined) setForceRefresh(forceValue)
       return
     }
 
     if (autoSearchTriggeredRef.current && searchedNameRef.current === trimmed) return
     autoSearchTriggeredRef.current = true
-
-    setPlayerName(trimmed)
-    if (forceValue !== undefined) setForceRefresh(forceValue)
     void handleSearch(trimmed, forceValue)
-  }, [handleSearch, searchParams])
+  }, [handleSearch, searchParams, currentPlayer, decks.length, fusedDecks.length, progress.status, loading])
 
   return (
     <main className="min-h-screen relative overflow-hidden">
