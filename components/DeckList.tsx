@@ -1745,7 +1745,6 @@ const FILTER_BLOCK_FIELDS: Record<FilterBlockKey, (keyof FilterState)[]> = {
 
 const FILTER_BLOCK_OPTIONS: { value: FilterBlockKey; label: string }[] = [
   { value: 'deck-name', label: FILTER_BLOCK_LABELS['deck-name'] },
-  { value: 'faction', label: FILTER_BLOCK_LABELS.faction },
   { value: 'forgeborn', label: FILTER_BLOCK_LABELS.forgeborn },
   { value: 'card-name', label: FILTER_BLOCK_LABELS['card-name'] },
   { value: 'card-text', label: FILTER_BLOCK_LABELS['card-text'] },
@@ -1771,6 +1770,12 @@ const SORT_OPTIONS = [
   { value: 'score-asc', label: 'Score (Lowest first)' },
   { value: 'elo-desc', label: 'ELO (Highest first)' },
   { value: 'elo-asc', label: 'ELO (Lowest first)' },
+]
+const FACTION_BUTTONS = [
+  { value: 'Alloyin', label: 'ALLOYIN', color: 'cyan' },
+  { value: 'Tempys', label: 'TEMPYS', color: 'orange' },
+  { value: 'Uterra', label: 'UTERRA', color: 'green' },
+  { value: 'Nekrium', label: 'NEKRIUM', color: 'grape' },
 ]
 const FILTER_QUERY_KEYS = [
   'activeFilters',
@@ -2067,15 +2072,19 @@ const parseFiltersFromSearch = (
     activeFilterBlocks.push({ key, id })
   })
 
-  if (!activeFilterBlocks.some((block) => block.key === 'deck-status')) {
-    activeFilterBlocks.unshift({ key: 'deck-status', id: 'deck-status' })
+  const sanitizedBlocks = activeFilterBlocks.filter(
+    (block) => block.key !== 'faction' && block.key !== 'sort'
+  )
+
+  if (!sanitizedBlocks.some((block) => block.key === 'deck-status')) {
+    sanitizedBlocks.unshift({ key: 'deck-status', id: 'deck-status' })
   }
-  if (activeFilterBlocks.length === 0) {
-    activeFilterBlocks.push({ key: 'deck-status', id: 'deck-status' })
+  if (sanitizedBlocks.length === 0) {
+    sanitizedBlocks.push({ key: 'deck-status', id: 'deck-status' })
   }
 
   const firstByKey = new Map<FilterBlockKey, string>()
-  activeFilterBlocks.forEach((block) => {
+  sanitizedBlocks.forEach((block) => {
     if (!firstByKey.has(block.key)) {
       firstByKey.set(block.key, block.id)
     }
@@ -2084,7 +2093,7 @@ const parseFiltersFromSearch = (
   const instanceFilters: Record<string, FilterInstanceState> = {}
 
   const cardSetInstances: Record<string, CardSetInstanceState> = {}
-  const cardSetBlocks = activeFilterBlocks.filter((block) => block.key === 'card-set')
+  const cardSetBlocks = sanitizedBlocks.filter((block) => block.key === 'card-set')
   cardSetBlocks.forEach((block, idx) => {
     const valuesById = getArray(`cardSetNo@${block.id}`)
     const values = valuesById.length > 0 ? valuesById : idx === 0 ? getArray('cardSetNo') : []
@@ -2101,7 +2110,7 @@ const parseFiltersFromSearch = (
     }
   })
 
-  activeFilterBlocks.forEach((block) => {
+  sanitizedBlocks.forEach((block) => {
     if (block.key === 'card-set') return // already handled
     const defaults = getDefaultsForKey(block.key)
     const state: FilterInstanceState = { ...defaults }
@@ -2135,7 +2144,7 @@ const parseFiltersFromSearch = (
     instanceFilters[block.id] = state
   })
 
-  return { filters: next, activeFilterBlocks, cardSetInstances, instanceFilters }
+  return { filters: next, activeFilterBlocks: sanitizedBlocks, cardSetInstances, instanceFilters }
 }
 
 const buildSearchParamsFromState = (
@@ -2216,6 +2225,12 @@ const buildSearchParamsFromState = (
   })
 
   // Include only non-default status to keep URL short
+  if (filters.faction && (filters.faction as string[]).length > 0) {
+    params.set('faction', (filters.faction as string[]).join(','))
+  }
+  if ((filters.factionMode || defaults.factionMode) !== defaults.factionMode) {
+    params.set('factionMode', filters.factionMode || defaults.factionMode)
+  }
   if ((filters.sortBy || defaults.sortBy) !== defaults.sortBy) {
     params.set('sortBy', filters.sortBy || defaults.sortBy)
   }
@@ -2792,7 +2807,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
 
   const hasActiveFilters = useMemo(() => {
     const defaults = createDefaultFilters()
-    const nonStatusBlocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status' && block.key !== 'sort')
+    if ((filters.faction as string[])?.length) return true
+    const nonStatusBlocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status' && block.key !== 'sort' && block.key !== 'faction')
     for (const block of nonStatusBlocks) {
       const state = getInstanceState(block)
       switch (block.key) {
@@ -2855,7 +2871,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       }
     }
     return false
-  }, [activeFilterBlocks, cardSetInstances, getInstanceState])
+  }, [activeFilterBlocks, cardSetInstances, filters.faction, getInstanceState])
   
   // Helper function to get two source decks from fused deck
   const getFusedDeckSourceDecks = useCallback((fusedDeck: Deck, allDecks: Deck[]): [Deck | null, Deck | null] => {
@@ -3076,13 +3092,24 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const filterDeckArray = useCallback((deckArray: Deck[]) => {
     if (!hasActiveFilters) return deckArray
 
-    const blocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status' && block.key !== 'sort')
+    const selectedFactions = (debouncedFilters.faction as string[]) || []
+    const factionMode = (debouncedFilters.factionMode as FilterState['factionMode']) || 'include'
+    const blocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status' && block.key !== 'sort' && block.key !== 'faction')
     const blockStates = blocks.map((block) => ({
       block,
       state: getDebouncedInstanceState(block),
     }))
 
     return deckArray.filter((deck) => {
+      if (selectedFactions.length > 0) {
+        const match =
+          !!deck.faction &&
+          selectedFactions.some((f) => deck.faction && deck.faction.toLowerCase() === f.toLowerCase())
+        if (!applyMode(match, factionMode)) {
+          return false
+        }
+      }
+
       const normalizedCards = deck.cards && Array.isArray(deck.cards) 
         ? deck.cards.map((card: any, index: number) => {
             if (typeof card === 'string') {
@@ -4114,7 +4141,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
 
       return true
     })
-  }, [activeFilterBlocks, cardSetInstances, deckTagsMap, getDebouncedInstanceState, hasActiveFilters])
+  }, [activeFilterBlocks, cardSetInstances, deckTagsMap, getDebouncedInstanceState, hasActiveFilters, debouncedFilters.faction, debouncedFilters.factionMode])
   
   const sortByValue = useMemo(() => {
     return filters.sortBy || createDefaultFilters().sortBy
@@ -4382,9 +4409,58 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             style={{ backgroundColor: 'rgba(30, 41, 59, 0.6)' }}
           >
             <Stack gap="md">
-              <Title order={4} className="text-white">
-                Filter Decks
-              </Title>
+              <Group justify="space-between" align="center" wrap="wrap" gap="sm">
+                <Title order={4} className="text-white">
+                  Filter Decks
+                </Title>
+                <Group gap="xs" wrap="wrap" justify="flex-end">
+                  {FACTION_BUTTONS.map((faction) => {
+                    const isActive = (filters.faction as string[])?.includes(faction.value)
+                    const activeBg = `var(--mantine-color-${faction.color}-light)`
+                    const activeBorder = `var(--mantine-color-${faction.color}-filled)`
+                    return (
+                      <Button
+                        key={faction.value}
+                        size="xs"
+                        variant="outline"
+                        color={faction.color}
+                        leftSection={
+                          <Image
+                            src={`/images/icons/${faction.value.toLowerCase()}.png`}
+                            alt={faction.value}
+                            h={16}
+                            w={16}
+                            fit="contain"
+                            style={{
+                              filter: isActive ? 'drop-shadow(0 0 2px rgba(0, 0, 0, 0.65))' : 'none',
+                            }}
+                          />
+                        }
+                        onClick={() => {
+                          setFilters((prev) => {
+                            const current = (prev.faction as string[]) || []
+                            const next = current.includes(faction.value)
+                              ? current.filter((item) => item !== faction.value)
+                              : [...current, faction.value]
+                            return { ...prev, faction: next, factionMode: 'include' }
+                          })
+                        }}
+                        styles={{
+                          root: {
+                            backgroundColor: isActive ? activeBg : 'transparent',
+                            borderColor: activeBorder,
+                            boxShadow: isActive ? `0 0 0 1px ${activeBorder}` : undefined,
+                            transition: 'background-color 150ms ease, box-shadow 150ms ease, border-color 150ms ease',
+                          },
+                          label: { textTransform: 'uppercase', letterSpacing: '0.02em' },
+                        }}
+                      >
+                        {faction.label}
+                      </Button>
+                    )
+                  })}
+                </Group>
+              </Group>
 
               <Group gap="md" align="flex-start" justify="space-between" wrap="nowrap">
                 <Stack gap={4} style={{ flex: '0 1 420px', maxWidth: 420 }}>
@@ -4464,7 +4540,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               <Grid gutter="md" columns={12}>
 
                 {activeFilterBlocks
-                  .filter((block) => block.key !== 'deck-status' && block.key !== 'sort')
+                  .filter((block) => block.key !== 'deck-status' && block.key !== 'sort' && block.key !== 'faction')
                   .map((block) => {
                     const state = getInstanceState(block) as FilterInstanceState
                     const update = (payload: Partial<FilterInstanceState>) => updateInstanceState(block, payload)

@@ -383,6 +383,7 @@ export default function Home() {
         >
             <Stack gap="md">
               <TextInput
+                id="home-player-name"
                 size="lg"
                 placeholder="Enter player nickname"
                 value={playerName}
@@ -411,6 +412,7 @@ export default function Home() {
                 </Button>
                 <div className="flex-1 flex justify-end">
                   <Checkbox
+                    id="home-force-refresh"
                     label={
                       <div className="leading-tight text-white text-center">
                         <div>Force refresh  </div>
