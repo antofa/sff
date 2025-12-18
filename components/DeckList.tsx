@@ -823,15 +823,20 @@ const RegularDeckCard = memo(function RegularDeckCard({
                       })
                       .map(([rarity, count]) => {
                         const getRarityColor = (rarityName: string): string => {
-                          const normalized = rarityName.toLowerCase()
-                          if (normalized.includes('darkforge') && normalized.includes('rare')) return '#d07a04'
-                          if (normalized.includes('darkforge')) return '#656464'
-                          if (normalized.includes('common') && normalized.includes('rare')) return '#0e87cf'
-                          if (normalized.includes('rare') && !normalized.includes('common')) return '#e6b70c'
-                          if (normalized.includes('solbind')) return '#75cec4'
-                          if (normalized.includes('common')) return '#1199e3'
-                          if (normalized.includes('ls')) return '#a90100'
-                          return '#1199e3'
+                          const key = rarityName.replace(/\s+/g, '').toLowerCase()
+                          const map: Record<string, string> = {
+                            commoncommon: '#2f92d0',
+                            common: '#1096e1',
+                            commonrare: '#e5b522',
+                            rarecommon: '#6a5320',
+                            rare: '#f0c320',
+                            rarerare: '#d9a600',
+                            darkforge: '#1a1a1a',
+                            darkforgerare: '#101010',
+                            ls: '#b00008',
+                            solbind: '#2fcad0',
+                          }
+                          return map[key] || '#1199e3'
                         }
                         return (
                           <Badge
@@ -1547,15 +1552,20 @@ const FusedDeckCard = memo(function FusedDeckCard({
           {(() => {
             if (rarityCounts.size === 0) return null
             const getRarityColor = (rarityName: string): string => {
-              const normalized = rarityName.toLowerCase()
-              if (normalized.includes('solbind')) return '#2dd4bf'
-              if (normalized.includes('darkforge') && normalized.includes('rare')) return '#d07a04'
-              if (normalized.includes('darkforge')) return '#656464'
-              if (normalized.includes('common') && normalized.includes('rare')) return '#0e87cf'
-              if (normalized.includes('rare') && !normalized.includes('common')) return '#e6b70c'
-              if (normalized.includes('common')) return '#1199e3'
-              if (normalized.includes('ls')) return '#a90100'
-              return '#1199e3'
+              const key = rarityName.replace(/\s+/g, '').toLowerCase()
+              const map: Record<string, string> = {
+                commoncommon: '#2f92d0',
+                common: '#1096e1',
+                commonrare: '#e5b522',
+                rarecommon: '#6a5320',
+                rare: '#f0c320',
+                rarerare: '#d9a600',
+                darkforge: '#1a1a1a',
+                darkforgerare: '#101010',
+                ls: '#b00008',
+                solbind: '#2fcad0',
+              }
+              return map[key] || '#1199e3'
             }
             return (
               <Group gap="xs" className="flex-wrap">

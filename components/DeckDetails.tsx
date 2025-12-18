@@ -142,17 +142,27 @@ function getFactionBadgeColor(faction?: string): string {
   }
 }
 
+const RARITY_BADGE_COLORS: Record<string, string> = {
+  commoncommon: '#2f92d0',
+  common: '#1096e1',
+  commonrare: '#e5b522',
+  rarecommon: '#6a5320',
+  rare: '#f0c320',
+  rarerare: '#d9a600',
+  darkforge: '#1a1a1a',
+  darkforgerare: '#101010',
+  ls: '#b00008',
+  solbind: '#2fcad0',
+}
+
+function normalizeRarityKey(rarity?: string | null): string {
+  if (!rarity) return ''
+  return rarity.replace(/\s+/g, '').toLowerCase()
+}
+
 function getRarityBadgeColor(rarity?: string): string {
-  if (!rarity) return '#1199e3'
-  const normalized = rarity.toLowerCase()
-  if (normalized.includes('darkforge') && normalized.includes('rare')) return '#d07a04'
-  if (normalized.includes('darkforge')) return '#656464'
-  if (normalized.includes('solbind')) return '#2dd4bf'
-  if (normalized.includes('common') && normalized.includes('rare')) return '#0e87cf'
-  if (normalized.includes('rare')) return '#e6b70c'
-  if (normalized.includes('common')) return '#1199e3'
-  if (normalized.includes('ls')) return '#a90100'
-  return '#1199e3'
+  const key = normalizeRarityKey(rarity)
+  return RARITY_BADGE_COLORS[key] || '#1199e3'
 }
 
 // Global cache for card images (persists across modal opens)
