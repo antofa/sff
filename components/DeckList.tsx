@@ -746,11 +746,14 @@ const RegularDeckCard = memo(function RegularDeckCard({
                         const order: Record<string, number> = {
                           Solbind: 0,
                           Common: 1,
-                          'Common Rare': 2,
-                          Rare: 3,
-                          'Darkforge Rare': 4,
-                          Darkforge: 5,
-                          LS: 6,
+                          'Common Common': 2,
+                          'Common Rare': 3,
+                          Rare: 4,
+                          'Rare Common': 5,
+                          'Rare Rare': 6,
+                          'Darkforge Rare': 7,
+                          Darkforge: 8,
+                          LS: 9,
                         }
                         return (order[a] || 99) - (order[b] || 99)
                       })
@@ -1218,9 +1221,45 @@ const FusedDeckCard = memo(function FusedDeckCard({
 
     const cards = aggregatedCards
     const counts = new Map<string, number>()
+    const solbindIds = new Set<string>()
+    const deckAny: any = deck as any
+
+    // Collect Solbind child IDs from cards and forgeborn hints
+    cards.forEach((card: any, idx: number) => {
+      const info =
+        typeof card === 'string'
+          ? getCardInfo(card)
+          : getCardInfo(card.id || card.cardId || card.name || `card-${idx}`, card)
+      const cardData = info as any
+      if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
+        cardData.solbindCards.forEach((sb: any) => {
+          const sid = sb?.id || sb?.cardId || sb?.name
+          if (sid) solbindIds.add(sid)
+        })
+      }
+      if (typeof cardData.solbind === 'string') {
+        cardData.solbind
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+          .forEach((sid: string) => solbindIds.add(sid))
+      }
+      if (cardData.solbindId1 || cardData.solbindid1) solbindIds.add(cardData.solbindId1 || cardData.solbindid1)
+      if (cardData.solbindId2 || cardData.solbindid2) solbindIds.add(cardData.solbindId2 || cardData.solbindid2)
+    })
+    if (deckAny?.forgeborn && Array.isArray(deckAny.forgeborn.solbindCards)) {
+      deckAny.forgeborn.solbindCards.forEach((solbindCard: any) => {
+        const sid = solbindCard?.id || solbindCard?.cardId || solbindCard?.name
+        if (sid) solbindIds.add(sid)
+      })
+    }
+    if (deckAny?.forgeborn) {
+      const fb: any = deckAny.forgeborn
+      if (fb.solbindId1 || fb.solbindid1) solbindIds.add(fb.solbindId1 || fb.solbindid1)
+      if (fb.solbindId2 || fb.solbindid2) solbindIds.add(fb.solbindId2 || fb.solbindid2)
+    }
 
     let parentSolbindCount = 0
-
     cards.forEach((card: any, idx: number) => {
       const info =
         typeof card === 'string'
@@ -1228,29 +1267,42 @@ const FusedDeckCard = memo(function FusedDeckCard({
           : getCardInfo(card.id || card.cardId || card.name || `card-${idx}`, card)
       const rarity = (info as any)?.rarity
       const cardData = info as any
-      const isParentSolbind = !!(cardData.solbindCards && Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0)
-      const isSolbindRarity = rarity && typeof rarity === 'string' && rarity.toLowerCase().includes('solbind')
-      if (isParentSolbind && isSolbindRarity) {
+      const cardId = cardData.id || cardData.cardId || cardData.name || `card-${idx}`
+      if (solbindIds.has(cardId)) return
+      const rarityLower = typeof rarity === 'string' ? rarity.toLowerCase() : ''
+      const hasChildren =
+        (Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0) ||
+        typeof cardData.solbind === 'string' ||
+        !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
+      const isParentSolbind = hasChildren && typeof rarity === 'string' && rarityLower.includes('solbind')
+      if (isParentSolbind) {
         parentSolbindCount += 1
+        return
       }
-      if (!isParentSolbind && rarity && typeof rarity === 'string') {
+
+      if (rarity && typeof rarity === 'string') {
         let normalized = rarity.trim()
         const lower = normalized.toLowerCase()
         if (lower.includes('n/a')) return
         if (lower.includes('darkforge') && lower.includes('rare')) normalized = 'Darkforge Rare'
+        else if (lower.includes('common common')) normalized = 'Common Common'
+        else if (lower.includes('rare rare')) normalized = 'Rare Rare'
+        else if (lower.includes('rare') && lower.includes('common')) normalized = 'Rare Common'
         else if (lower.includes('common') && lower.includes('rare')) normalized = 'Common Rare'
         else if (lower.includes('darkforge')) normalized = 'Darkforge'
         else if (lower.includes('common')) normalized = 'Common'
         else if (lower.includes('rare')) normalized = 'Rare'
         else if (lower.includes('ls') || lower.includes('legendary')) normalized = 'LS'
+        else if (lower.includes('solbind')) normalized = 'Solbind'
         counts.set(normalized, (counts.get(normalized) || 0) + 1)
       }
     })
+
     if (parentSolbindCount > 0) {
       counts.set('Solbind', (counts.get('Solbind') || 0) + parentSolbindCount)
     }
     return counts
-  }, [aggregatedCards, deck.computed])
+  }, [aggregatedCards, deck.computed, deck])
 
   let { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
 
@@ -1439,11 +1491,14 @@ const FusedDeckCard = memo(function FusedDeckCard({
                     const order: Record<string, number> = {
                       Solbind: 0,
                       Common: 1,
-                      'Common Rare': 2,
-                      Rare: 3,
-                      'Darkforge Rare': 4,
-                      Darkforge: 5,
-                      LS: 6,
+                      'Common Common': 2,
+                      'Common Rare': 3,
+                      Rare: 4,
+                      'Rare Common': 5,
+                      'Rare Rare': 6,
+                      'Darkforge Rare': 7,
+                      Darkforge: 8,
+                      LS: 9,
                     }
                     return (order[a] || 99) - (order[b] || 99)
                   })
@@ -3928,6 +3983,13 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     }
                   })
                 }
+                if (typeof cardData.solbind === 'string') {
+                  cardData.solbind
+                    .split(',')
+                    .map((s: string) => s.trim())
+                    .filter(Boolean)
+                    .forEach((sid: string) => solbindCardIds.add(sid))
+                }
                 if (cardData.solbindId1 || cardData.solbindid1) solbindCardIds.add(cardData.solbindId1 || cardData.solbindid1)
                 if (cardData.solbindId2 || cardData.solbindid2) solbindCardIds.add(cardData.solbindId2 || cardData.solbindid2)
               })
@@ -3991,6 +4053,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                   }
                 }
               }
+
               normalizedCards.forEach(card => {
                 if (forgebornCards.includes(card)) return
                 const cardData = card as any
@@ -4016,16 +4079,28 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                 if (forgebornCards.includes(card)) return
                 const cardData = card as any
                 const isSolbindCard = solbindCardObjects.some(sb => sb.id === card.id)
+                // Skip counting Solbind rarity for Solbind children (avoid double counting)
                 if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
                   return
                 }
+                const isSolbindChild = solbindCardIds.has(card.id)
 
                 const rarity = cardData.rarity
                 if (rarity && typeof rarity === 'string') {
                   let normalizedRarity = rarity.trim()
                   const lower = normalizedRarity.toLowerCase()
+                  if (lower.includes('solbind')) {
+                    if (isSolbindChild) return
+                    normalizedRarity = 'Solbind'
+                  }
                   if (lower.includes('darkforge') && lower.includes('rare')) {
                     normalizedRarity = 'Darkforge Rare'
+                  } else if (lower.includes('common common')) {
+                    normalizedRarity = 'Common Common'
+                  } else if (lower.includes('rare rare')) {
+                    normalizedRarity = 'Rare Rare'
+                  } else if (lower.includes('rare') && lower.includes('common')) {
+                    normalizedRarity = 'Rare Common'
                   } else if (lower.includes('common') && lower.includes('rare')) {
                     normalizedRarity = 'Common Rare'
                   } else if (lower.includes('darkforge')) {
@@ -5542,9 +5617,12 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               }
                               data={[
                                 { value: 'Common', label: 'Common' },
+                                { value: 'Common Common', label: 'Common Common' },
                                 { value: 'Common Rare', label: 'Common Rare' },
                                 { value: 'Darkforge Rare', label: 'Darkforge Rare' },
                                 { value: 'Darkforge', label: 'Darkforge' },
+                                { value: 'Rare Common', label: 'Rare Common' },
+                                { value: 'Rare Rare', label: 'Rare Rare' },
                                 { value: 'Rare', label: 'Rare' },
                                 { value: 'LS', label: 'LS' },
                                 { value: 'Solbind', label: 'Solbind' },

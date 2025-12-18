@@ -376,15 +376,24 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
     const cardData = card as any
     if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
       cardData.solbindCards.forEach((solbindCard: any) => {
-        if (solbindCard && solbindCard.id) solbindCardIds.add(solbindCard.id)
+        const sbId = solbindCard?.id || solbindCard?.cardId || solbindCard?.name
+        if (sbId) solbindCardIds.add(sbId)
       })
+    }
+    if (typeof cardData.solbind === 'string') {
+      cardData.solbind
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean)
+        .forEach((sid: string) => solbindCardIds.add(sid))
     }
     if (cardData.solbindId1 || cardData.solbindid1) solbindCardIds.add(cardData.solbindId1 || cardData.solbindid1)
     if (cardData.solbindId2 || cardData.solbindid2) solbindCardIds.add(cardData.solbindId2 || cardData.solbindid2)
   })
   if ((deckAny as any)?.forgeborn && Array.isArray((deckAny as any).forgeborn.solbindCards)) {
     ;(deckAny as any).forgeborn.solbindCards.forEach((solbindCard: any) => {
-      if (solbindCard && solbindCard.id) solbindCardIds.add(solbindCard.id)
+      const sbId = solbindCard?.id || solbindCard?.cardId || solbindCard?.name
+      if (sbId) solbindCardIds.add(sbId)
     })
   }
   if ((deckAny as any)?.forgeborn) {
@@ -393,9 +402,23 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
     if (fb.solbindId2 || fb.solbindid2) solbindCardIds.add(fb.solbindId2 || fb.solbindid2)
   }
 
+  let parentSolbindCount = 0
   normalizedCards.forEach((card, idx) => {
     const cardData = card as any
-    if (solbindCardIds.has(card.id)) return
+    const cardId = card.id || cardData.cardId || cardData.name || `card-${idx}`
+    if (solbindCardIds.has(cardId)) return
+    const rarityRaw = cardData.rarity
+    const rarityLower = typeof rarityRaw === 'string' ? rarityRaw.toLowerCase() : ''
+    const hasSolbindChildren =
+      (Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0) ||
+      typeof cardData.solbind === 'string' ||
+      !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
+    const isParentSolbind = hasSolbindChildren && typeof rarityRaw === 'string' && rarityLower.includes('solbind')
+    if (isParentSolbind) {
+      parentSolbindCount += 1
+      return
+    }
+
     const originalCardForType = Array.isArray(deck.cards)
       ? deck.cards.find((c: any, i: number) => {
           const cId = typeof c === 'string' ? c : (c?.id || c?.cardId || c?.name || `card-${i}`)
@@ -408,7 +431,6 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
     const cardType = cardData.cardType || cardData.card_type || originalCardType || ''
     const lowerCardType = cardType.toLowerCase()
     const isSpell = lowerCardType.includes('spell') && !lowerCardType.includes('creature')
-    const rarityRaw = cardData.rarity
     if (rarityRaw && typeof rarityRaw === 'string') {
       let normalizedRarity = rarityRaw.trim()
       const lower = normalizedRarity.toLowerCase()
@@ -417,6 +439,12 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
       }
       if (lower.includes('darkforge') && lower.includes('rare')) {
         normalizedRarity = 'Darkforge Rare'
+      } else if (lower.includes('common common')) {
+        normalizedRarity = 'Common Common'
+      } else if (lower.includes('rare rare')) {
+        normalizedRarity = 'Rare Rare'
+      } else if (lower.includes('rare') && lower.includes('common')) {
+        normalizedRarity = 'Rare Common'
       } else if (lower.includes('common') && lower.includes('rare')) {
         normalizedRarity = 'Common Rare'
       } else if (lower.includes('darkforge')) {
@@ -431,14 +459,12 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
       const currentCount = rarityCounts.get(normalizedRarity) || 0
       rarityCounts.set(normalizedRarity, currentCount + 1)
     }
-    if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-      cardData.solbindCards.forEach((solbindCard: any) => {
-        const sbId = solbindCard?.id
-        if (sbId) solbindCardIds.add(sbId)
-      })
-    }
     void isSpell
   })
+
+  if (parentSolbindCount > 0) {
+    rarityCounts.set('Solbind', (rarityCounts.get('Solbind') || 0) + parentSolbindCount)
+  }
 
   return Object.fromEntries(rarityCounts)
 }

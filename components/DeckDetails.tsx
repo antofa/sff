@@ -1194,6 +1194,13 @@ const originalCardMeta = useMemo(() => {
               const list = (fallbackInfo as any)?.solbindCards
               return Array.isArray(list) ? list : []
             })()
+      if (typeof cardData.solbind === 'string') {
+        cardData.solbind
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+          .forEach((sid: string) => ids.add(sid))
+      }
 
       solbindList.forEach((solbindCard: any) => {
         if (solbindCard && solbindCard.id) {
@@ -1232,17 +1239,14 @@ const originalCardMeta = useMemo(() => {
     uniqueNormalizedCards.forEach((card, idx) => {
       const cardData = card as any
 
-      // Skip parent Solbind cards (they are containers)
-      const isParentSolbind = cardData.solbindCards && Array.isArray(cardData.solbindCards) && cardData.solbindCards.length > 0
-      if (isParentSolbind) return
-
       const cardId = card.id || cardData.cardId || `card-${idx}`
       const rarityRaw = cardData.rarity
+      const rarityLower = typeof rarityRaw === 'string' ? rarityRaw.toLowerCase() : ''
 
       // Solbind check
       const isSolbind =
         solbindIds.has(cardId) ||
-        (typeof rarityRaw === 'string' && rarityRaw.toLowerCase().includes('solbind'))
+        (typeof rarityRaw === 'string' && rarityLower.includes('solbind'))
       if (isSolbind) {
         add('Solbind')
         return
@@ -1254,6 +1258,12 @@ const originalCardMeta = useMemo(() => {
 
         if (lower.includes('darkforge') && lower.includes('rare')) {
           normalizedRarity = 'Darkforge Rare'
+        } else if (lower.includes('common common')) {
+          normalizedRarity = 'Common Common'
+        } else if (lower.includes('rare rare')) {
+          normalizedRarity = 'Rare Rare'
+        } else if (lower.includes('rare') && lower.includes('common')) {
+          normalizedRarity = 'Rare Common'
         } else if (lower.includes('common') && lower.includes('rare')) {
           normalizedRarity = 'Common Rare'
         } else if (lower.includes('rare') && !lower.includes('common')) {
@@ -2693,6 +2703,13 @@ const originalCardMeta = useMemo(() => {
 
     const solbindCardObjects: CardInfo[] = []
     const parentSolbindIds = new Set<string>()
+    const parseSolbindString = (value?: string | null): string[] => {
+      if (!value || typeof value !== 'string') return []
+      return value
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+    }
 
     // forgeborn.solbindCards
     if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && Array.isArray(deckForUse.forgeborn.solbindCards)) {
@@ -2723,9 +2740,11 @@ const originalCardMeta = useMemo(() => {
               const list = (fallbackInfo as any)?.solbindCards
               return Array.isArray(list) ? list : []
             })()
+      const solbindStringIds = parseSolbindString(cardData.solbind)
 
       const hasSolbindChildren =
         solbindList.length > 0 ||
+        solbindStringIds.length > 0 ||
         !!(cardData.solbindId1 || cardData.solbindid1 || cardData.solbindId2 || cardData.solbindid2)
 
       if (hasSolbindChildren && card.id) parentSolbindIds.add(card.id)
@@ -2733,6 +2752,11 @@ const originalCardMeta = useMemo(() => {
       solbindList.forEach((solbindCard: any) => {
         if (solbindCard && solbindCard.id && !solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
           solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+        }
+      })
+      solbindStringIds.forEach(id => {
+        if (id && !solbindCardObjects.some(sb => sb.id === id)) {
+          solbindCardObjects.push(getCardInfo(id))
         }
       })
 
@@ -2792,12 +2816,9 @@ const originalCardMeta = useMemo(() => {
   // Merge rarity summary with Solbind count (make sure Solbind shows up if we have Solbind cards)
   const displayRaritySummary = useMemo(() => {
     const summary = new Map(raritySummary)
-    // Safety net: if solbindCards somehow misses items, also use the size of the ID set
-    const solbindCount = Math.max(solbindCards.length, solbindCardIdsSet.size)
-    if (solbindCount > 0) {
-      const existing = summary.get('Solbind') || 0
-      const finalCount = Math.max(existing, solbindCount)
-      summary.set('Solbind', finalCount)
+    // Safety net: ensure Solbind appears at least once if we have any solbind cards
+    if (!summary.has('Solbind') && solbindCards.length > 0) {
+      summary.set('Solbind', 1)
     }
     return summary
   }, [raritySummary, solbindCards, solbindCardIdsSet])
@@ -4208,15 +4229,18 @@ const originalCardMeta = useMemo(() => {
                     ) : null}
                     {Array.from(raritySummary.entries())
                       .sort(([a], [b]) => {
-                        const order: Record<string, number> = {
-                          Solbind: 0,
-                          Common: 1,
-                          'Common Rare': 2,
-                          Rare: 3,
-                          'Darkforge Rare': 4,
-                          Darkforge: 5,
-                          LS: 6,
-                        }
+        const order: Record<string, number> = {
+          Solbind: 0,
+          Common: 1,
+          'Common Common': 2,
+          'Common Rare': 3,
+          Rare: 4,
+          'Rare Common': 5,
+          'Rare Rare': 6,
+          'Darkforge Rare': 7,
+          Darkforge: 8,
+          LS: 9,
+        }
                         return (order[a] ?? 99) - (order[b] ?? 99)
                       })
                       .map(([rarity, count]) => (
