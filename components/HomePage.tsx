@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, startTransition } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Badge, Button, Checkbox, Container, Group, Loader, Paper, Progress, Stack, Text, TextInput, Title } from '@mantine/core'
 import { IconAlertTriangle, IconCheck, IconClockHour3, IconSearch } from '@tabler/icons-react'
@@ -33,6 +33,7 @@ export default function Home() {
     deckTags,
     deckCreatureTypes,
     currentPlayer,
+    restartFetchIfLoading,
   } = useDeckStore()
   const lastSearchRef = useRef<string>('')
   const [elapsedMs, setElapsedMs] = useState(0)
@@ -180,8 +181,8 @@ export default function Home() {
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value
     setPlayerName(newValue)
-    // Mark as typing to hide DeckList and prevent blocking
-    setIsTyping(true)
+    // Mark as typing only when the value diverges from the last searched nickname
+    setIsTyping(newValue.trim() !== searchedNameRef.current.trim())
     // Reset search flag when text changes (using functional update to avoid dependency)
     setHasSearched(prev => prev ? false : prev)
     
@@ -193,15 +194,16 @@ export default function Home() {
   }, [])
 
   const handleInputFocus = useCallback(() => {
-    // Clear the field when user focuses on the input after successful search
-    // Only clear if results are displayed (not loading, has searched, and has results)
-    if (hasSearched && !loading && playerName && searchedNameRef.current === playerName && (decks.length > 0 || fusedDecks.length > 0)) {
-      setPlayerName('')
-      setHasSearched(false)
+    // Keep showing results on focus when value matches last search
+    if (playerName.trim() === searchedNameRef.current.trim()) {
       setIsTyping(false)
-      searchedNameRef.current = ''
     }
-  }, [hasSearched, loading, playerName, decks.length, fusedDecks.length])
+  }, [playerName])
+
+  const handleInputBlur = useCallback(() => {
+    // When leaving the field, we are no longer "typing"
+    setIsTyping(false)
+  }, [])
 
   const handleSearch = useCallback(async (overrideName?: string | null, overrideForce?: boolean) => {
     const notify = (payload: { title: string; message: string; color: string }) => {
@@ -220,6 +222,9 @@ export default function Home() {
       typeof rawName === 'string'
         ? rawName.trim()
         : String(rawName ?? '').trim()
+    const isNewPlayer =
+      searchedNameRef.current &&
+      searchedNameRef.current.toLowerCase() !== targetName.toLowerCase()
     const targetForce = overrideForce ?? forceRefresh
     const autoKey = `${targetName.toLowerCase()}|${targetForce ? '1' : '0'}`
     autoSearchKeyRef.current = autoKey
@@ -248,6 +253,11 @@ export default function Home() {
       setForceRefresh(targetForce)
     }
 
+    // If switching to a new player, clear previous decks/progress to avoid stale results
+    if (isNewPlayer) {
+      useDeckStore.getState().clearDecks()
+    }
+
     // Update URL with current params only if it actually changed
     const url = new URL(window.location.href)
     url.searchParams.set('username', targetName)
@@ -258,8 +268,9 @@ export default function Home() {
     }
     const nextUrl = url.pathname + url.search
     const currentUrl = window.location.pathname + window.location.search
+    // Use router.replace so Next.js searchParams stay in sync
     if (nextUrl !== currentUrl) {
-      router.push(nextUrl)
+      router.replace(nextUrl)
     }
 
     try {
@@ -308,7 +319,7 @@ export default function Home() {
         color: 'red',
       })
     }
-  }, [playerName, forceRefresh, formatDuration, fetchDecks])
+  }, [playerName, forceRefresh, formatDuration, fetchDecks, router])
 
   useEffect(() => {
     const hideNotification = () => {
@@ -327,6 +338,25 @@ export default function Home() {
       }
     }
   }, [])
+
+  // If tab was hidden and we return while loading, restart fetch to avoid stalled SSE
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        restartFetchIfLoading()
+      }
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibility)
+      window.addEventListener('focus', handleVisibility)
+    }
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibility)
+        window.removeEventListener('focus', handleVisibility)
+      }
+    }
+  }, [restartFetchIfLoading])
 
   // Auto-run search when opened with params (?username=...&forceRefresh=true)
   useEffect(() => {
@@ -352,8 +382,10 @@ export default function Home() {
     if (autoSearchKeyRef.current === autoKey) return
     autoSearchKeyRef.current = autoKey
 
-    setPlayerName(trimmed)
-    if (forceValue !== undefined) setForceRefresh(forceValue)
+    startTransition(() => {
+      setPlayerName(trimmed)
+      if (forceValue !== undefined) setForceRefresh(forceValue)
+    })
 
     const normalizedTrimmed = trimmed.toLowerCase()
     const normalizedCurrent = currentPlayer?.trim().toLowerCase() || null
@@ -361,17 +393,21 @@ export default function Home() {
     const isReady = ['done', 'cached'].includes(progress.status)
 
     if (normalizedCurrent === normalizedTrimmed && (loading || (hasCachedResults && isReady))) {
-      autoSearchTriggeredRef.current = true
-      searchedNameRef.current = trimmed
-      lastSearchRef.current = trimmed
-      setLastSearchedName(trimmed)
-      setHasSearched(true)
-      setIsTyping(false)
+      startTransition(() => {
+        autoSearchTriggeredRef.current = true
+        searchedNameRef.current = trimmed
+        lastSearchRef.current = trimmed
+        setLastSearchedName(trimmed)
+        setHasSearched(true)
+        setIsTyping(false)
+      })
       return
     }
 
     if (autoSearchTriggeredRef.current && searchedNameRef.current === trimmed) return
     autoSearchTriggeredRef.current = true
+    // Автозапуск поиска по параметрам: допускаем вызов setState внутри эффекта
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void handleSearch(trimmed, forceValue)
   }, [handleSearch, searchParams, currentPlayer, decks.length, fusedDecks.length, progress.status, loading])
 
@@ -418,6 +454,7 @@ export default function Home() {
                 value={playerName}
                 onChange={handleInputChange}
                 onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleSearch()

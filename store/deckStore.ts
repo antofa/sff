@@ -807,8 +807,10 @@ interface DeckStore {
   forgebornNameIndex: string[]
   deckTags: Record<string, string[]>
   deckCreatureTypes: Record<string, Record<string, number>>
-  fetchDecks: (playerName: string, options?: { force?: boolean }) => Promise<void>
+  currentEventSource: EventSource | null
+  fetchDecks: (playerName: string, options?: { force?: boolean; keepExisting?: boolean }) => Promise<void>
   clearDecks: () => void
+  restartFetchIfLoading: () => void
 }
 
 export const useDeckStore = create<DeckStore>((set, get) => ({
@@ -825,16 +827,36 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   forgebornNameIndex: [],
   deckTags: {},
   deckCreatureTypes: {},
-  fetchDecks: async (playerName: string, options?: { force?: boolean }) => {
+  currentEventSource: null,
+  fetchDecks: async (playerName: string, options?: { force?: boolean; keepExisting?: boolean }) => {
     const forceRefresh = options?.force ?? false
+    const keepExisting = options?.keepExisting ?? false
     const normalizedName = playerName.trim()
     if (!normalizedName) {
       set({ loading: false, error: 'Player nickname is required', decks: [], fusedDecks: [] })
       return
     }
 
+    // Close any existing SSE before starting a new fetch
+    const prevEs = get().currentEventSource
+    if (prevEs) {
+      try {
+        prevEs.close()
+      } catch {
+        // ignore
+      }
+      set({ currentEventSource: null })
+    }
+
     // Streaming implementation via SSE
-    set({ loading: true, error: null, progress: createIdleProgress(), currentPlayer: normalizedName })
+    set({
+      loading: true,
+      error: null,
+      progress: createIdleProgress(),
+      currentPlayer: normalizedName,
+      decks: keepExisting ? get().decks : [],
+      fusedDecks: keepExisting ? get().fusedDecks : [],
+    })
 
     const startedAt = Date.now()
     const normalizedPlayer = playerName.trim().toLowerCase()
@@ -973,6 +995,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       const es = new EventSource(
         `/api/decks/stream?player=${encodeURIComponent(normalizedName)}${forceRefresh ? '&force=1' : ''}${cacheBust}`
       )
+      set({ currentEventSource: es })
       let streamFinished = false
       let regularDecks: any[] = []
       let fusedDecks: any[] = []
@@ -998,7 +1021,12 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       }
 
       const cleanup = () => {
-        es.close()
+        try {
+          es.close()
+        } catch {
+          // ignore
+        }
+        set({ currentEventSource: null })
       }
 
       es.addEventListener('progress', (event) => {
@@ -1359,6 +1387,12 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           return
         }
 
+        // If browser throttles connection in background, EventSource goes CONNECTING. Let it auto-reconnect.
+        if (es.readyState === EventSource.CONNECTING) {
+          updateSteps('fetchRegular', 'running', 'Reconnecting stream...')
+          return
+        }
+
         const parsed = parseErrorPayload(event)
         const readyState = describeReadyState()
         const detail =
@@ -1370,30 +1404,74 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           type: event?.type,
           payload: parsed,
         })
-        cleanup()
+
         const userMessage = detail || 'Failed to stream decks. Please try again.'
+        const existingDecks = get().decks
+        const existingFused = get().fusedDecks
+        const hasAnyDecks = (existingDecks?.length ?? 0) + (existingFused?.length ?? 0) > 0
+
+        if (hasAnyDecks) {
+          // We already have data (e.g., received while tab was in background). Keep it visible.
+          const fallbackMsg = userMessage || 'Stream interrupted; showing received decks'
+          cleanup()
+          set({
+            error: userMessage,
+            loading: false,
+            decks: existingDecks,
+            fusedDecks: existingFused,
+          })
+          finishProgress(fallbackMsg, 'done')
+          resolve()
+          return
+        }
+
+        cleanup()
         set({
           error: userMessage,
           loading: false,
-          decks: [],
-          fusedDecks: [],
+          decks: existingDecks,
+          fusedDecks: existingFused,
         })
         finishProgress(userMessage, 'error')
         reject(new Error(userMessage))
       })
     })
   },
-  clearDecks: () => set({
-    decks: [],
-    fusedDecks: [],
-    error: null,
-    currentPlayer: null,
-    progress: createIdleProgress(),
-    tagIndex: [],
-    cardNameIndex: [],
-    deckNameIndex: [],
-    forgebornNameIndex: [],
-    deckTags: {},
-    deckCreatureTypes: {},
-  }),
+  clearDecks: () => {
+    const prevEs = get().currentEventSource
+    if (prevEs) {
+      try {
+        prevEs.close()
+      } catch {
+        // ignore
+      }
+    }
+    set({
+      decks: [],
+      fusedDecks: [],
+      error: null,
+      currentPlayer: null,
+      progress: createIdleProgress(),
+      tagIndex: [],
+      cardNameIndex: [],
+      deckNameIndex: [],
+      forgebornNameIndex: [],
+      deckTags: {},
+      deckCreatureTypes: {},
+      currentEventSource: null,
+    })
+  },
+  restartFetchIfLoading: () => {
+    const { loading, currentPlayer, fetchDecks, currentEventSource } = get()
+    if (!loading || !currentPlayer) return
+    if (currentEventSource) {
+      try {
+        currentEventSource.close()
+      } catch {
+        // ignore
+      }
+      set({ currentEventSource: null })
+    }
+    void fetchDecks(currentPlayer, { force: true, keepExisting: true })
+  },
 }))

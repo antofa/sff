@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useDebouncedValue, useResizeObserver } from '@mantine/hooks'
 import type { Deck } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
-import { getCardInfo } from '@/lib/api'
+import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 
 type CreatureTypeMap = Record<string, number>
@@ -486,6 +486,61 @@ function countPlayableCards(deck: Deck): { total: number; creatures: number; spe
   return { total, creatures, spells, solbind }
 }
 
+// Extract primary Forgeborn name from a deck
+function getForgebornNameFromDeck(deck: Deck): string | null {
+  // Try to get Forgeborn from deck.forgeborn first (has title property)
+  if (deck.forgeborn) {
+    // getCardInfo will handle title vs name preference for Forgeborn
+    if (typeof deck.forgeborn === 'object' && deck.forgeborn.id) {
+      const forgebornInfo = getCardInfo(deck.forgeborn.id, deck.forgeborn)
+      if (forgebornInfo.name) {
+        return forgebornInfo.name
+      }
+    }
+    // Fallback for direct title/name
+    const name = (deck.forgeborn as any).title || (deck.forgeborn as any).name
+    if (name) {
+      return name
+    }
+  }
+  
+  // Also check in cards
+  if (deck.cards && Array.isArray(deck.cards)) {
+    const normalizedCards = deck.cards.map((card: any, index: number) => {
+      if (typeof card === 'string') {
+        return getCardInfo(card)
+      } else if (typeof card === 'object' && card !== null) {
+        const cardId = card.id || card.cardId || card.name || `card-${index}`
+        return getCardInfo(cardId, card)
+      }
+      return getCardInfo(`card-${index}`)
+    })
+    
+    // Find Forgeborn by forgebornId
+    if (deck.forgebornId) {
+      const forgeborn = normalizedCards.find(card => 
+        card.id === deck.forgebornId || 
+        (card.id && deck.forgebornId && card.id.includes(deck.forgebornId)) ||
+        (deck.forgebornId && card.id && deck.forgebornId.includes(card.id))
+      )
+      if (forgeborn && forgeborn.name) {
+        return forgeborn.name // getCardInfo already prefers title for Forgeborn
+      }
+    }
+    
+    // Find Forgeborn by cardType
+    const forgebornByType = normalizedCards.find(card =>
+      card.type?.toLowerCase().includes('forgeborn') ||
+      (card as any).cardType?.toLowerCase().includes('forgeborn')
+    )
+    if (forgebornByType && forgebornByType.name) {
+      return forgebornByType.name // getCardInfo already prefers title for Forgeborn
+    }
+  }
+  
+  return null
+}
+
 // Lightweight fallback counter for display (handles fused decks missing computed counts)
 function getDisplayCounts(deck: Deck): { total: number; creatures: number; spells: number } {
   const deckAny = deck as any
@@ -566,6 +621,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
   const computedCounts = deck.computed?.counts && deck.computed.counts.total > 0 ? deck.computed.counts : null
   // Prefer computed counts (from store) and fall back to a full local count (includes Solbind children)
   const displayCounts = computedCounts || countPlayableCards(deck)
+  const forgebornName = useMemo(() => getForgebornNameFromDeck(deck), [deck])
   const expiryTs = getExpiryTimestamp(deck)
   const isExpired = expiryTs !== null && expiryTs < renderNow
   const { borderColor, hoverBorderColor } = getBorderColors(deck, renderNow)
@@ -602,22 +658,30 @@ const RegularDeckCard = memo(function RegularDeckCard({
         }}
       >
         <Stack gap={6} style={{ flex: 1 }} justify="flex-start" align="stretch">
-          <Group gap="xs" wrap="wrap" justify="space-between" align="center">
-            <Group gap="xs" wrap="wrap" align="center">
-              {(deck as any).playerName && (
-                <Badge
-                  color="teal"
-                  variant="light"
-                  size="sm"
-                  radius="sm"
-                  component="a"
-                  href={`/player/${encodeURIComponent((deck as any).playerName)}`}
-                  style={{ textDecoration: 'none' }}
-                >
-                  Owner: {(deck as any).playerName}
-                </Badge>
-              )}
-            </Group>
+          <Group gap="xs" wrap="wrap" align="center">
+            {(deck as any).playerName && (
+              <Badge
+                color="teal"
+                variant="light"
+                size="sm"
+                radius="sm"
+                component="a"
+                href={`/player/${encodeURIComponent((deck as any).playerName)}`}
+                style={{ textDecoration: 'none' }}
+              >
+                Owner: {(deck as any).playerName}
+              </Badge>
+            )}
+            {forgebornName && (
+              <Badge
+                color="cyan"
+                variant="light"
+                size="sm"
+                radius="sm"
+              >
+                FB: {forgebornName}
+              </Badge>
+            )}
             {expiryTs !== null && (
               <Badge
                 color={undefined}
@@ -638,7 +702,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
                       }
                 }
               >
-                Expire: {new Date(expiryTs).toLocaleDateString('en-GB', {
+                Exp: {new Date(expiryTs).toLocaleDateString('en-GB', {
                   day: 'numeric',
                   month: 'short',
                   year: 'numeric',
@@ -913,6 +977,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
   const [renderNow] = useState(() => Date.now())
   const fusedDeckAny = deck as any
   const [deck1, deck2] = sourceDecks || [null, null]
+  const forgebornName = useMemo(() => getForgebornNameFromDeck(deck), [deck])
 
   // Helper to pull cards from any deck-like object
   const extractCards = useCallback((d: any): any[] => {
@@ -1379,22 +1444,30 @@ const FusedDeckCard = memo(function FusedDeckCard({
         }}
       >
         <Stack gap={6} style={{ flex: 1 }} justify="flex-start" align="stretch">
-          <Group gap="xs" wrap="wrap" align="center" justify="space-between">
-            <Group gap="xs" wrap="wrap" align="center">
-              {(deck as any).playerName && (
-                <Badge
-                  color="teal"
-                  variant="light"
-                  size="sm"
-                  radius="sm"
-                  component="a"
-                  href={`/player/${encodeURIComponent((deck as any).playerName)}`}
-                  style={{ textDecoration: 'none' }}
-                >
-                  Owner: {(deck as any).playerName}
-                </Badge>
-              )}
-            </Group>
+          <Group gap="xs" wrap="wrap" align="center">
+            {(deck as any).playerName && (
+              <Badge
+                color="teal"
+                variant="light"
+                size="sm"
+                radius="sm"
+                component="a"
+                href={`/player/${encodeURIComponent((deck as any).playerName)}`}
+                style={{ textDecoration: 'none' }}
+              >
+                Owner: {(deck as any).playerName}
+              </Badge>
+            )}
+            {forgebornName && (
+              <Badge
+                color="cyan"
+                variant="light"
+                size="sm"
+                radius="sm"
+              >
+                FB: {forgebornName}
+              </Badge>
+            )}
             {expireLabel && (
               <Badge
                 variant="filled"
@@ -1406,7 +1479,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
                     : { backgroundColor: '#b32626', color: '#fff', border: '1px solid #b32626' }
                 }
               >
-                Expire: {expireLabel}
+                Exp: {expireLabel}
               </Badge>
             )}
           </Group>
@@ -2427,61 +2500,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     })
     return Array.from(deckNamesSet).sort()
   }, [decks, fusedDecks, precomputedDeckNames])
-  
-  // Helper function to extract Forgeborn name from a deck
-  const getForgebornNameFromDeck = (deck: Deck): string | null => {
-    // Try to get Forgeborn from deck.forgeborn first (has title property)
-    if (deck.forgeborn) {
-      // getCardInfo will handle title vs name preference for Forgeborn
-      if (typeof deck.forgeborn === 'object' && deck.forgeborn.id) {
-        const forgebornInfo = getCardInfo(deck.forgeborn.id, deck.forgeborn)
-        if (forgebornInfo.name) {
-          return forgebornInfo.name
-        }
-      }
-      // Fallback for direct title/name
-      const name = (deck.forgeborn as any).title || (deck.forgeborn as any).name
-      if (name) {
-        return name
-      }
-    }
-    
-    // Also check in cards
-    if (deck.cards && Array.isArray(deck.cards)) {
-      const normalizedCards = deck.cards.map((card: any, index: number) => {
-        if (typeof card === 'string') {
-          return getCardInfo(card)
-        } else if (typeof card === 'object' && card !== null) {
-          const cardId = card.id || card.cardId || card.name || `card-${index}`
-          return getCardInfo(cardId, card)
-        }
-        return getCardInfo(`card-${index}`)
-      })
-      
-      // Find Forgeborn by forgebornId
-      if (deck.forgebornId) {
-        const forgeborn = normalizedCards.find(card => 
-          card.id === deck.forgebornId || 
-          (card.id && deck.forgebornId && card.id.includes(deck.forgebornId)) ||
-          (deck.forgebornId && card.id && deck.forgebornId.includes(card.id))
-        )
-        if (forgeborn && forgeborn.name) {
-          return forgeborn.name // getCardInfo already prefers title for Forgeborn
-        }
-      }
-      
-      // Find Forgeborn by cardType
-      const forgebornByType = normalizedCards.find(card =>
-        card.type?.toLowerCase().includes('forgeborn') ||
-        (card as any).cardType?.toLowerCase().includes('forgeborn')
-      )
-      if (forgebornByType && forgebornByType.name) {
-        return forgebornByType.name // getCardInfo already prefers title for Forgeborn
-      }
-    }
-    
-    return null
-  }
   
   // Collect all unique Forgeborn names from all decks (regular + fused) for the dropdown
   const allForgebornNames = useMemo(() => {
@@ -3947,152 +3965,55 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             }
             break
           }
-          case 'rarity': {
-            const rarityType = (state.rarityType as string) || ''
-            const rarityCount = state.rarityCount as number | null | undefined
-            if (rarityType && rarityCount !== null && rarityCount !== undefined) {
-              // Count cards by rarity (same logic as display)
-              const rarityCounts = new Map<string, number>()
+        case 'rarity': {
+          const rarityType = (state.rarityType as string) || ''
+          const rarityCount = state.rarityCount as number | null | undefined
+          if (rarityType && rarityCount !== null && rarityCount !== undefined) {
+            // Prefer precomputed rarity counts (base deck only)
+            let deckRarityCount = (deck.computed?.rarityCounts || {})[rarityType] ?? 0
 
-              // Identify Forgeborn and Solbind (same logic as countPlayableCards)
-              const forgebornId = deck.forgebornId
-              const forgebornCards: any[] = []
-              if (forgebornId) {
-                const fb = normalizedCards.find(card => 
-                  card.id === forgebornId || 
-                  (card.id && forgebornId && card.id.includes(forgebornId)) ||
-                  (forgebornId && card.id && forgebornId.includes(card.id))
-                )
-                if (fb) forgebornCards.push(fb)
-              }
-              if (forgebornCards.length === 0) {
-                const fb = normalizedCards.find(card =>
-                  card.type?.toLowerCase().includes('forgeborn') ||
-                  (card as any).cardType?.toLowerCase().includes('forgeborn')
-                )
-                if (fb) forgebornCards.push(fb)
-              }
+            // Fallback lightweight count on base cards if computed missing
+            if (!deck.computed?.rarityCounts) {
+              const baseCards = Array.isArray(deck.cardList)
+                ? deck.cardList
+                : Array.isArray(deck.cards)
+                  ? deck.cards
+                  : Array.isArray((deck as any).cardIds) && (deck as any).cards && typeof (deck as any).cards === 'object'
+                    ? (deck as any).cardIds.map((id: string, idx: number) => {
+                        const data = Object.values((deck as any).cards as any)[idx] as any
+                        return {
+                          ...((typeof data === 'object' && data) || {}),
+                          id,
+                          cardId: id,
+                          name: (data as any)?.name || (data as any)?.title || id,
+                        }
+                      })
+                    : []
 
-              const solbindCardIds = new Set<string>()
-              normalizedCards.forEach(card => {
-                const cardData = card as any
-                if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                  cardData.solbindCards.forEach((solbindCard: any) => {
-                    if (solbindCard && solbindCard.id) {
-                      solbindCardIds.add(solbindCard.id)
-                    }
-                  })
+              const normalizedBaseCards: CardInfo[] = baseCards.map((card: any, idx: number) => {
+                if (typeof card === 'string') return getCardInfo(card)
+                if (card && typeof card === 'object') {
+                  const cardId = card.id || card.cardId || card.name || `card-${idx}`
+                  return getCardInfo(cardId, card)
                 }
-                if (typeof cardData.solbind === 'string') {
-                  cardData.solbind
-                    .split(',')
-                    .map((s: string) => s.trim())
-                    .filter(Boolean)
-                    .forEach((sid: string) => solbindCardIds.add(sid))
-                }
-                if (cardData.solbindId1 || cardData.solbindid1) solbindCardIds.add(cardData.solbindId1 || cardData.solbindid1)
-                if (cardData.solbindId2 || cardData.solbindid2) solbindCardIds.add(cardData.solbindId2 || cardData.solbindid2)
-              })
-              if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
-                ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any) => {
-                  if (solbindCard && solbindCard.id) solbindCardIds.add(solbindCard.id)
-                })
-              }
-              if ((deck as any).forgeborn) {
-                const fb: any = (deck as any).forgeborn
-                if (fb.solbindId1 || fb.solbindid1) solbindCardIds.add(fb.solbindId1 || fb.solbindid1)
-                if (fb.solbindId2 || fb.solbindid2) solbindCardIds.add(fb.solbindId2 || fb.solbindid2)
-              }
-
-              const solbindCardObjects: any[] = []
-              normalizedCards.forEach(card => {
-                const cardData = card as any
-                if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                  cardData.solbindCards.forEach((solbindCard: any) => {
-                    if (solbindCard && solbindCard.id) {
-                      if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-                        solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-                      }
-                    }
-                  })
-                }
-                if (cardData.solbindId1 || cardData.solbindid1) {
-                  const id = cardData.solbindId1 || cardData.solbindid1
-                  if (id && !solbindCardObjects.some(sb => sb.id === id)) {
-                    solbindCardObjects.push(getCardInfo(id))
-                  }
-                }
-                if (cardData.solbindId2 || cardData.solbindid2) {
-                  const id = cardData.solbindId2 || cardData.solbindid2
-                  if (id && !solbindCardObjects.some(sb => sb.id === id)) {
-                    solbindCardObjects.push(getCardInfo(id))
-                  }
-                }
-              })
-              if ((deck as any).forgeborn && Array.isArray((deck as any).forgeborn.solbindCards)) {
-                ;(deck as any).forgeborn.solbindCards.forEach((solbindCard: any) => {
-                  if (solbindCard && solbindCard.id) {
-                    if (!solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-                      solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-                    }
-                  }
-                })
-              }
-              if ((deck as any).forgeborn) {
-                const fb: any = (deck as any).forgeborn
-                if (fb.solbindId1 || fb.solbindid1) {
-                  const id = fb.solbindId1 || fb.solbindid1
-                  if (id && !solbindCardObjects.some(sb => sb.id === id)) {
-                    solbindCardObjects.push(getCardInfo(id))
-                  }
-                }
-                if (fb.solbindId2 || fb.solbindid2) {
-                  const id = fb.solbindId2 || fb.solbindid2
-                  if (id && !solbindCardObjects.some(sb => sb.id === id)) {
-                    solbindCardObjects.push(getCardInfo(id))
-                  }
-                }
-              }
-
-              normalizedCards.forEach(card => {
-                if (forgebornCards.includes(card)) return
-                const cardData = card as any
-                const cardId = card.id
-                if (cardData.solbindCards && Array.isArray(cardData.solbindCards)) {
-                  return
-                }
-                if (solbindCardIds.has(cardId)) {
-                  if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-                    solbindCardObjects.push(card)
-                  }
-                  return
-                }
-                if (cardData.rarity === 'Solbind' || cardData.rarity === 'solbind') {
-                  if (!solbindCardObjects.some(sb => sb.id === cardId)) {
-                    solbindCardObjects.push(card)
-                  }
-                }
+                return getCardInfo(`card-${idx}`)
               })
 
-              // Count rarity for creatures and spells
-              normalizedCards.forEach(card => {
-                if (forgebornCards.includes(card)) return
-                const cardData = card as any
-                const isSolbindCard = solbindCardObjects.some(sb => sb.id === card.id)
-                // Skip counting Solbind rarity for Solbind children (avoid double counting)
-                if (isSolbindCard && !(cardData.solbindCards && Array.isArray(cardData.solbindCards))) {
-                  return
-                }
-                const isSolbindChild = solbindCardIds.has(card.id)
+              const forgebornIds = new Set<string>()
+              if (deck.forgebornId) forgebornIds.add(deck.forgebornId)
+              normalizedBaseCards.forEach((c: CardInfo) => {
+                const typeLower = (c.cardType || c.type || '').toLowerCase()
+                if (typeLower.includes('forgeborn') && c.id) forgebornIds.add(c.id)
+              })
 
-                const rarity = cardData.rarity
+              const counts = new Map<string, number>()
+              normalizedBaseCards.forEach(card => {
+                if (forgebornIds.has(card.id)) return
+                const rarity = (card as any).rarity
                 if (rarity && typeof rarity === 'string') {
                   let normalizedRarity = rarity.trim()
                   const lower = normalizedRarity.toLowerCase()
-                  if (lower.includes('solbind')) {
-                    if (isSolbindChild) return
-                    normalizedRarity = 'Solbind'
-                  }
+                  if (lower.includes('solbind')) normalizedRarity = 'Solbind'
                   if (lower.includes('darkforge') && lower.includes('rare')) {
                     normalizedRarity = 'Darkforge Rare'
                   } else if (lower.includes('common common')) {
@@ -4112,20 +4033,19 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                   } else if (lower.includes('ls') || lower.includes('legendary')) {
                     normalizedRarity = 'LS'
                   }
-
-                  const currentCount = rarityCounts.get(normalizedRarity) || 0
-                  rarityCounts.set(normalizedRarity, currentCount + 1)
+                  counts.set(normalizedRarity, (counts.get(normalizedRarity) || 0) + 1)
                 }
               })
-
-              const deckRarityCount = rarityCounts.get(rarityType) || 0
-              const rarityMatch = !(deckRarityCount < rarityCount)
-              if (!applyMode(rarityMatch, (state.rarityMode as FilterState['rarityMode']) || 'include')) {
-                return false
-              }
+              deckRarityCount = counts.get(rarityType) || 0
             }
-            break
+
+            const rarityMatch = !(deckRarityCount < rarityCount)
+            if (!applyMode(rarityMatch, (state.rarityMode as FilterState['rarityMode']) || 'include')) {
+              return false
+            }
           }
+          break
+        }
           case 'card-set': {
             const cardSetState =
               cardSetInstances[block.id] || {
