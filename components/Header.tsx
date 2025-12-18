@@ -1,14 +1,33 @@
 'use client'
 
-import { Container, Group, Button, Text, Avatar, Menu, Loader, Tooltip } from '@mantine/core'
-import { IconMail, IconBrandDiscord, IconLogout, IconUser } from '@tabler/icons-react'
+import { Container, Group, Button, Text, Avatar, Menu, Loader, Tooltip, Paper } from '@mantine/core'
+import { IconMail, IconBrandDiscord, IconLogout, IconUser, IconArrowUpRight, IconArrowDownRight } from '@tabler/icons-react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import Image from 'next/image'
-import { useState } from 'react'
+import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
+
+type TokenInfo = {
+  id: string
+  symbol: string
+  label: string
+}
+
+type TokenPrice = {
+  price: number | null
+  change1h: number | null
+  change24h: number | null
+  change7d: number | null
+  change30d: number | null
+}
 
 export function Header() {
   const { data: session, status } = useSession()
   const [logoError, setLogoError] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  const [prices, setPrices] = useState<Record<string, TokenPrice>>({})
+  const [loadingPrices, setLoadingPrices] = useState(false)
+  const [errorPrices, setErrorPrices] = useState<string | null>(null)
   const logoSrc = '/images/solforge-logo.png'
 
   const handleDiscordLogin = () => {
@@ -18,6 +37,155 @@ export function Header() {
   const handleLogout = () => {
     signOut()
   }
+
+  const tokens: TokenInfo[] = useMemo(
+    () => [
+      { id: 'bitcoin', symbol: 'BTC', label: 'BTC' },
+      { id: 'ethereum', symbol: 'ETH', label: 'ETH' },
+      { id: 'solforge-fusion', symbol: 'SFG', label: 'SFG' },
+    ],
+    []
+  )
+
+  const formatPrice = (value?: number | null) => {
+    if (value === undefined || value === null || Number.isNaN(value)) return '—'
+    if (value < 1) {
+      return `$${value.toLocaleString('en-US', {
+        minimumFractionDigits: 3,
+        maximumFractionDigits: 3,
+      })}`
+    }
+    const rounded = Math.round(value)
+    return `$${rounded.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    })}`
+  }
+
+  const renderChange = (value?: number | null) => {
+    if (value === undefined || value === null || Number.isNaN(value)) return null
+    const positive = value >= 0
+    return (
+      <Text size="sm" fw={600} c={positive ? 'teal.3' : 'red.4'} lh={1}>
+        {Math.abs(value).toFixed(2)}%
+      </Text>
+    )
+  }
+
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        setLoadingPrices(true)
+        setErrorPrices(null)
+        const ids = tokens.map((t) => t.id).join(',')
+        const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&price_change_percentage=1h,24h,7d,30d`
+        const res = await fetch(url, { cache: 'no-store' })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        const next: Record<string, TokenPrice> = {}
+        if (Array.isArray(data)) {
+          data.forEach((entry: any) => {
+            const id = entry?.id
+            if (!id) return
+            next[id] = {
+              price: entry?.current_price ?? null,
+              change1h: entry?.price_change_percentage_1h_in_currency ?? null,
+              change24h: entry?.price_change_percentage_24h_in_currency ?? null,
+              change7d: entry?.price_change_percentage_7d_in_currency ?? null,
+              change30d: entry?.price_change_percentage_30d_in_currency ?? null,
+            }
+          })
+        }
+        setPrices(next)
+        setLastUpdated(Date.now())
+      } catch (err) {
+        console.error('[Header] Failed to load token prices', err)
+        setErrorPrices('Price feed unavailable')
+      } finally {
+        setLoadingPrices(false)
+      }
+    }
+
+    fetchPrices()
+    const interval = setInterval(fetchPrices, 60 * 1000) // refresh every minute
+    return () => clearInterval(interval)
+  }, [tokens])
+
+  const pricePanel = useMemo(() => {
+    const bitcoinPrice = prices['bitcoin']?.price ?? null
+    const isHighPrice = bitcoinPrice !== null && bitcoinPrice >= 100000
+    const gridTemplate = isHighPrice ? '30px 72px 45px 47px 47px' : '30px 56px 45px 47px 47px'
+    const minWidth = isHighPrice ? 280 : 260
+    const headerCells = ['', '1H', '1D', '1W', '1M']
+
+    return (
+      <Paper
+        radius={0}
+        shadow="none"
+        className="text-white bg-transparent"
+        style={{
+          width: 'fit-content',
+          maxWidth: '100%',
+          overflow: 'hidden',
+          padding: '0 10px',
+          backgroundColor: 'transparent',
+        }}
+      >
+        <div style={{ minWidth: minWidth }}>
+          <div
+            className="grid items-center uppercase tracking-wide text-[11px]"
+            style={{ gridTemplateColumns: gridTemplate, columnGap: 6, color: 'rgba(226, 232, 240, 0.7)' }}
+          >
+            {headerCells.map((label) => {
+              const align = label ? 'center' : 'left'
+              return (
+                <Text key={label} size="xs" fw={600} ta={align} lh={1}>
+                  {label}
+                </Text>
+              )
+            })}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
+            {tokens.map((token) => {
+              const quote = prices[token.id]
+              const priceDelta1h = quote?.change1h
+              const priceColor = priceDelta1h === null || priceDelta1h === undefined ? 'white' : priceDelta1h >= 0 ? 'teal.3' : 'red.4'
+              const changes = [
+                { label: '1D', value: quote?.change24h },
+                { label: '1W', value: quote?.change7d },
+                { label: '1M', value: quote?.change30d },
+              ]
+
+              return (
+                <div
+                  key={token.id}
+                  className="grid items-center"
+                  style={{ gridTemplateColumns: gridTemplate, columnGap: 6 }}
+                >
+                  <Text fw={700} size="sm" lh={1}>
+                    {token.label}
+                  </Text>
+                  <Text size="sm" c={priceColor} lh={1}>
+                    {formatPrice(quote?.price)}
+                  </Text>
+                  {changes.map(({ label, value }) => (
+                    <div key={`${token.id}-${label}`} style={{ display: 'flex', alignItems: 'center' }}>
+                      {renderChange(value) || (
+                        <Text size="sm" c="gray.5" lh={1}>
+                          —
+                        </Text>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </Paper>
+    )
+  }, [prices, tokens, formatPrice, renderChange])
 
   // Get Discord avatar URL
   const getDiscordAvatarUrl = () => {
@@ -44,36 +212,50 @@ export function Header() {
             gap="md"
           >
             <Group gap="sm" align="center" wrap="nowrap">
-              {!logoError ? (
-                <Image
-                  src={logoSrc}
-                  alt="SolForge Fusion"
-                width={194}
-                height={63}
-                className="h-16 w-auto"
-                style={{ objectFit: 'contain' }}
-                onError={() => setLogoError(true)}
-                priority
-              />
-            ) : (
-              <Text
-                size="xl"
-                fw={700}
-                className="text-white"
-                style={{
-                  textShadow: '0 0 15px rgba(74, 144, 226, 0.4)',
-                }}
-              >
-                SolForge Fusion
-              </Text>
-            )}
-          </Group>
+              <Link href="/" aria-label="Go to home" className="flex items-center no-underline">
+                {!logoError ? (
+                  <Image
+                    src={logoSrc}
+                    alt="SolForge Fusion"
+                    width={194}
+                    height={63}
+                    className="h-16 w-auto"
+                    style={{ objectFit: 'contain' }}
+                    onError={() => setLogoError(true)}
+                    priority
+                  />
+                ) : (
+                  <Text
+                    size="xl"
+                    fw={700}
+                    className="text-white"
+                    style={{
+                      textShadow: '0 0 15px rgba(74, 144, 226, 0.4)',
+                    }}
+                  >
+                    SolForge Fusion
+                  </Text>
+                )}
+              </Link>
+            </Group>
 
-          <Group gap="xs" wrap="nowrap">
-            <Button
-              component="a"
-              href="/"
-              variant="light"
+            <Group gap="xs" wrap="wrap" align="center" justify="flex-start">
+              {loadingPrices ? (
+                <Loader size="sm" color="blue" />
+              ) : errorPrices ? (
+                <Text size="xs" c="red.3">
+                  {errorPrices}
+                </Text>
+              ) : (
+                pricePanel
+              )}
+            </Group>
+
+            <Group gap="xs" wrap="nowrap">
+              <Button
+                component="a"
+                href="/"
+                variant="light"
               size="sm"
               className="bg-slate-700/40 text-white border border-sf-primary/30 hover:border-sf-primary/60"
             >
