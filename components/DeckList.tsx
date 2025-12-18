@@ -702,7 +702,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
                       }
                 }
               >
-                Exp: {new Date(expiryTs).toLocaleDateString('en-GB', {
+                {new Date(expiryTs).toLocaleDateString('en-GB', {
                   day: 'numeric',
                   month: 'short',
                   year: 'numeric',
@@ -1484,7 +1484,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
                     : { backgroundColor: '#b32626', color: '#fff', border: '1px solid #b32626' }
                 }
               >
-                Exp: {expireLabel}
+                {expireLabel}
               </Badge>
             )}
           </Group>

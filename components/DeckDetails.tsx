@@ -3625,7 +3625,7 @@ const originalCardMeta = useMemo(() => {
                               }
                         }
                       >
-                        Exp: {expireLabel}
+                        Expire date: {expireLabel}
                       </Badge>
                     )}
                   </Group>
