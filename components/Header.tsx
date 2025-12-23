@@ -5,7 +5,7 @@ import { IconMail, IconBrandDiscord, IconLogout, IconUser, IconArrowUpRight, Ico
 import { useSession, signIn, signOut } from 'next-auth/react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 
 type TokenInfo = {
   id: string
@@ -23,6 +23,111 @@ type TokenPrice = {
 
 const PRICE_CACHE_KEY = 'sff:token-prices:v1'
 const PRICE_CACHE_TTL_MS = 60 * 1000
+const PRICE_HEADER_CELLS = ['', '1H', '1D', '1W', '1M']
+const TOKENS: TokenInfo[] = [
+  { id: 'bitcoin', symbol: 'BTC', label: 'BTC' },
+  { id: 'ethereum', symbol: 'ETH', label: 'ETH' },
+  { id: 'solforge-fusion', symbol: 'SFG', label: 'SFG' },
+]
+
+const formatPrice = (value?: number | null) => {
+  if (value === undefined || value === null || Number.isNaN(value)) return '—'
+  if (value < 1) {
+    return `$${value.toLocaleString('en-US', {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    })}`
+  }
+  const rounded = Math.round(value)
+  return `$${rounded.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`
+}
+
+const renderChange = (value?: number | null) => {
+  if (value === undefined || value === null || Number.isNaN(value)) return null
+  const positive = value >= 0
+  return (
+    <Text
+      size="sm"
+      fw={600}
+      c={positive ? 'teal.3' : 'red.4'}
+      lh={1}
+      style={{ fontVariantNumeric: 'tabular-nums', transition: 'color 150ms ease' }}
+    >
+      {Math.abs(value).toFixed(2)}%
+    </Text>
+  )
+}
+
+const PriceHeader = memo(function PriceHeader({ gridTemplate }: { gridTemplate: string }) {
+  return (
+    <div
+      className="grid items-center uppercase tracking-wide text-[11px]"
+      style={{ gridTemplateColumns: gridTemplate, columnGap: 6, color: 'rgba(226, 232, 240, 0.7)' }}
+    >
+      {PRICE_HEADER_CELLS.map((label) => {
+        const align = label ? 'center' : 'left'
+        return (
+          <Text key={label} size="xs" fw={600} ta={align} lh={1}>
+            {label}
+          </Text>
+        )
+      })}
+    </div>
+  )
+})
+
+const TokenLabel = memo(function TokenLabel({ label }: { label: string }) {
+  return (
+    <Text fw={700} size="sm" lh={1}>
+      {label}
+    </Text>
+  )
+})
+
+type PriceRowProps = {
+  token: TokenInfo
+  quote?: TokenPrice
+  gridTemplate: string
+}
+
+const PriceRow = memo(function PriceRow({ token, quote, gridTemplate }: PriceRowProps) {
+  const priceDelta1h = quote?.change1h
+  const priceColor = priceDelta1h === null || priceDelta1h === undefined ? 'white' : priceDelta1h >= 0 ? 'teal.3' : 'red.4'
+  const changes = [
+    { label: '1D', value: quote?.change24h },
+    { label: '1W', value: quote?.change7d },
+    { label: '1M', value: quote?.change30d },
+  ]
+
+  return (
+    <div
+      className="grid items-center"
+      style={{ gridTemplateColumns: gridTemplate, columnGap: 6 }}
+    >
+      <TokenLabel label={token.label} />
+      <Text
+        size="sm"
+        c={priceColor}
+        lh={1}
+        style={{ fontVariantNumeric: 'tabular-nums', transition: 'color 150ms ease' }}
+      >
+        {formatPrice(quote?.price)}
+      </Text>
+      {changes.map(({ label, value }) => (
+        <div key={`${token.id}-${label}`} style={{ display: 'flex', alignItems: 'center' }}>
+          {renderChange(value) || (
+            <Text size="sm" c="gray.5" lh={1} style={{ fontVariantNumeric: 'tabular-nums' }}>
+              —
+            </Text>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+})
 
 export function Header() {
   const { data: session, status } = useSession()
@@ -39,40 +144,6 @@ export function Header() {
 
   const handleLogout = () => {
     signOut()
-  }
-
-  const tokens: TokenInfo[] = useMemo(
-    () => [
-      { id: 'bitcoin', symbol: 'BTC', label: 'BTC' },
-      { id: 'ethereum', symbol: 'ETH', label: 'ETH' },
-      { id: 'solforge-fusion', symbol: 'SFG', label: 'SFG' },
-    ],
-    []
-  )
-
-  const formatPrice = (value?: number | null) => {
-    if (value === undefined || value === null || Number.isNaN(value)) return '—'
-    if (value < 1) {
-      return `$${value.toLocaleString('en-US', {
-        minimumFractionDigits: 3,
-        maximumFractionDigits: 3,
-      })}`
-    }
-    const rounded = Math.round(value)
-    return `$${rounded.toLocaleString('en-US', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    })}`
-  }
-
-  const renderChange = (value?: number | null) => {
-    if (value === undefined || value === null || Number.isNaN(value)) return null
-    const positive = value >= 0
-    return (
-      <Text size="sm" fw={600} c={positive ? 'teal.3' : 'red.4'} lh={1}>
-        {Math.abs(value).toFixed(2)}%
-      </Text>
-    )
   }
 
   useEffect(() => {
@@ -116,7 +187,7 @@ export function Header() {
       try {
         setLoadingPrices(true)
         setErrorPrices(null)
-        const ids = tokens.map((t) => t.id).join(',')
+        const ids = TOKENS.map((t) => t.id).join(',')
         const url = `/api/prices?ids=${encodeURIComponent(ids)}`
         const res = await fetch(url, { cache: 'no-store' })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -150,14 +221,13 @@ export function Header() {
       clearInterval(interval)
       window.removeEventListener('storage', handleStorage)
     }
-  }, [tokens])
+  }, [])
 
   const pricePanel = useMemo(() => {
     const bitcoinPrice = prices['bitcoin']?.price ?? null
     const isHighPrice = bitcoinPrice !== null && bitcoinPrice >= 100000
     const gridTemplate = isHighPrice ? '30px 72px 45px 47px 47px' : '30px 56px 45px 47px 47px'
     const minWidth = isHighPrice ? 280 : 260
-    const headerCells = ['', '1H', '1D', '1W', '1M']
 
     return (
       <Paper
@@ -173,60 +243,23 @@ export function Header() {
         }}
       >
         <div style={{ minWidth: minWidth }}>
-          <div
-            className="grid items-center uppercase tracking-wide text-[11px]"
-            style={{ gridTemplateColumns: gridTemplate, columnGap: 6, color: 'rgba(226, 232, 240, 0.7)' }}
-          >
-            {headerCells.map((label) => {
-              const align = label ? 'center' : 'left'
-              return (
-                <Text key={label} size="xs" fw={600} ta={align} lh={1}>
-                  {label}
-                </Text>
-              )
-            })}
-          </div>
+          <PriceHeader gridTemplate={gridTemplate} />
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
-            {tokens.map((token) => {
-              const quote = prices[token.id]
-              const priceDelta1h = quote?.change1h
-              const priceColor = priceDelta1h === null || priceDelta1h === undefined ? 'white' : priceDelta1h >= 0 ? 'teal.3' : 'red.4'
-              const changes = [
-                { label: '1D', value: quote?.change24h },
-                { label: '1W', value: quote?.change7d },
-                { label: '1M', value: quote?.change30d },
-              ]
-
-              return (
-                <div
-                  key={token.id}
-                  className="grid items-center"
-                  style={{ gridTemplateColumns: gridTemplate, columnGap: 6 }}
-                >
-                  <Text fw={700} size="sm" lh={1}>
-                    {token.label}
-                  </Text>
-                  <Text size="sm" c={priceColor} lh={1}>
-                    {formatPrice(quote?.price)}
-                  </Text>
-                  {changes.map(({ label, value }) => (
-                    <div key={`${token.id}-${label}`} style={{ display: 'flex', alignItems: 'center' }}>
-                      {renderChange(value) || (
-                        <Text size="sm" c="gray.5" lh={1}>
-                          —
-                        </Text>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )
-            })}
+            {TOKENS.map((token) => (
+              <PriceRow
+                key={token.id}
+                token={token}
+                quote={prices[token.id]}
+                gridTemplate={gridTemplate}
+              />
+            ))}
           </div>
         </div>
       </Paper>
     )
-  }, [prices, tokens, formatPrice, renderChange])
+  }, [prices])
+  const hasPrices = Object.keys(prices).length > 0
 
   // Get Discord avatar URL
   const getDiscordAvatarUrl = () => {
@@ -280,15 +313,22 @@ export function Header() {
               </Link>
             </Group>
 
-          <Group gap="xs" wrap="wrap" align="center" justify="flex-start">
-              {loadingPrices ? (
+            <Group gap="xs" wrap="wrap" align="center" justify="flex-start">
+              {!hasPrices && loadingPrices ? (
                 <Loader size="sm" color="blue" />
-              ) : errorPrices && Object.keys(prices).length === 0 ? (
+              ) : errorPrices && !hasPrices ? (
                 <Text size="xs" c="red.3">
                   {errorPrices}
                 </Text>
               ) : (
-                pricePanel
+                <div
+                  style={{
+                    opacity: loadingPrices && hasPrices ? 0.85 : 1,
+                    transition: 'opacity 150ms ease',
+                  }}
+                >
+                  {pricePanel}
+                </div>
               )}
             </Group>
 
