@@ -1449,6 +1449,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     set({
       decks: [],
       fusedDecks: [],
+      loading: false,
       error: null,
       currentPlayer: null,
       progress: createIdleProgress(),

@@ -43,10 +43,8 @@ export async function GET(request: NextRequest) {
       })
     } else {
       // Fetch both regular and fused decks
-      const [{ decks: regularDecks, meta }, fusedDecks] = await Promise.all([
-        getPlayerDecks(playerName, { force }),
-        fetchFusedDecksFromAPI(playerName, { force })
-      ])
+      const { decks: regularDecks, meta } = await getPlayerDecks(playerName, { force })
+      const fusedDecks = await fetchFusedDecksFromAPI(playerName, { force })
       
       logWithTimestamp(`[API Route] Received ${regularDecks.length} regular and ${fusedDecks.length} fused decks for player: ${playerName}`)
       
