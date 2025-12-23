@@ -104,6 +104,20 @@ export async function GET(
         .replace(/^deck[_-]?/i, '')
         .replace(/^fused[_-]?/i, '')
 
+    const toFusedApiId = (value: string) => {
+      const raw = value.toString().trim()
+      if (!raw) return raw
+      if (/^fused[_-]/i.test(raw)) {
+        return raw.replace(/^fused[-_]/i, 'Fused_')
+      }
+      if (/^deck[_-]?fused[_-]?/i.test(raw)) {
+        const stripped = raw.replace(/^deck[_-]?/i, '')
+        return stripped.replace(/^fused[-_]/i, 'Fused_')
+      }
+      const base = stripDeckPrefixes(raw)
+      return `Fused_${base}`
+    }
+
     const baseId = stripDeckPrefixes(deckId)
     const candidates = Array.from(
       new Set(
@@ -235,7 +249,7 @@ export async function GET(
     // 3) Fallback for fused decks
     const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
     for (const candidate of candidates) {
-      const fusedCandidate = stripDeckPrefixes(candidate)
+      const fusedCandidate = toFusedApiId(candidate)
       const fusedRes = await fetch(`${API_BASE_URL}/fuseddeck/${fusedCandidate}?inclCards=true&inclUsers=true`, {
         method: 'GET',
         headers: { Accept: 'application/json' },
