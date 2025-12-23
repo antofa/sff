@@ -97,13 +97,25 @@ export async function GET(
 
   try {
     // Support multiple id formats: Deck_..., Deck_Fused_..., Fused_...
+    const stripDeckPrefixes = (value: string) =>
+      value
+        .toString()
+        .replace(/^deck[_-]?fused[_-]?/i, '')
+        .replace(/^deck[_-]?/i, '')
+        .replace(/^fused[_-]?/i, '')
+
+    const baseId = stripDeckPrefixes(deckId)
     const candidates = Array.from(
       new Set(
         [
           deckId,
-          deckId.replace(/^Deck[_-]?/i, ''),
-          deckId.replace(/^Deck[_-]?Fused[_-]?/i, ''),
-          deckId.replace(/^Fused[_-]?/i, ''),
+          baseId,
+          `Deck_${baseId}`,
+          `Deck-${baseId}`,
+          `Deck_Fused_${baseId}`,
+          `Deck-Fused-${baseId}`,
+          `Fused_${baseId}`,
+          `Fused-${baseId}`,
         ].filter(Boolean)
       )
     )
@@ -145,7 +157,7 @@ export async function GET(
 
         if (needsHydration) {
           try {
-            const raw = await fetchDeckDetails(candidate)
+            const raw = await fetchDeckDetails(stripDeckPrefixes(candidate))
             if (raw) {
               const normalized = normalizeDeck(raw)
               const owner =
@@ -186,7 +198,7 @@ export async function GET(
 
     // 2) Try as regular deck for each candidate via external API
     for (const candidate of candidates) {
-      const raw = await fetchDeckDetails(candidate)
+      const raw = await fetchDeckDetails(stripDeckPrefixes(candidate))
       if (raw) {
         const rawId = raw?.id || raw?.deckId || raw?.deck_id
         if (!rawId) {
@@ -223,7 +235,8 @@ export async function GET(
     // 3) Fallback for fused decks
     const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
     for (const candidate of candidates) {
-      const fusedRes = await fetch(`${API_BASE_URL}/fuseddeck/${candidate}?inclCards=true&inclUsers=true`, {
+      const fusedCandidate = stripDeckPrefixes(candidate)
+      const fusedRes = await fetch(`${API_BASE_URL}/fuseddeck/${fusedCandidate}?inclCards=true&inclUsers=true`, {
         method: 'GET',
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(15000),

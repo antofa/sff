@@ -21,6 +21,9 @@ type TokenPrice = {
   change30d: number | null
 }
 
+const PRICE_CACHE_KEY = 'sff:token-prices:v1'
+const PRICE_CACHE_TTL_MS = 60 * 1000
+
 export function Header() {
   const { data: session, status } = useSession()
   const [logoError, setLogoError] = useState(false)
@@ -73,31 +76,56 @@ export function Header() {
   }
 
   useEffect(() => {
+    const readPriceCache = () => {
+      if (typeof window === 'undefined') return null
+      try {
+        const raw = window.localStorage.getItem(PRICE_CACHE_KEY)
+        if (!raw) return null
+        const parsed = JSON.parse(raw)
+        const updatedAt = Number(parsed?.updatedAt)
+        if (!Number.isFinite(updatedAt)) return null
+        if (!parsed?.prices || typeof parsed.prices !== 'object') return null
+        return { prices: parsed.prices as Record<string, TokenPrice>, updatedAt }
+      } catch {
+        return null
+      }
+    }
+
+    const writePriceCache = (nextPrices: Record<string, TokenPrice>, updatedAt: number) => {
+      if (typeof window === 'undefined') return
+      try {
+        window.localStorage.setItem(
+          PRICE_CACHE_KEY,
+          JSON.stringify({ prices: nextPrices, updatedAt })
+        )
+      } catch {
+        // ignore localStorage failures
+      }
+    }
+
     const fetchPrices = async () => {
+      const cached = readPriceCache()
+      const now = Date.now()
+      if (cached && now - cached.updatedAt < PRICE_CACHE_TTL_MS) {
+        setPrices(cached.prices)
+        setLastUpdated(cached.updatedAt)
+        setErrorPrices(null)
+        return
+      }
+
       try {
         setLoadingPrices(true)
         setErrorPrices(null)
         const ids = tokens.map((t) => t.id).join(',')
-        const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&price_change_percentage=1h,24h,7d,30d`
+        const url = `/api/prices?ids=${encodeURIComponent(ids)}`
         const res = await fetch(url, { cache: 'no-store' })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
-        const next: Record<string, TokenPrice> = {}
-        if (Array.isArray(data)) {
-          data.forEach((entry: any) => {
-            const id = entry?.id
-            if (!id) return
-            next[id] = {
-              price: entry?.current_price ?? null,
-              change1h: entry?.price_change_percentage_1h_in_currency ?? null,
-              change24h: entry?.price_change_percentage_24h_in_currency ?? null,
-              change7d: entry?.price_change_percentage_7d_in_currency ?? null,
-              change30d: entry?.price_change_percentage_30d_in_currency ?? null,
-            }
-          })
-        }
+        const next: Record<string, TokenPrice> = data?.prices ?? {}
+        const updatedAt = Number(data?.updatedAt) || Date.now()
         setPrices(next)
-        setLastUpdated(Date.now())
+        setLastUpdated(updatedAt)
+        writePriceCache(next, updatedAt)
       } catch (err) {
         console.error('[Header] Failed to load token prices', err)
         setErrorPrices('Price feed unavailable')
@@ -108,7 +136,20 @@ export function Header() {
 
     fetchPrices()
     const interval = setInterval(fetchPrices, 60 * 1000) // refresh every minute
-    return () => clearInterval(interval)
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== PRICE_CACHE_KEY) return
+      const cached = readPriceCache()
+      if (cached) {
+        setPrices(cached.prices)
+        setLastUpdated(cached.updatedAt)
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('storage', handleStorage)
+    }
   }, [tokens])
 
   const pricePanel = useMemo(() => {
@@ -239,10 +280,10 @@ export function Header() {
               </Link>
             </Group>
 
-            <Group gap="xs" wrap="wrap" align="center" justify="flex-start">
+          <Group gap="xs" wrap="wrap" align="center" justify="flex-start">
               {loadingPrices ? (
                 <Loader size="sm" color="blue" />
-              ) : errorPrices ? (
+              ) : errorPrices && Object.keys(prices).length === 0 ? (
                 <Text size="xs" c="red.3">
                   {errorPrices}
                 </Text>

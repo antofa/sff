@@ -3469,15 +3469,14 @@ const originalCardMeta = useMemo(() => {
     const rarity = cardData.rarity || card.rarity
 
     const factionIconKey = faction ? `faction:${faction}` : null
-    // Cache rarity icon per set+rarity (card id removed to avoid refetching per card)
-    const rarityIconKey = !isForgeborn && rarity ? `rarity:${deck.cardSetNo || ''}:${rarity}` : null
-
     const factionRawPath = faction ? `/images/icons/${faction}.png` : null
     const factionIconPath = getCachedIconPath(factionIconKey, factionRawPath)
 
     const rarityRawPath = !isForgeborn
-      ? getRarityIconPath(deck.cardSetNo, rarity, card.id, cardData)
+      ? getRarityIconPath(deckSet || deck?.cardSetNo, rarity, card.id, cardData)
       : null
+    // Cache by actual icon path to avoid mixing sets for the same rarity.
+    const rarityIconKey = rarityRawPath ? `rarity:${rarityRawPath}` : null
     const rarityIconPath = getCachedIconPath(rarityIconKey, rarityRawPath)
 
     return {
