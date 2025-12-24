@@ -7,12 +7,12 @@ import type { Database, PlayerDeckInsert, PlayerDeckUpdate, PlayerDeck } from '@
 import type { Deck } from '@/store/deckStore'
 
 // Environment variables for Supabase connection
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey
 
-// Create Supabase client (anon by default; API routes can override with service key)
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+// Create Supabase client only if URL and key are provided
+export const supabase = supabaseUrl && supabaseAnonKey ? createClient<Database>(supabaseUrl, supabaseAnonKey) : null as any
 
 const normalizeDiscord = (value?: string | null) => {
   if (!value) return null

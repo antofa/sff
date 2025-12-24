@@ -15,7 +15,7 @@ const getClientKey = (request: NextRequest) => {
   if (realIp) return realIp.trim()
   const cfIp = request.headers.get('cf-connecting-ip')
   if (cfIp) return cfIp.trim()
-  return request.ip || 'unknown'
+  return 'unknown'
 }
 
 const checkRateLimit = (key: string) => {
