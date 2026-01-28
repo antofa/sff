@@ -188,3 +188,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: bde3f71
   Request: Fix narrow card auto-scroll offset and reduce empty space around the card image.
   Date: 2026-01-28
+- Commit: 4055ac5
+  Request: Keep the card image and tag panels fixed in wide deck detail modals while the card list scrolls.
+  Date: 2026-01-28
