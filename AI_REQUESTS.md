@@ -185,3 +185,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 2342e43
   Request: Keep spinner controls visible in filter number inputs and place the clear button next to them.
   Date: 2026-01-28
+- Commit: bde3f71
+  Request: Fix narrow card auto-scroll offset and reduce empty space around the card image.
+  Date: 2026-01-28
