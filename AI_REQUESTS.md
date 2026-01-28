@@ -155,3 +155,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 0852316
   Request: Remove the extra scrollbar by relying on the modal's own scroll behavior.
   Date: 2026-01-28
+- Commit: 5b81dec
+  Request: Auto-scroll the selected card into view on click and increase the card frame height so level buttons fit.
+  Date: 2026-01-28
