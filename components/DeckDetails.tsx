@@ -4103,7 +4103,7 @@ const originalCardMeta = useMemo(() => {
                     const forgebornScale = shouldRotateForgeborn ? 1.44 : isForgeborn ? 2.2 : 1
                     const forgebornPositionStyle = isForgeborn ? { top: '50%', left: '50%' } : {}
                     const forgebornTransform = isForgeborn
-                      ? `${shouldRotateForgeborn ? 'rotate(-90deg) ' : ''}translate(-50%, -50%) scale(${forgebornScale})`
+                      ? `${shouldRotateForgeborn ? 'rotate(-90deg) ' : ''}translate(-50%, -48%) scale(${forgebornScale})`
                       : 'none'
 
                     const imageKey = effectiveImageUrl ? `${selectedCard.id}-${effectiveLevel}-${effectiveImageUrl}` : ''
