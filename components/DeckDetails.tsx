@@ -313,11 +313,14 @@ const CardListItem = memo(function CardListItem({
   onClick 
 }: CardListItemProps) {
   return (
-    <div style={{ 
-      // CSS containment for better performance - browser can skip rendering off-screen items
-      contentVisibility: 'auto',
-      containIntrinsicSize: '0 40px', // Approximate height for layout
-    }}>
+    <div
+      data-card-id={card.id}
+      style={{
+        // CSS containment for better performance - browser can skip rendering off-screen items
+        contentVisibility: 'auto',
+        containIntrinsicSize: '0 40px', // Approximate height for layout
+      }}
+    >
       <Button
         variant={isSelected ? 'filled' : 'subtle'}
         onClick={onClick}
@@ -446,6 +449,16 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       document.body.style.overflow = bodyOverflow
     }
   }, [opened])
+
+  useEffect(() => {
+    if (!selectedCard || isMdUp) return
+    const id = selectedCard.id
+    if (!id) return
+    const target = document.querySelector(`[data-card-id="${id}"]`)
+    if (target && 'scrollIntoView' in target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [selectedCard, isMdUp])
 
   // Всегда работаем с обогащенной декой (computed поля) для сетов/expiry/тегов
   const deckForDisplay = useMemo(() => {
@@ -3135,7 +3148,7 @@ const originalCardMeta = useMemo(() => {
     const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
 
     const baseFrameWidthPx = compact ? 240 : 288
-    const baseFrameHeightPx = compact ? 400 : 480
+    const baseFrameHeightPx = compact ? 460 : 480
     const frameWidthPx = baseFrameWidthPx
     const frameHeightPx = baseFrameHeightPx
     const isResizedForgeborn = isForgeborn && !!effectiveImageUrl && effectiveImageUrl.includes('/resized/')
@@ -3159,8 +3172,8 @@ const originalCardMeta = useMemo(() => {
         className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
         style={{
           backgroundColor: 'rgba(30, 41, 59, 0.6)',
-          minHeight: compact ? '32vh' : '42vh',
-          maxHeight: compact ? '60vh' : '52vh',
+          minHeight: compact ? '38vh' : '42vh',
+          maxHeight: compact ? '68vh' : '52vh',
           width: compact ? '100%' : detailPanelWidth,
           minWidth: compact ? '0' : detailPanelMinWidth,
           display: 'flex',
@@ -3180,7 +3193,7 @@ const originalCardMeta = useMemo(() => {
                 className="relative w-full flex items-center justify-center"
                 style={{
                   width: `min(${frameWidthPx}px, ${compact ? '88vw' : '70vw'})`,
-                  height: `min(${frameHeightPx}px, ${compact ? '60vh' : '70vh'})`,
+                  height: `min(${frameHeightPx}px, ${compact ? '68vh' : '70vh'})`,
                 }}
               >
                 {effectiveImageUrl && (
