@@ -98,3 +98,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 61da1a6
   Request: Shift the deck preview image right and add a left column with creatures/spells/solbind plus owner, score (x100 rounded), and expiry.
   Date: 2026-01-28
+- Commit: 25e00af
+  Request: Add set info above the column, plus rarity counts and creature tags below the deck composition.
+  Date: 2026-01-28
