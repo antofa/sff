@@ -359,6 +359,9 @@ export default function Home() {
 
     const trimmed = usernameParam.trim()
     if (!trimmed) return
+    if (isTyping) return
+    const currentInput = playerName?.trim()
+    if (currentInput && currentInput.toLowerCase() !== trimmed.toLowerCase()) return
 
     const autoKey = `${trimmed.toLowerCase()}|${forceValue ? '1' : '0'}`
     if (autoSearchKeyRef.current === autoKey) return
@@ -391,7 +394,7 @@ export default function Home() {
     // Автозапуск поиска по параметрам: допускаем вызов setState внутри эффекта
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void handleSearch(trimmed, forceValue)
-  }, [handleSearch, searchParams, currentPlayer, decks.length, fusedDecks.length, progress.status, loading])
+  }, [handleSearch, searchParams, currentPlayer, decks.length, fusedDecks.length, progress.status, loading, isTyping, playerName])
 
   return (
     <main className="min-h-screen relative overflow-hidden">

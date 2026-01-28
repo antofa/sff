@@ -65,5 +65,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Scroll to the card label on selection and keep narrow frame height consistent across viewport sizes.
 - Tighten narrow card frame padding and align auto-scroll to keep card titles visible.
 - Add B3 set detection across APIs, UI filters, and rarity icons.
+- Prevent URL auto-search from overwriting manual username input.
 
 ### Fixed
