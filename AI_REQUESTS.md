@@ -182,3 +182,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 2e64dac
   Request: Set deck list pagination to 100 per page for all deck types.
   Date: 2026-01-28
+- Commit: 2342e43
+  Request: Keep spinner controls visible in filter number inputs and place the clear button next to them.
+  Date: 2026-01-28
