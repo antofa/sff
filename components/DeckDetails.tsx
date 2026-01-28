@@ -4100,7 +4100,7 @@ const originalCardMeta = useMemo(() => {
                     const frameHeightPx = baseFrameHeightPx
                     const isResizedForgeborn = isForgeborn && !!effectiveImageUrl && effectiveImageUrl.includes('/resized/')
                     const shouldRotateForgeborn = isForgeborn && !isResizedForgeborn
-                    const forgebornScale = shouldRotateForgeborn ? 1.44 : isForgeborn ? 1.6 : 1
+                    const forgebornScale = shouldRotateForgeborn ? 1.44 : isForgeborn ? 2.2 : 1
 
                     const imageKey = effectiveImageUrl ? `${selectedCard.id}-${effectiveLevel}-${effectiveImageUrl}` : ''
                     const isImageReady = !!(imageKey && imageLoadStatus[imageKey])

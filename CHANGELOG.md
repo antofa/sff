@@ -22,5 +22,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Disabled session polling when auth is not configured and added a dev secret fallback.
 - Increased the display scale for unrotated forgeborn images.
 - Apply forgeborn scaling even without rotation and increase the scale further.
+- Increased the forgeborn scale to 2.2.
 
 ### Fixed
