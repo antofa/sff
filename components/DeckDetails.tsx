@@ -432,7 +432,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       : 'calc(100vw - 24px)'
   const modalMinWidth = isMdUp ? 'min(1100px, calc(100vw - 64px))' : 'auto'
   const detailPaneStyle: React.CSSProperties = isMdUp
-    ? { position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: 'calc(70vh + 50px)' }
+    ? { position: 'sticky', top: '1.5rem', alignSelf: 'flex-start', maxHeight: 'calc(80vh - 1.5rem)' }
     : { position: 'static', alignSelf: 'stretch', maxHeight: 'none' }
   const detailPanelWidth = isMdUp ? 'min(60vw, 900px)' : '100%'
   const detailPanelMinWidth = isMdUp ? '520px' : '0'
@@ -4165,6 +4165,7 @@ const originalCardMeta = useMemo(() => {
           padding: '1.5rem',
           maxHeight: isMdUp ? 'calc(80vh + 50px)' : 'calc(85vh - 24px)',
           minHeight: isMdUp ? 'calc(70vh + 50px)' : 'auto',
+          overflowY: isMdUp ? 'hidden' : undefined,
         },
         overlay: {
           transition: 'opacity 300ms ease-in-out, backdrop-filter 300ms ease-in-out',
@@ -4173,7 +4174,13 @@ const originalCardMeta = useMemo(() => {
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ alignItems: 'flex-start' }}>
         {/* Left column - card lists */}
-        <div className="lg:col-span-1 flex flex-col h-full">
+        <div
+          className="lg:col-span-1 flex flex-col h-full"
+          style={{
+            maxHeight: isMdUp ? 'calc(80vh + 50px)' : 'none',
+            overflowY: isMdUp ? 'auto' : 'visible',
+          }}
+        >
           <div className="flex-1" style={{ padding: 0 }}>
             <Stack gap="md" align="flex-start" style={{ padding: 0, margin: 0 }}>
               {/* Forgeborn */}

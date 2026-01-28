@@ -71,5 +71,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Set deck list pagination size to 100 for regular and fused decks.
 - Keep number input spinners visible while showing a separate clear button in filters.
 - Improve narrow card scroll offset and tighten card frame spacing.
+- Keep the card detail frames fixed in wide deck modals while the card list scrolls.
 
 ### Fixed
