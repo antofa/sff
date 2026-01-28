@@ -137,7 +137,7 @@ export async function GET(
                 width: '100%',
                 height: '100%',
                 objectFit: 'contain',
-                transform: `${shouldRotate ? 'rotate(-90deg)' : ''} scale(1.08)`.trim(),
+                transform: `${shouldRotate ? 'rotate(-90deg)' : ''} scale(1.5)`.trim(),
                 transformOrigin: 'center center',
               }}
             />

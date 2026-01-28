@@ -37,5 +37,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Auto-rotate OG forgeborn images when they are landscape.
 - Flip OG rotation logic to keep images horizontal.
 - Scale up OG forgeborn images to reduce empty space.
+- Increase OG forgeborn image scale to 1.5.
 
 ### Fixed
