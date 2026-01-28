@@ -44,3 +44,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 39d1fca
   Request: Keep the forgeborn image size but make top and bottom padding inside the frame equal.
   Date: 2026-01-28
+- Commit: 4503b7c
+  Request: The forgeborn image is stuck to the bottom edge; adjust vertical alignment.
+  Date: 2026-01-28
