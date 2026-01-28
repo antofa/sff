@@ -33,7 +33,6 @@ export default function Home() {
     deckTags,
     deckCreatureTypes,
     currentPlayer,
-    restartFetchIfLoading,
   } = useDeckStore()
   const lastSearchRef = useRef<string>('')
   const [elapsedMs, setElapsedMs] = useState(0)
@@ -339,24 +338,7 @@ export default function Home() {
     }
   }, [])
 
-  // If tab was hidden and we return while loading, restart fetch to avoid stalled SSE
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        restartFetchIfLoading()
-      }
-    }
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', handleVisibility)
-      window.addEventListener('focus', handleVisibility)
-    }
-    return () => {
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', handleVisibility)
-        window.removeEventListener('focus', handleVisibility)
-      }
-    }
-  }, [restartFetchIfLoading])
+  // Do not restart searches on visibility changes to avoid resetting progress mid-search.
 
   // Auto-run search when opened with params (?username=...&forceRefresh=true)
   useEffect(() => {
