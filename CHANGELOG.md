@@ -45,5 +45,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Add ELO to the OG metadata and scale the left column typography.
 - Reduce OG left column font sizes and include Solbind cards in deck list text.
 - Order deck list text as forgeborn, creatures, spells, then solbind cards.
+- Fix deck list ordering so non-forgeborn cards are included again.
 
 ### Fixed

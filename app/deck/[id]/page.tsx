@@ -62,8 +62,6 @@ const listDeckCards = (deck: any) => {
   const addName = (name?: string | null) => {
     const trimmed = (name || '').trim()
     if (!trimmed) return
-    if (unique.has(trimmed)) return
-    unique.add(trimmed)
     return trimmed
   }
 
