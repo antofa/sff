@@ -179,3 +179,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 8e07196
   Request: Fix deck list set badges to prefer explicit cardSetId/cardSetNo so B3/B2 display correctly.
   Date: 2026-01-28
+- Commit: 2e64dac
+  Request: Set deck list pagination to 100 per page for all deck types.
+  Date: 2026-01-28
