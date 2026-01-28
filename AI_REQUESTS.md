@@ -167,3 +167,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: e40206e
   Request: Reduce vertical padding around narrow card images and scroll to keep card titles visible.
   Date: 2026-01-28
+- Commit: d4f050f
+  Request: Add B3 set detection (using cardSetId) across the app, and ensure B2 is detected the same way, including tags, filters, and rarity icons.
+  Date: 2026-01-28
