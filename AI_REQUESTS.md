@@ -65,3 +65,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 030e621
   Request: Fix /all-decks failing with HTTP 500 from /api/saved-decks when Supabase is not configured.
   Date: 2026-01-28
+- Commit: 9bcc337
+  Request: Replace deck link previews with a short deck summary and forgeborn image.
+  Date: 2026-01-28
