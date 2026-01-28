@@ -5,7 +5,7 @@ import { pluralize } from '@/lib/pluralize'
 import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image, ActionIcon } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useDebouncedValue, useResizeObserver } from '@mantine/hooks'
+import { useDebouncedValue, useMediaQuery } from '@mantine/hooks'
 import type { Deck } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo, type CardInfo } from '@/lib/api'
@@ -4317,20 +4317,18 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   )
 
   // Virtualization setup (after filtered decks are computed)
-  const [regularListRef, rect] = useResizeObserver()
-  const [fusedListRef, fusedRect] = useResizeObserver()
+  const isSmUp = useMediaQuery('(min-width: 48em)')
+  const isMdUp = useMediaQuery('(min-width: 62em)')
   const columnCount = useMemo(() => {
-    const width = rect.width || 1200
-    if (width < 640) return 1
-    if (width < 960) return 2
-    return 3
-  }, [rect.width])
+    if (isMdUp) return 3
+    if (isSmUp) return 2
+    return 1
+  }, [isMdUp, isSmUp])
   const fusedColumnCount = useMemo(() => {
-    const width = fusedRect.width || 1200
-    if (width < 640) return 1
-    if (width < 960) return 2
-    return 3
-  }, [fusedRect.width])
+    if (isMdUp) return 3
+    if (isSmUp) return 2
+    return 1
+  }, [isMdUp, isSmUp])
   // Fixed row height for smoother scroll without expensive measurements
   const regularRows = useMemo(() => {
     const rows: Deck[][] = []
@@ -5754,7 +5752,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     </Group>
                     )}
                 </Group>
-                <div ref={regularListRef} style={{ position: 'relative' }}>
+                <div style={{ position: 'relative' }}>
                   {regularRows.map((rowDecks, idx) => (
                     <div key={`regular-row-${idx}`} style={{ paddingBottom: '16px' }}>
                       <Grid gutter="md" align="stretch">
@@ -5857,7 +5855,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     </Group>
                   )}
                 </Group>
-                <div ref={fusedListRef} style={{ position: 'relative' }}>
+                <div style={{ position: 'relative' }}>
                   {fusedRows.map((rowDecks, idx) => (
                     <div key={`fused-row-${idx}`} style={{ paddingBottom: '16px' }}>
                       <Grid gutter="md" align="stretch">
