@@ -80,3 +80,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: cde4a76
   Request: The deck preview image is rotated 90 degrees counterclockwise; keep it horizontal.
   Date: 2026-01-28
+- Commit: 73074e1
+  Request: Make the deck preview image larger to reduce empty background space.
+  Date: 2026-01-28
