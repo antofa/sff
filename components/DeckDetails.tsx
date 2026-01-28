@@ -3516,8 +3516,8 @@ const originalCardMeta = useMemo(() => {
       closeOnEscape={true}
       keepMounted={false}
       title={
-        <Group justify="space-between" className="w-full" wrap="nowrap">
-          <Group gap="md" wrap="nowrap" className="flex-1 min-w-0">
+        <Group justify="space-between" className="w-full" wrap={isMdUp ? 'nowrap' : 'wrap'}>
+          <Group gap="md" wrap={isMdUp ? 'nowrap' : 'wrap'} className="flex-1 min-w-0">
             {parentFusedDeck && (
               <Button
                 variant="subtle"
@@ -3533,7 +3533,7 @@ const originalCardMeta = useMemo(() => {
                 ← Back to Fused
               </Button>
             )}
-            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+            <Group gap="xs" wrap={isMdUp ? 'nowrap' : 'wrap'} style={{ flexShrink: 0 }}>
               <button
                 type="button"
                 onClick={(e) => {
@@ -3575,7 +3575,7 @@ const originalCardMeta = useMemo(() => {
               </button>
               {/* Don't show faction/set badges for fused decks */}
               {formattedDeckSet && (deckForDisplay as any)?.format !== 'Fused' && (
-                <Group gap={4} wrap="nowrap">
+                <Group gap={4} wrap={isMdUp ? 'nowrap' : 'wrap'}>
                   {derivedFaction && (
                     <Image
                       src={`/images/icons/${derivedFaction.toLowerCase()}.png`}
@@ -3648,7 +3648,7 @@ const originalCardMeta = useMemo(() => {
                 )
               })()}
             </Group>
-            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+            <Group gap="xs" wrap={isMdUp ? 'nowrap' : 'wrap'} style={{ flexShrink: 0 }}>
               {(() => {
                 const rank = (deckForDisplay as any)?.deckRank ?? (deck as any)?.deckRank
                 if (!rank) return null
@@ -3684,7 +3684,7 @@ const originalCardMeta = useMemo(() => {
                   : `https://solforgefusion.com/decks/${deck.id}`
                 
                 return (
-                  <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                  <Group gap="xs" wrap={isMdUp ? 'nowrap' : 'wrap'} style={{ flexShrink: 0 }}>
                     {isFused ? (
                       <Button
                         component="a"
@@ -3734,7 +3734,7 @@ const originalCardMeta = useMemo(() => {
                 )
               })()
             )}
-            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+            <Group gap="xs" wrap={isMdUp ? 'nowrap' : 'wrap'} style={{ flexShrink: 0 }}>
               {(() => {
                 const score = (deckForDisplay as any)?.deckScore ?? (deck as any)?.deckScore
                 if (score === undefined || score === null) return null
@@ -3771,7 +3771,7 @@ const originalCardMeta = useMemo(() => {
               
               if (sourceDeck1 || sourceDeck2) {
                 return (
-                  <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                  <Group gap="xs" wrap={isMdUp ? 'nowrap' : 'wrap'} style={{ flexShrink: 0 }}>
                     {sourceDeck1 && (
                       <Stack gap={4} style={{ flexShrink: 0 }}>
                         {(() => {
@@ -3791,9 +3791,9 @@ const originalCardMeta = useMemo(() => {
                                 {sourceDeck1.name || 'Deck 1'}
                               </Text>
                               {(sourceDeck1Set || meta) && (
-                                <Group gap={6} wrap="wrap">
+                                <Group gap={6} wrap={isMdUp ? 'nowrap' : 'wrap'}>
                                   {sourceDeck1Set && (
-                                    <Group gap={6} wrap="nowrap">
+                                    <Group gap={6} wrap={isMdUp ? 'nowrap' : 'wrap'}>
                                       {sourceDeck1.faction && (
                                         <Image
                                           src={`/images/icons/${sourceDeck1.faction.toLowerCase()}.png`}
@@ -3848,9 +3848,9 @@ const originalCardMeta = useMemo(() => {
                                 {sourceDeck2.name || 'Deck 2'}
                               </Text>
                               {(sourceDeck2Set || meta) && (
-                                <Group gap={6} wrap="wrap">
+                                <Group gap={6} wrap={isMdUp ? 'nowrap' : 'wrap'}>
                                   {sourceDeck2Set && (
-                                    <Group gap={6} wrap="nowrap">
+                                    <Group gap={6} wrap={isMdUp ? 'nowrap' : 'wrap'}>
                                       {sourceDeck2.faction && (
                                         <Image
                                           src={`/images/icons/${sourceDeck2.faction.toLowerCase()}.png`}
