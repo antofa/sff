@@ -128,3 +128,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: bbc804e
   Request: Improve deck details modal layout on narrow browser widths.
   Date: 2026-01-28
+- Commit: 675b777
+  Request: Fix forgeborn image clipping in the narrow deck details layout.
+  Date: 2026-01-28
