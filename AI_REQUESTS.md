@@ -110,3 +110,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ec35720
   Request: Order the deck list as forgeborn, creatures, spells, then solbind.
   Date: 2026-01-28
+- Commit: 48de35e
+  Request: Fix the deck list so it includes all cards (not just the forgeborn).
+  Date: 2026-01-28
