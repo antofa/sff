@@ -68,3 +68,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 9bcc337
   Request: Replace deck link previews with a short deck summary and forgeborn image.
   Date: 2026-01-28
+- Commit: 478dce7
+  Request: Use only card names in deck preview text and avoid a stretched forgeborn image.
+  Date: 2026-01-28
