@@ -92,3 +92,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 294d729
   Request: Fix the OG deck image error requiring explicit flex display on divs with multiple children.
   Date: 2026-01-28
+- Commit: 66bd971
+  Request: Revert the rich OG deck preview (header chips, composition chips, footer, gradient frame) and keep only the image.
+  Date: 2026-01-28
