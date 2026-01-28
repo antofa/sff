@@ -4101,7 +4101,7 @@ const originalCardMeta = useMemo(() => {
                     const isResizedForgeborn = isForgeborn && !!effectiveImageUrl && effectiveImageUrl.includes('/resized/')
                     const shouldRotateForgeborn = isForgeborn && !isResizedForgeborn
                     const forgebornScale = shouldRotateForgeborn ? 1.44 : isForgeborn ? 2.2 : 1
-                    const forgebornTranslateY = shouldRotateForgeborn ? '0%' : isForgeborn ? '-4%' : '0%'
+                    const forgebornTranslateY = shouldRotateForgeborn ? '0%' : isForgeborn ? '-2%' : '0%'
 
                     const imageKey = effectiveImageUrl ? `${selectedCard.id}-${effectiveLevel}-${effectiveImageUrl}` : ''
                     const isImageReady = !!(imageKey && imageLoadStatus[imageKey])

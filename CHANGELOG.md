@@ -25,5 +25,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Increased the forgeborn scale to 2.2.
 - Nudge forgeborn image positioning to balance top and bottom padding.
 - Adjust forgeborn image vertical offset to avoid sticking to the bottom edge.
+- Soften the forgeborn vertical offset.
 
 ### Fixed
