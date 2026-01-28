@@ -158,3 +158,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 5b81dec
   Request: Auto-scroll the selected card into view on click and increase the card frame height so level buttons fit.
   Date: 2026-01-28
+- Commit: 5623c88
+  Request: Reduce empty space in narrow card frames and ensure level buttons are fully visible.
+  Date: 2026-01-28
