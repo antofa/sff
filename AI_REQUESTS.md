@@ -113,3 +113,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 48de35e
   Request: Fix the deck list so it includes all cards (not just the forgeborn).
   Date: 2026-01-28
+- Commit: b4787e2
+  Request: Prevent deck searches from restarting when the tab loses and regains focus.
+  Date: 2026-01-28
