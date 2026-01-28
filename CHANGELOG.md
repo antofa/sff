@@ -47,5 +47,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Order deck list text as forgeborn, creatures, spells, then solbind cards.
 - Fix deck list ordering so non-forgeborn cards are included again.
 - Stop restarting deck searches when the tab regains focus.
+- Add B2 set support in set detection, tags, filters, and rarity icons.
 
 ### Fixed

@@ -27,16 +27,33 @@ const getCardInfoCached = (cardId: string, cardData?: any): CardInfo => {
   return info
 }
 
-const isB1Card = (card: any): boolean => {
-  if (!card) return false
-  if (typeof card === 'string') return /^b1_/i.test(card)
+const getBSetFromCard = (card: any): 'B1' | 'B2' | null => {
+  if (!card) return null
+  if (typeof card === 'string') {
+    if (/^b2_/i.test(card)) return 'B2'
+    if (/^b1_/i.test(card)) return 'B1'
+    return null
+  }
   if (typeof card === 'object') {
     const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
     const cardId = card.id || card.cardId || card.name
-    if (cardSetId && String(cardSetId).toLowerCase() === 'b1') return true
-    if (cardId && /^b1_/i.test(cardId)) return true
+    const setLower = cardSetId ? String(cardSetId).toLowerCase() : ''
+    if (setLower === 'b2') return 'B2'
+    if (setLower === 'b1') return 'B1'
+    if (cardId && /^b2_/i.test(cardId)) return 'B2'
+    if (cardId && /^b1_/i.test(cardId)) return 'B1'
   }
-  return false
+  return null
+}
+
+const getBSetFromCards = (cards: any[]): 'B1' | 'B2' | null => {
+  let found: 'B1' | 'B2' | null = null
+  for (const card of cards) {
+    const bSet = getBSetFromCard(card)
+    if (bSet === 'B2') return 'B2'
+    if (bSet === 'B1') found = 'B1'
+  }
+  return found
 }
 
 // Resolve expiry timestamp (ms) for a deck
@@ -58,6 +75,8 @@ const getExpiryTimestamp = (deck: Deck): number | null => {
 const deriveSetFromId = (id?: string | null): string | null => {
   if (!id || typeof id !== 'string') return null
   const lower = id.toLowerCase()
+  if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
+  if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
   if (lower.startsWith('s1-')) return 'S1'
   if (lower.startsWith('s2-')) return 'S2'
   if (lower.startsWith('s3-')) return 'S3'
@@ -65,7 +84,7 @@ const deriveSetFromId = (id?: string | null): string | null => {
   return null
 }
 
-// Determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
+// Determine deck set: if any card is from B1/B2, return that set, otherwise use deck.cardSetNo
 const getDeckSetComputed = (deck: Deck): string | null => {
   if (!deck) return null
   const deckAny = deck as any
@@ -77,8 +96,8 @@ const getDeckSetComputed = (deck: Deck): string | null => {
         const explicitSet = sourceDeck.cardSetNo || sourceDeck.cardSetId || deriveSetFromId(sourceDeck.id)
         if (explicitSet) return explicitSet
         if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
-          const hasB1Card = sourceDeck.cards.some((card: any) => isB1Card(card))
-          if (hasB1Card) return 'B1'
+          const bSet = getBSetFromCards(sourceDeck.cards)
+          if (bSet) return bSet
         }
       }
     }
@@ -91,8 +110,8 @@ const getDeckSetComputed = (deck: Deck): string | null => {
     return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
   }
 
-  const hasB1Card = deck.cards.some((card: any) => isB1Card(card))
-  if (hasB1Card) return 'B1'
+  const bSet = getBSetFromCards(deck.cards)
+  if (bSet) return bSet
   return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
 }
 

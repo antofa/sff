@@ -3131,28 +3131,37 @@ const originalCardMeta = useMemo(() => {
   // getFactionBadgeColor moved outside component for better performance
 
   // Get rarity icon path based on card set and rarity
-  // Helper function to check if a card is from B1 set
-  const isB1Card = useCallback((card: CardInfo | any): boolean => {
-    if (!card) return false
-    
+  // Helper function to check if a card is from B1/B2 set
+  const getBSetFromCard = useCallback((card: CardInfo | any): 'B1' | 'B2' | null => {
+    if (!card) return null
+
     const cardData = card as any
     const cardSetId = cardData.cardSetId || cardData.CardSetId || cardData.SK || cardData.sk
     const cardId = card.id || cardData.id || cardData.cardId || cardData.name
-    
-    // Check cardSetId/SK for B1
-    if (cardSetId && String(cardSetId).toLowerCase() === 'b1') {
-      return true
-    }
-    
-    // Check cardId for b1_ prefix
-    if (cardId && /^b1_/i.test(cardId)) {
-      return true
-    }
-    
-    return false
+    const setLower = cardSetId ? String(cardSetId).toLowerCase() : ''
+
+    if (setLower === 'b2') return 'B2'
+    if (setLower === 'b1') return 'B1'
+    if (cardId && /^b2_/i.test(cardId)) return 'B2'
+    if (cardId && /^b1_/i.test(cardId)) return 'B1'
+
+    return null
   }, [])
 
-  // Helper function to determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
+  const getBSetFromCards = useCallback((cards: any[]): 'B1' | 'B2' | null => {
+    let found: 'B1' | 'B2' | null = null
+    cards.forEach((card) => {
+      const bSet = getBSetFromCard(card)
+      if (bSet === 'B2') {
+        found = 'B2'
+      } else if (bSet === 'B1' && found !== 'B2') {
+        found = 'B1'
+      }
+    })
+    return found
+  }, [getBSetFromCard])
+
+  // Helper function to determine deck set: if any card is from B1/B2, return that set, otherwise use deck.cardSetNo
   const getDeckSet = useCallback((deck: Deck | null, normalizedCards: CardInfo[]): string | null => {
     if (!deck) return null
     
@@ -3160,27 +3169,12 @@ const originalCardMeta = useMemo(() => {
     
     // For fused decks, check cards from source decks (myDecks) if normalizedCards is empty
     if (deckAny.format === 'Fused' && normalizedCards.length === 0) {
-      // Check source decks (myDecks) for B1 cards
+      // Check source decks (myDecks) for B1/B2 cards
       if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
         for (const sourceDeck of deckAny.myDecks) {
           if (sourceDeck && sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
-            const hasB1Card = sourceDeck.cards.some((card: any) => {
-              // Handle string cards
-              if (typeof card === 'string') {
-                return /^b1_/i.test(card)
-              }
-              // Handle object cards
-              if (typeof card === 'object' && card !== null) {
-                const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
-                const cardId = card.id || card.cardId || card.name
-                if (cardSetId && String(cardSetId).toLowerCase() === 'b1') return true
-                if (cardId && /^b1_/i.test(cardId)) return true
-              }
-              return false
-            })
-            if (hasB1Card) {
-              return 'B1'
-            }
+            const bSet = getBSetFromCards(sourceDeck.cards)
+            if (bSet) return bSet
           }
         }
       }
@@ -3189,16 +3183,13 @@ const originalCardMeta = useMemo(() => {
       return null
     }
     
-    // Check if any card in normalizedCards is from B1 set
-    const hasB1Card = normalizedCards.some(card => isB1Card(card))
-    
-    if (hasB1Card) {
-      return 'B1'
-    }
+    // Check if any card in normalizedCards is from B1/B2 set
+    const bSet = getBSetFromCards(normalizedCards)
+    if (bSet) return bSet
     
     // Otherwise use deck.cardSetNo
     return deck.cardSetNo || null
-  }, [isB1Card])
+  }, [getBSetFromCards])
 
   const getDeckSetForDeck = useCallback((deckToCheck: Deck | null): string | null => {
     if (!deckToCheck) return null
@@ -3216,15 +3207,18 @@ const originalCardMeta = useMemo(() => {
     return getDeckSet(deckToCheck, normalizedForSet)
   }, [getDeckSet])
   
-  // Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", etc.
+  // Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", "B2" -> "B2", etc.
   const formatSetName = useCallback((setNo: string | number | null | undefined): string | null => {
     if (!setNo) return null
     
     const setStr = String(setNo).trim()
     
-    // If it's already B1 or b1, return as B1
+    // If it's already B1/B2, return uppercase
     if (setStr.toUpperCase() === 'B1' || setStr.toLowerCase() === 'b1') {
       return 'B1'
+    }
+    if (setStr.toUpperCase() === 'B2' || setStr.toLowerCase() === 'b2') {
+      return 'B2'
     }
     
     // For numeric sets, format as S1, S2, S3, etc.
@@ -3291,7 +3285,7 @@ const originalCardMeta = useMemo(() => {
     // Try to get cardSetId or SK from cardData (most reliable - per-card set information)
     if (cardData) {
       cardSet = cardData.cardSetId || cardData.CardSetId || cardData.SK || cardData.sk
-      // SK might be in format like "b1" or "s3", normalize it
+      // SK might be in format like "b1", "b2", or "s3", normalize it
       if (cardSet) {
         cardSet = String(cardSet).toLowerCase().trim()
       }
@@ -3304,8 +3298,10 @@ const originalCardMeta = useMemo(() => {
     
     // Fallback: try to extract from cardId
     if (!cardSet && cardId) {
-      // Check for b1_ prefix first
-      if (/^b1_/i.test(cardId)) {
+      // Check for b2_/b1_ prefix first
+      if (/^b2_/i.test(cardId)) {
+        cardSet = 'b2'
+      } else if (/^b1_/i.test(cardId)) {
         cardSet = 'b1'
       } else {
         // Extract set number from cardId (e.g., "s3nn1arrogant-butcher" -> "3")
@@ -3316,14 +3312,18 @@ const originalCardMeta = useMemo(() => {
       }
     }
     
-    // Check if this is B1 set (Betrayer set)
-    // B1 can be identified by cardSet being "B1" or "b1", or by cardId starting with "b1_"
-    const isB1Set = 
+    // Check if this is B1/B2 set (Betrayer sets)
+    const isB2Set =
+      (cardSet && (cardSet.toUpperCase() === 'B2' || cardSet === 'b2')) ||
+      (cardId && /^b2_/i.test(cardId))
+    const isB1Set =
       (cardSet && (cardSet.toUpperCase() === 'B1' || cardSet === 'b1')) ||
       (cardId && /^b1_/i.test(cardId))
     
+    if (isB2Set) {
+      return `/images/icons/rarity/B2_${normalizedRarity}.png`
+    }
     if (isB1Set) {
-      // Return B1 rarity icons (b1_*.png -> B1_*.png)
       return `/images/icons/rarity/B1_${normalizedRarity}.png`
     }
     

@@ -58,15 +58,18 @@ const MODE_OPTIONS = [
   { label: 'Exclude', value: 'exclude' },
 ]
 
-// Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", etc.
+// Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", "B2" -> "B2", etc.
 function formatSetName(setNo: string | number | null | undefined): string | null {
   if (!setNo) return null
 
   const setStr = String(setNo).trim()
   
-  // If it's already B1 or b1, return as B1
+  // If it's already B1/B2, return uppercase
   if (setStr.toUpperCase() === 'B1' || setStr.toLowerCase() === 'b1') {
     return 'B1'
+  }
+  if (setStr.toUpperCase() === 'B2' || setStr.toLowerCase() === 'b2') {
+    return 'B2'
   }
   
   // For numeric sets, format as S1, S2, S3, etc.
@@ -84,32 +87,34 @@ function formatSetName(setNo: string | number | null | undefined): string | null
   return setStr
 }
 
-// Helper function to check if a card is from B1 set
-function isB1Card(card: any): boolean {
-  if (!card) return false
-  
-  // Handle string cards
+// Helper function to detect B-set cards (B1/B2)
+function getBSetFromCard(card: any): 'B1' | 'B2' | null {
+  if (!card) return null
   if (typeof card === 'string') {
-    return /^b1_/i.test(card)
+    if (/^b2_/i.test(card)) return 'B2'
+    if (/^b1_/i.test(card)) return 'B1'
+    return null
   }
-  
-  // Handle object cards
   if (typeof card === 'object' && card !== null) {
     const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
     const cardId = card.id || card.cardId || card.name
-    
-    // Check cardSetId/SK for B1
-    if (cardSetId && String(cardSetId).toLowerCase() === 'b1') {
-      return true
-    }
-    
-    // Check cardId for b1_ prefix
-    if (cardId && /^b1_/i.test(cardId)) {
-      return true
-    }
+    const setLower = cardSetId ? String(cardSetId).toLowerCase() : ''
+    if (setLower === 'b2') return 'B2'
+    if (setLower === 'b1') return 'B1'
+    if (cardId && /^b2_/i.test(cardId)) return 'B2'
+    if (cardId && /^b1_/i.test(cardId)) return 'B1'
   }
-  
-  return false
+  return null
+}
+
+function getBSetFromCards(cards: any[]): 'B1' | 'B2' | null {
+  let found: 'B1' | 'B2' | null = null
+  for (const card of cards) {
+    const bSet = getBSetFromCard(card)
+    if (bSet === 'B2') return 'B2'
+    if (bSet === 'B1') found = 'B1'
+  }
+  return found
 }
 
 // Helper to resolve expiry timestamp (ms) for a deck: expireAt/expire_date/created fallback
@@ -148,7 +153,7 @@ function getBorderColors(deck: Deck, now: number) {
   return { borderColor, hoverBorderColor }
 }
 
-// Helper function to determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
+// Helper function to determine deck set: if any card is from B1/B2, return that set, otherwise use deck.cardSetNo
 function getDeckSet(deck: Deck): string | null {
   if ((deck as any)?.computed && (deck as any).computed.deckSet !== undefined) {
     return (deck as any).computed.deckSet as string | null
@@ -160,6 +165,8 @@ function getDeckSet(deck: Deck): string | null {
   const deriveSetFromId = (id?: string | null): string | null => {
     if (!id || typeof id !== 'string') return null
     const lower = id.toLowerCase()
+    if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
+    if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
     if (lower.startsWith('s1-')) return 'S1'
     if (lower.startsWith('s2-')) return 'S2'
     if (lower.startsWith('s3-')) return 'S3'
@@ -169,7 +176,7 @@ function getDeckSet(deck: Deck): string | null {
   
   // For fused decks, check cards from source decks (myDecks) if cards array is empty
   if (deckAny.format === 'Fused' && (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0)) {
-    // Check source decks (myDecks) for explicit set first, then B1 cards
+    // Check source decks (myDecks) for explicit set first, then B1/B2 cards
     if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
       for (const sourceDeck of deckAny.myDecks) {
         if (!sourceDeck) continue
@@ -178,8 +185,8 @@ function getDeckSet(deck: Deck): string | null {
           return explicitSet
         }
         if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
-          const hasB1Card = sourceDeck.cards.some((card: any) => isB1Card(card))
-          if (hasB1Card) return 'B1'
+          const bSet = getBSetFromCards(sourceDeck.cards)
+          if (bSet) return bSet
         }
       }
     }
@@ -198,11 +205,10 @@ function getDeckSet(deck: Deck): string | null {
     return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
   }
   
-  // Check if any card is from B1 set
-  const hasB1Card = deck.cards.some((card: any) => isB1Card(card))
-  
-  if (hasB1Card) {
-    return 'B1'
+  // Check if any card is from B1/B2 set
+  const bSet = getBSetFromCards(deck.cards)
+  if (bSet) {
+    return bSet
   }
   
   // Otherwise use deck.cardSetNo
@@ -1167,8 +1173,8 @@ const FusedDeckCard = memo(function FusedDeckCard({
     })
 
     if (setLabels.size === 0) {
-      const hasB1 = aggregatedCards.some(card => isB1Card(card as any))
-      if (hasB1) setLabels.add(formatSetName('B1') || 'B1')
+      const bSet = getBSetFromCards(aggregatedCards as any[])
+      if (bSet) setLabels.add(formatSetName(bSet) || bSet)
       const parentSet = getDeckSet(deck)
       if (parentSet) {
         const label = formatSetName(parentSet)
@@ -2726,17 +2732,28 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     })
     
     return Array.from(cardSetNosSet).sort((a, b) => {
-      // Sort B1 first, then numerically for S sets
-      if (a.toUpperCase() === 'B1') return -1
-      if (b.toUpperCase() === 'B1') return 1
-      
-      // Sort numerically if both are numbers, otherwise alphabetically
-      const numA = Number(a.replace(/^s/i, ''))
-      const numB = Number(b.replace(/^s/i, ''))
-      if (!isNaN(numA) && !isNaN(numB)) {
-        return numA - numB
+      const normalize = (value: string) => {
+        const trimmed = value.trim()
+        const upper = trimmed.toUpperCase()
+        if (/^B\d+/.test(upper)) {
+          return { group: 0, num: Number(upper.slice(1)), key: upper }
+        }
+        if (/^S\d+/.test(upper)) {
+          return { group: 1, num: Number(upper.slice(1)), key: upper }
+        }
+        if (/^\d+$/.test(upper)) {
+          return { group: 1, num: Number(upper), key: `S${upper}` }
+        }
+        return { group: 2, num: Number.NaN, key: upper }
       }
-      return a.localeCompare(b)
+
+      const normA = normalize(a)
+      const normB = normalize(b)
+      if (normA.group !== normB.group) return normA.group - normB.group
+      if (Number.isFinite(normA.num) && Number.isFinite(normB.num) && normA.num !== normB.num) {
+        return normA.num - normB.num
+      }
+      return normA.key.localeCompare(normB.key)
     })
   }, [decks, fusedDecks])
   

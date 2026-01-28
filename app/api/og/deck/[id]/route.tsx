@@ -24,6 +24,7 @@ const formatSetLabel = (value?: string | number | null, fallback?: string | numb
   if (!text) return null
   const lower = text.toLowerCase()
   if (lower === 'b1') return 'B1'
+  if (lower === 'b2') return 'B2'
   if (lower === 'd0') return 'S99'
   if (/^s\d+/.test(lower)) return lower.toUpperCase()
   if (/^\d+$/.test(lower)) return `S${lower}`
