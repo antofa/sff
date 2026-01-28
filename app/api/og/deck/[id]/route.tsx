@@ -1,6 +1,7 @@
 import { ImageResponse } from 'next/og'
 import type { NextRequest } from 'next/server'
 import { getCardImageUrl, getForgebornAlternativeUrl } from '@/lib/api'
+import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 
 export const runtime = 'edge'
 
@@ -16,6 +17,37 @@ const resolveForgebornImageUrl = (forgebornId?: string | null) => {
   return getCardImageUrl(cleanId, 1, true)
 }
 
+const formatSetLabel = (value?: string | number | null, fallback?: string | number | null) => {
+  const raw = value ?? fallback
+  if (raw === undefined || raw === null) return null
+  const text = String(raw).trim()
+  if (!text) return null
+  const lower = text.toLowerCase()
+  if (lower === 'b1') return 'B1'
+  if (lower === 'd0') return 'S99'
+  if (/^s\d+/.test(lower)) return lower.toUpperCase()
+  if (/^\d+$/.test(lower)) return `S${lower}`
+  return text.toUpperCase()
+}
+
+const toTitleCase = (value: string) =>
+  value
+    .split(' ')
+    .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : part))
+    .join(' ')
+
+const isForgebornCard = (card: any, forgebornId?: string | null) => {
+  const id = typeof card === 'string' ? card : card?.id
+  if (id && forgebornId && String(id).toLowerCase() === String(forgebornId).toLowerCase()) {
+    return true
+  }
+  const typeValue = typeof card === 'string' ? '' : card?.type || card?.cardType || ''
+  const rarityValue = typeof card === 'string' ? '' : card?.rarity || ''
+  const typeLower = String(typeValue).toLowerCase()
+  const rarityLower = String(rarityValue).toLowerCase()
+  return typeLower.includes('forgeborn') || rarityLower.includes('forgeborn')
+}
+
 const countCardTypes = (deck: any) => {
   const cards = Array.isArray(deck?.cards) ? deck.cards : []
   const forgebornId = deck?.forgeborn?.id || deck?.forgebornId
@@ -24,20 +56,8 @@ const countCardTypes = (deck: any) => {
   let spells = 0
   let solbind = 0
 
-  const isForgebornCard = (card: any) => {
-    const id = typeof card === 'string' ? card : card?.id
-    if (id && forgebornId && String(id).toLowerCase() === String(forgebornId).toLowerCase()) {
-      return true
-    }
-    const typeValue = typeof card === 'string' ? '' : card?.type || card?.cardType || ''
-    const rarityValue = typeof card === 'string' ? '' : card?.rarity || ''
-    const typeLower = String(typeValue).toLowerCase()
-    const rarityLower = String(rarityValue).toLowerCase()
-    return typeLower.includes('forgeborn') || rarityLower.includes('forgeborn')
-  }
-
   cards.forEach((card: any) => {
-    if (isForgebornCard(card)) return
+    if (isForgebornCard(card, forgebornId)) return
     const typeValue = typeof card === 'string' ? '' : card?.type || card?.cardType || ''
     const rarityValue = typeof card === 'string' ? '' : card?.rarity || ''
     const typeLower = String(typeValue).toLowerCase()
@@ -56,6 +76,53 @@ const countCardTypes = (deck: any) => {
   })
 
   return { creatures, spells, solbind }
+}
+
+const formatRarityLabel = (value: unknown) => {
+  if (!value && value !== 0) return null
+  const raw = String(value).trim()
+  if (!raw) return null
+  const normalized = raw.replace(/[_-]/g, ' ').replace(/\s+/g, ' ').toLowerCase()
+  return toTitleCase(normalized)
+}
+
+const countRarities = (deck: any) => {
+  const cards = Array.isArray(deck?.cards) ? deck.cards : []
+  const forgebornId = deck?.forgeborn?.id || deck?.forgebornId
+  const counts: Record<string, number> = {}
+
+  cards.forEach((card: any) => {
+    if (isForgebornCard(card, forgebornId)) return
+    if (!card || typeof card !== 'object') return
+    const rarityValue = card?.rarity || card?.cardRarity || card?.rarityType
+    const label = formatRarityLabel(rarityValue)
+    if (!label) return
+    counts[label] = (counts[label] || 0) + 1
+  })
+
+  return Object.entries(counts)
+    .filter(([, count]) => Number(count) > 0)
+    .sort((a, b) => {
+      const diff = Number(b[1]) - Number(a[1])
+      if (diff !== 0) return diff
+      return a[0].localeCompare(b[0])
+    })
+}
+
+const getCreatureTags = (deck: any) => {
+  try {
+    const creatureMap = computeCreatureTypesForDeck(deck)
+    if (!creatureMap || typeof creatureMap !== 'object') return []
+    return Object.entries(creatureMap)
+      .filter(([, count]) => Number(count) > 0)
+      .sort((a, b) => {
+        const diff = Number(b[1]) - Number(a[1])
+        if (diff !== 0) return diff
+        return a[0].localeCompare(b[0])
+      })
+  } catch {
+    return []
+  }
 }
 
 const formatExpiry = (value?: string | number | null) => {
@@ -85,9 +152,12 @@ export async function GET(
 
   let forgebornImageUrl: string | null = null
   let cardCounts = { creatures: 0, spells: 0, solbind: 0 }
+  let rarityEntries: Array<[string, number]> = []
+  let creatureTags: Array<[string, number]> = []
   let owner: string | null = null
   let score: number | null = null
   let expiry: string | null = null
+  let setLabel: string | null = null
 
   try {
     const res = await fetch(`${origin}/api/deck/${encodeURIComponent(deckId)}`, {
@@ -101,6 +171,10 @@ export async function GET(
       forgebornImageUrl = resolveForgebornImageUrl(forgebornId)
 
       cardCounts = countCardTypes(deck)
+      rarityEntries = countRarities(deck)
+      creatureTags = getCreatureTags(deck)
+      setLabel = formatSetLabel(deck?.cardSetNo, deck?.cardSetId)
+
       owner = deck?.playerName || deck?.username || deck?.owner || null
       score = formatScore(deck?.deckScore ?? deck?.elo ?? deck?.deckRank ?? null)
       expiry = formatExpiry(
@@ -184,6 +258,15 @@ export async function GET(
   const ownerLabel = owner || '-'
   const scoreLabel = score === null ? '-' : String(score)
   const expiryLabel = expiry || '-'
+  const setValue = setLabel || '-'
+  const rarityText =
+    rarityEntries.length > 0
+      ? rarityEntries.map(([label, count]) => `${label} ${count}`).join(' • ')
+      : '-'
+  const tagText =
+    creatureTags.length > 0
+      ? creatureTags.map(([label, count]) => `${toTitleCase(label)} ${count}`).join(' • ')
+      : '-'
 
   return new ImageResponse(
     (
@@ -200,7 +283,7 @@ export async function GET(
       >
         <div
           style={{
-            width: '260px',
+            width: '300px',
             display: 'flex',
             flexDirection: 'column',
             gap: '14px',
@@ -208,6 +291,10 @@ export async function GET(
             fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
           }}
         >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 18 }}>
+            <span style={{ color: '#94a3b8' }}>Set</span>
+            <span style={{ fontWeight: 600 }}>{setValue}</span>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 18 }}>
             <span style={{ color: '#94a3b8' }}>Creatures</span>
             <span style={{ fontWeight: 600 }}>{cardCounts.creatures}</span>
@@ -219,6 +306,30 @@ export async function GET(
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 18 }}>
             <span style={{ color: '#94a3b8' }}>Solbind</span>
             <span style={{ fontWeight: 600 }}>{cardCounts.solbind}</span>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              fontSize: 15,
+              lineHeight: 1.3,
+            }}
+          >
+            <span style={{ color: '#94a3b8' }}>Rarities</span>
+            <span style={{ color: '#e2e8f0' }}>{rarityText}</span>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              fontSize: 15,
+              lineHeight: 1.3,
+            }}
+          >
+            <span style={{ color: '#94a3b8' }}>Creature Tags</span>
+            <span style={{ color: '#e2e8f0' }}>{tagText}</span>
           </div>
           <div style={{ height: '1px', backgroundColor: 'rgba(148, 163, 184, 0.25)' }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 17 }}>
@@ -248,7 +359,7 @@ export async function GET(
         >
           <div
             style={{
-              width: '900px',
+              width: '860px',
               height: '560px',
               display: 'flex',
               alignItems: 'center',

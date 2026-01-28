@@ -41,5 +41,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Add richer OG deck previews with header chips, composition stats, and a styled frame.
 - Revert OG deck previews to the image-only layout.
 - Shift the OG deck image to the right and add a left column with counts and metadata.
+- Add set, rarity counts, and creature tags to the OG left column.
 
 ### Fixed
