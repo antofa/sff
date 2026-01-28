@@ -23,3 +23,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 638dfd1
   Request: Change the forgeborn image URL to try the space-encoded variant first, then fall back to the dash variant.
   Date: 2026-01-28
+- Commit: 671f307
+  Request: If a forgeborn image is loaded from a /resized/ URL, do not rotate it when displaying.
+  Date: 2026-01-28
