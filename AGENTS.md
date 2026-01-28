@@ -37,7 +37,9 @@ Required when enabling auth or database features:
 
 ## Notes for changes
 - Commit changes only after `npm run build` succeeds when frontend code has changed.
+- Commit every change without prompting for confirmation.
 - Update `CHANGELOG.md` with notable changes.
+- Include a UTC date on `CHANGELOG.md` entries; dates roll over at 00:00 UTC.
 - Add an entry to `AI_REQUESTS.md` with the resulting commit SHA and the user prompt.
   - Note: commit SHAs change if a commit is amended, so record the SHA in a follow-up commit that updates only `AI_REQUESTS.md`.
 - Write all code, comments, and text in all files in English.
