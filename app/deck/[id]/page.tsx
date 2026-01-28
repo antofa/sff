@@ -55,29 +55,61 @@ const listDeckCards = (deck: any) => {
   }
 
   const unique = new Set<string>()
-  const names: string[] = []
+  const creatures: string[] = []
+  const spells: string[] = []
+  const solbind: string[] = []
 
   const addName = (name?: string | null) => {
     const trimmed = (name || '').trim()
     if (!trimmed) return
     if (unique.has(trimmed)) return
     unique.add(trimmed)
-    names.push(trimmed)
+    return trimmed
   }
 
-  if (forgebornId) {
-    addName(deck?.forgeborn?.name || forgebornId)
+  const forgebornName = forgebornId ? addName(deck?.forgeborn?.name || forgebornId) : null
+  if (forgebornName) {
+    unique.add(forgebornName)
+  }
+
+  const pushUnique = (bucket: string[], name?: string | null) => {
+    const trimmed = addName(name)
+    if (!trimmed) return
+    if (unique.has(trimmed)) return
+    unique.add(trimmed)
+    bucket.push(trimmed)
   }
 
   allCards.forEach((card: any) => {
     if (isForgebornCard(card)) return
+
     if (typeof card === 'string') {
-      addName(card)
+      pushUnique(creatures, card)
       return
     }
-    addName(card?.name || card?.title || card?.cardTitle || card?.cardName || card?.id || card?.cardId)
+
+    const name = card?.name || card?.title || card?.cardTitle || card?.cardName || card?.id || card?.cardId
+    const typeValue = card?.type || card?.cardType || ''
+    const rarityValue = card?.rarity || ''
+    const typeLower = String(typeValue).toLowerCase()
+    const rarityLower = String(rarityValue).toLowerCase()
+
+    if (rarityLower.includes('solbind') || typeLower.includes('solbind')) {
+      pushUnique(solbind, name)
+      return
+    }
+    if (typeLower.includes('spell')) {
+      pushUnique(spells, name)
+      return
+    }
+    pushUnique(creatures, name)
   })
 
+  const names: string[] = []
+  if (forgebornName) {
+    names.push(forgebornName)
+  }
+  names.push(...creatures, ...spells, ...solbind)
   return names
 }
 
