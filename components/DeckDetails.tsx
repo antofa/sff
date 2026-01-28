@@ -4114,7 +4114,11 @@ const originalCardMeta = useMemo(() => {
                     const frameHeightPx = baseFrameHeightPx
                     const isResizedForgeborn = isForgeborn && !!effectiveImageUrl && effectiveImageUrl.includes('/resized/')
                     const shouldRotateForgeborn = isForgeborn && !isResizedForgeborn
-                    const forgebornScale = shouldRotateForgeborn ? 1.44 : isForgeborn ? 2.2 : 1
+                    const forgebornScale = isForgeborn
+                      ? shouldRotateForgeborn
+                        ? (isMdUp ? 1.44 : 1.15)
+                        : (isMdUp ? 2.2 : 1.5)
+                      : 1
                     const forgebornPositionStyle = isForgeborn ? { top: '50%', left: '50%' } : {}
                     const forgebornTransform = isForgeborn
                       ? `${shouldRotateForgeborn ? 'rotate(-90deg) ' : ''}translate(-50%, -48%) scale(${forgebornScale})`

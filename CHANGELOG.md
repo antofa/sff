@@ -51,5 +51,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Rename the player deck search button to "Load Decks".
 - Fix deck grid wrapping when the viewport only allows two columns.
 - Make the deck details modal responsive at narrow widths.
+- Reduce forgeborn scale on narrow modals to avoid image clipping.
 
 ### Fixed
