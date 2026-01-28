@@ -1,19 +1,36 @@
 import NextAuth from "next-auth"
+import Credentials from "next-auth/providers/credentials"
 import Discord from "next-auth/providers/discord"
+
+const discordClientId = process.env.DISCORD_CLIENT_ID
+const discordClientSecret = process.env.DISCORD_CLIENT_SECRET
+const discordConfigured = Boolean(discordClientId && discordClientSecret)
+
+const providers = discordConfigured
+  ? [
+      Discord({
+        clientId: discordClientId!,
+        clientSecret: discordClientSecret!,
+        authorization: {
+          params: {
+            scope: "identify email",
+          },
+        },
+      }),
+    ]
+  : [
+      Credentials({
+        name: "Disabled",
+        credentials: {},
+        async authorize() {
+          return null
+        },
+      }),
+    ]
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   debug: process.env.NODE_ENV !== "production",
-  providers: [
-    Discord({
-      clientId: process.env.DISCORD_CLIENT_ID!,
-      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope: "identify email",
-        },
-      },
-    }),
-  ],
+  providers,
   trustHost: true,
   callbacks: {
     async jwt({ token, account, profile }) {
