@@ -56,3 +56,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 4289606
   Request: Vertically align the forgeborn image within the frame.
   Date: 2026-01-28
+- Commit: a8d6d0d
+  Request: Move the forgeborn image down by a couple of percent.
+  Date: 2026-01-28
