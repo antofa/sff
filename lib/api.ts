@@ -235,7 +235,9 @@ async function fetchDecksFromAPI(
   }
 ): Promise<DeckFetchResult> {
   const encodedName = encodeURIComponent(playerName.toLowerCase())
-  const url = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true`
+  const force = options?.force ?? false
+  const cacheBust = force ? `&_=${Date.now()}` : ''
+  const url = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true${cacheBust}`
   
   logWithTimestamp(`[API] Requesting decks for player: ${playerName}`)
   logWithTimestamp(`[API] URL: ${url}`)
@@ -256,7 +258,6 @@ async function fetchDecksFromAPI(
     // First request
     let response: Response
     try {
-      const force = options?.force ?? false
       const fetchOptions: RequestInit = {
         method: 'GET',
         headers: {
@@ -330,20 +331,26 @@ async function fetchDecksFromAPI(
       pageCount < maxPages
     ) {
       lastPK = pageData.LastEvaluatedKey.PK
-      const nextUrl = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true&exclusiveStartKeyPK=${encodeURIComponent(pageData.LastEvaluatedKey.PK)}&exclusiveStartKeySK=${encodeURIComponent(pageData.LastEvaluatedKey.SK)}`
+      const nextUrl = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true&exclusiveStartKeyPK=${encodeURIComponent(pageData.LastEvaluatedKey.PK)}&exclusiveStartKeySK=${encodeURIComponent(pageData.LastEvaluatedKey.SK)}${cacheBust}`
       
       logWithTimestamp(`[API] Requesting next page: ${pageCount + 2}`)
       
       try {
-        response = await fetch(nextUrl, {
+        const fetchOptions: RequestInit = {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
             'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
           },
-          next: { revalidate: 3600 }, // Cache for 1 hour
-      signal: AbortSignal.timeout(60000),
-        })
+          signal: AbortSignal.timeout(60000),
+        }
+        if (force) {
+          fetchOptions.cache = 'no-store'
+          ;(fetchOptions as any).next = { revalidate: 0 }
+        } else {
+          ;(fetchOptions as any).next = { revalidate: 3600 }
+        }
+        response = await fetch(nextUrl, fetchOptions)
       } catch (fetchError) {
         console.error(`[API] Fetch error for page ${pageCount + 2}:`, fetchError)
         break
@@ -684,7 +691,8 @@ export async function fetchFusedDecksFromAPI(
 
   const encodedName = encodeURIComponent(playerName.toLowerCase())
   const pageSize = 200
-  const url = `${API_BASE_URL}/fuseddeck/app?pageSize=${pageSize}&username=${encodedName}`
+  const cacheBust = force ? `&_=${Date.now()}` : ''
+  const url = `${API_BASE_URL}/fuseddeck/app?pageSize=${pageSize}&username=${encodedName}${cacheBust}`
   
   await fusedLog(`[API] Requesting fused decks for player: ${playerName}`)
   await fusedLog(`[API] URL: ${url}`)
