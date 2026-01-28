@@ -36,15 +36,17 @@ const formatSetLabel = (value?: string | number | null): string | null => {
   const lower = text.toLowerCase()
   if (lower === 'b1') return 'B1'
   if (lower === 'b2') return 'B2'
+  if (lower === 'b3') return 'B3'
   if (lower === 'd0') return 'S99'
   if (/^s\d+/.test(lower)) return lower.toUpperCase()
   if (/^\d+$/.test(lower)) return `S${lower}`
   return text.toUpperCase()
 }
 
-const getBSetFromCard = (card: any): 'B1' | 'B2' | null => {
+const getBSetFromCard = (card: any): 'B1' | 'B2' | 'B3' | null => {
   if (!card) return null
   if (typeof card === 'string') {
+    if (/^b3_/i.test(card)) return 'B3'
     if (/^b2_/i.test(card)) return 'B2'
     if (/^b1_/i.test(card)) return 'B1'
     return null
@@ -52,19 +54,25 @@ const getBSetFromCard = (card: any): 'B1' | 'B2' | null => {
   const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
   const cardId = card.id || card.cardId || card.name
   const setLower = cardSetId ? String(cardSetId).toLowerCase() : ''
+  if (setLower === 'b3') return 'B3'
   if (setLower === 'b2') return 'B2'
   if (setLower === 'b1') return 'B1'
+  if (cardId && /^b3_/i.test(cardId)) return 'B3'
   if (cardId && /^b2_/i.test(cardId)) return 'B2'
   if (cardId && /^b1_/i.test(cardId)) return 'B1'
   return null
 }
 
-const getBSetFromCards = (cards: any[]): 'B1' | 'B2' | null => {
-  let found: 'B1' | 'B2' | null = null
+const getBSetFromCards = (cards: any[]): 'B1' | 'B2' | 'B3' | null => {
+  let found: 'B1' | 'B2' | 'B3' | null = null
   for (const card of cards) {
     const bSet = getBSetFromCard(card)
-    if (bSet === 'B2') return 'B2'
-    if (bSet === 'B1') found = 'B1'
+    if (bSet === 'B3') return 'B3'
+    if (bSet === 'B2') {
+      found = 'B2'
+      continue
+    }
+    if (bSet === 'B1' && found !== 'B2') found = 'B1'
   }
   return found
 }
@@ -74,6 +82,7 @@ const deriveSetFromId = (id?: string | null): string | null => {
   const lower = id.toLowerCase()
   if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
   if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
+  if (lower.startsWith('b3-') || lower.startsWith('b3_')) return 'B3'
   if (lower.startsWith('s1-')) return 'S1'
   if (lower.startsWith('s2-')) return 'S2'
   if (lower.startsWith('s3-')) return 'S3'
@@ -99,6 +108,7 @@ const getDeckSetTag = (deck: any): string | null => {
       if (srcExplicit) return srcExplicit
       if (Array.isArray(src.cards)) {
         const bSet = getBSetFromCards(src.cards)
+        if (bSet === 'B3') return 'B3'
         if (bSet === 'B2') return 'B2'
         if (bSet === 'B1') fallback = 'B1'
       }

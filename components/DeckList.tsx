@@ -58,18 +58,21 @@ const MODE_OPTIONS = [
   { label: 'Exclude', value: 'exclude' },
 ]
 
-// Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", "B2" -> "B2", etc.
+// Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", "B2" -> "B2", "B3" -> "B3", etc.
 function formatSetName(setNo: string | number | null | undefined): string | null {
   if (!setNo) return null
 
   const setStr = String(setNo).trim()
   
-  // If it's already B1/B2, return uppercase
+  // If it's already B1/B2/B3, return uppercase
   if (setStr.toUpperCase() === 'B1' || setStr.toLowerCase() === 'b1') {
     return 'B1'
   }
   if (setStr.toUpperCase() === 'B2' || setStr.toLowerCase() === 'b2') {
     return 'B2'
+  }
+  if (setStr.toUpperCase() === 'B3' || setStr.toLowerCase() === 'b3') {
+    return 'B3'
   }
   
   // For numeric sets, format as S1, S2, S3, etc.
@@ -87,10 +90,11 @@ function formatSetName(setNo: string | number | null | undefined): string | null
   return setStr
 }
 
-// Helper function to detect B-set cards (B1/B2)
-function getBSetFromCard(card: any): 'B1' | 'B2' | null {
+// Helper function to detect B-set cards (B1/B2/B3)
+function getBSetFromCard(card: any): 'B1' | 'B2' | 'B3' | null {
   if (!card) return null
   if (typeof card === 'string') {
+    if (/^b3_/i.test(card)) return 'B3'
     if (/^b2_/i.test(card)) return 'B2'
     if (/^b1_/i.test(card)) return 'B1'
     return null
@@ -99,20 +103,26 @@ function getBSetFromCard(card: any): 'B1' | 'B2' | null {
     const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
     const cardId = card.id || card.cardId || card.name
     const setLower = cardSetId ? String(cardSetId).toLowerCase() : ''
+    if (setLower === 'b3') return 'B3'
     if (setLower === 'b2') return 'B2'
     if (setLower === 'b1') return 'B1'
+    if (cardId && /^b3_/i.test(cardId)) return 'B3'
     if (cardId && /^b2_/i.test(cardId)) return 'B2'
     if (cardId && /^b1_/i.test(cardId)) return 'B1'
   }
   return null
 }
 
-function getBSetFromCards(cards: any[]): 'B1' | 'B2' | null {
-  let found: 'B1' | 'B2' | null = null
+function getBSetFromCards(cards: any[]): 'B1' | 'B2' | 'B3' | null {
+  let found: 'B1' | 'B2' | 'B3' | null = null
   for (const card of cards) {
     const bSet = getBSetFromCard(card)
-    if (bSet === 'B2') return 'B2'
-    if (bSet === 'B1') found = 'B1'
+    if (bSet === 'B3') return 'B3'
+    if (bSet === 'B2') {
+      found = 'B2'
+      continue
+    }
+    if (bSet === 'B1' && found !== 'B2') found = 'B1'
   }
   return found
 }
@@ -153,7 +163,7 @@ function getBorderColors(deck: Deck, now: number) {
   return { borderColor, hoverBorderColor }
 }
 
-// Helper function to determine deck set: if any card is from B1/B2, return that set, otherwise use deck.cardSetNo
+// Helper function to determine deck set: if any card is from B1/B2/B3, return that set, otherwise use deck.cardSetNo
 function getDeckSet(deck: Deck): string | null {
   if ((deck as any)?.computed && (deck as any).computed.deckSet !== undefined) {
     return (deck as any).computed.deckSet as string | null
@@ -167,6 +177,7 @@ function getDeckSet(deck: Deck): string | null {
     const lower = id.toLowerCase()
     if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
     if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
+    if (lower.startsWith('b3-') || lower.startsWith('b3_')) return 'B3'
     if (lower.startsWith('s1-')) return 'S1'
     if (lower.startsWith('s2-')) return 'S2'
     if (lower.startsWith('s3-')) return 'S3'
@@ -202,17 +213,17 @@ function getDeckSet(deck: Deck): string | null {
   
   // For regular decks or fused decks with cards
   if (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0) {
-    return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
+    return deck.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id) || null
   }
   
-  // Check if any card is from B1/B2 set
+  // Check if any card is from B1/B2/B3 set
   const bSet = getBSetFromCards(deck.cards)
   if (bSet) {
     return bSet
   }
   
   // Otherwise use deck.cardSetNo
-  return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
+  return deck.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id) || null
 }
 
 // Helper function to count cards as sum of creatures + spells + solbind (excluding Forgeborn)
@@ -1040,6 +1051,9 @@ const FusedDeckCard = memo(function FusedDeckCard({
   const deriveSetFromId = useCallback((id?: string | null): string | null => {
     if (!id || typeof id !== 'string') return null
     const lower = id.toLowerCase()
+    if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
+    if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
+    if (lower.startsWith('b3-') || lower.startsWith('b3_')) return 'B3'
     if (lower.startsWith('s1-')) return 'S1'
     if (lower.startsWith('s2-')) return 'S2'
     if (lower.startsWith('s3-')) return 'S3'
