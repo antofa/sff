@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
-import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, ScrollArea, Divider, Image, Loader } from '@mantine/core'
+import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, Divider, Image, Loader } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { useMediaQuery } from '@mantine/hooks'
 import { IconCalendar, IconCopy, IconExternalLink, IconWorld } from '@tabler/icons-react'
@@ -4124,7 +4124,7 @@ const originalCardMeta = useMemo(() => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ alignItems: 'flex-start' }}>
         {/* Left column - card lists */}
         <div className="lg:col-span-1 flex flex-col h-full">
-          <ScrollArea className="flex-1" style={{ padding: 0, maxHeight: 'calc(70vh + 50px)' }}>
+          <div className="flex-1" style={{ padding: 0 }}>
             <Stack gap="md" align="flex-start" style={{ padding: 0, margin: 0 }}>
               {/* Forgeborn */}
               {forgebornCards.length > 0 && (
@@ -4342,7 +4342,7 @@ const originalCardMeta = useMemo(() => {
                 </Paper>
               )}
             </Stack>
-          </ScrollArea>
+          </div>
         </div>
 
         {isMdUp ? (
