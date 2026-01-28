@@ -47,3 +47,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 4503b7c
   Request: The forgeborn image is stuck to the bottom edge; adjust vertical alignment.
   Date: 2026-01-28
+- Commit: e0af813
+  Request: The forgeborn image is too high; reduce the vertical offset.
+  Date: 2026-01-28
