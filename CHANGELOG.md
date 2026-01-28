@@ -41,3 +41,4 @@ Dates use UTC and roll over at 00:00 UTC.
 - Add richer OG deck previews with header chips, composition stats, and a styled frame.
 
 ### Fixed
+- Added explicit flex display to OG composition chips to satisfy Next.js OG layout requirements.

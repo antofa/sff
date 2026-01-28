@@ -257,13 +257,13 @@ export async function GET(
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <div style={{ padding: '6px 12px', borderRadius: '999px', backgroundColor: 'rgba(30, 64, 175, 0.35)', border: '1px solid rgba(96, 165, 250, 0.5)', color: '#bfdbfe', fontSize: 15, fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '999px', backgroundColor: 'rgba(30, 64, 175, 0.35)', border: '1px solid rgba(96, 165, 250, 0.5)', color: '#bfdbfe', fontSize: 15, fontWeight: 600 }}>
             Creatures {cardCounts.creatures}
           </div>
-          <div style={{ padding: '6px 12px', borderRadius: '999px', backgroundColor: 'rgba(99, 102, 241, 0.35)', border: '1px solid rgba(129, 140, 248, 0.5)', color: '#c7d2fe', fontSize: 15, fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '999px', backgroundColor: 'rgba(99, 102, 241, 0.35)', border: '1px solid rgba(129, 140, 248, 0.5)', color: '#c7d2fe', fontSize: 15, fontWeight: 600 }}>
             Spells {cardCounts.spells}
           </div>
-          <div style={{ padding: '6px 12px', borderRadius: '999px', backgroundColor: 'rgba(234, 179, 8, 0.25)', border: '1px solid rgba(250, 204, 21, 0.5)', color: '#fde68a', fontSize: 15, fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '999px', backgroundColor: 'rgba(234, 179, 8, 0.25)', border: '1px solid rgba(250, 204, 21, 0.5)', color: '#fde68a', fontSize: 15, fontWeight: 600 }}>
             Solbind {cardCounts.solbind}
           </div>
         </div>
