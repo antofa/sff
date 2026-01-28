@@ -104,3 +104,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: da700bc
   Request: Add ELO under score and double the font size for the entire left column.
   Date: 2026-01-28
+- Commit: 2c77130
+  Request: Reduce the left column font sizes by 1.5x and include Solbind cards in the deck list text.
+  Date: 2026-01-28
