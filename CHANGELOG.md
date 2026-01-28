@@ -27,5 +27,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Adjust forgeborn image vertical offset to avoid sticking to the bottom edge.
 - Soften the forgeborn vertical offset.
 - Reset forgeborn vertical offset to 0%.
+- Center forgeborn images vertically by anchoring and translating to the frame center.
 
 ### Fixed
