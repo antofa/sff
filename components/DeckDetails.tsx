@@ -4126,7 +4126,6 @@ const originalCardMeta = useMemo(() => {
           padding: '1.5rem',
           maxHeight: isMdUp ? 'calc(80vh + 50px)' : 'calc(85vh - 24px)',
           minHeight: isMdUp ? 'calc(70vh + 50px)' : 'auto',
-          overflowY: 'auto',
         },
         overlay: {
           transition: 'opacity 300ms ease-in-out, backdrop-filter 300ms ease-in-out',

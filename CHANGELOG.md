@@ -59,5 +59,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Show rarity and tag badges after the card list on narrow modals.
 - Remove the nested scroll area in deck details to avoid multiple scrollbars.
 - Lock background scroll while the deck details modal is open.
+- Drop manual body scrolling so the modal uses a single scroll container.
 
 ### Fixed
