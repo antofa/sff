@@ -125,3 +125,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ca497f7
   Request: Fix deck card wrapping when the viewport only fits two columns.
   Date: 2026-01-28
+- Commit: bbc804e
+  Request: Improve deck details modal layout on narrow browser widths.
+  Date: 2026-01-28
