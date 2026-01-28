@@ -38,5 +38,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Flip OG rotation logic to keep images horizontal.
 - Scale up OG forgeborn images to reduce empty space.
 - Increase OG forgeborn image scale to 1.5.
+- Add richer OG deck previews with header chips, composition stats, and a styled frame.
 
 ### Fixed
