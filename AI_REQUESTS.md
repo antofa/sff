@@ -86,3 +86,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 4b6e3fa
   Request: Set the OG preview image scale to 1.5.
   Date: 2026-01-28
+- Commit: e2b952d
+  Request: Add a header with faction/set/format, composition chips, and a footer line to the deck preview.
+  Date: 2026-01-28
