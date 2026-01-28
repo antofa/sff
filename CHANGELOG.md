@@ -17,5 +17,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Added a UTC date requirement for `CHANGELOG.md` entries.
 - Require committing every change without prompting.
 - Prefer forgeborn image URLs with spaces, falling back to dash variants (resized path).
+- Skip forgeborn rotation when using `/resized/` images.
 
 ### Fixed
