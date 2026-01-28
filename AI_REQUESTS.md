@@ -143,3 +143,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 1f9db28
   Request: In narrow mode, show the full card frame (with level controls) inline under the selected list item and move it with the selection.
   Date: 2026-01-28
+- Commit: 3ab9a81
+  Request: In narrow mode, show rarity/type/tag badges after the last card in the list.
+  Date: 2026-01-28
