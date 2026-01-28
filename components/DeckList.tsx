@@ -165,12 +165,26 @@ function getBorderColors(deck: Deck, now: number) {
 
 // Helper function to determine deck set: if any card is from B1/B2/B3, return that set, otherwise use deck.cardSetNo
 function getDeckSet(deck: Deck): string | null {
-  if ((deck as any)?.computed && (deck as any).computed.deckSet !== undefined) {
-    return (deck as any).computed.deckSet as string | null
-  }
   if (!deck) return null
   
   const deckAny = deck as any
+  const normalizeSetValue = (value?: string | number | null): string | null => {
+    if (value === undefined || value === null) return null
+    const text = String(value).trim()
+    if (!text) return null
+    const lower = text.toLowerCase()
+    if (lower === 'b3') return 'B3'
+    if (lower === 'b2') return 'B2'
+    if (lower === 'b1') return 'B1'
+    if (lower === 'd0') return 'S99'
+    return text
+  }
+
+  const explicitSet = normalizeSetValue(deckAny.cardSetId ?? deckAny.card_set_id ?? deckAny.cardSetNo ?? deckAny.card_set_no)
+  if (explicitSet) return explicitSet
+  if (deckAny?.computed && deckAny.computed.deckSet !== undefined) {
+    return normalizeSetValue(deckAny.computed.deckSet as string | null)
+  }
 
   const deriveSetFromId = (id?: string | null): string | null => {
     if (!id || typeof id !== 'string') return null
