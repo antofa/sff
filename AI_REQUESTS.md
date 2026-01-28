@@ -131,3 +131,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 675b777
   Request: Fix forgeborn image clipping in the narrow deck details layout.
   Date: 2026-01-28
+- Commit: 731b9b9
+  Request: Allow deck detail header text (API/SFF/ELO/score/etc.) to wrap on narrow windows.
+  Date: 2026-01-28
