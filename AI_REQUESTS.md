@@ -137,3 +137,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: deed9e0
   Request: Ensure the entire deck detail header (title, icons, owner badge, etc.) wraps to new lines.
   Date: 2026-01-28
+- Commit: 9acd006
+  Request: In narrow mode, show the selected card image inline under its list item (default to Forgeborn).
+  Date: 2026-01-28
