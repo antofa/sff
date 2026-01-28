@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, ScrollArea, Divider, Image, Loader } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
+import { useMediaQuery } from '@mantine/hooks'
 import { IconCalendar, IconCopy, IconExternalLink, IconWorld } from '@tabler/icons-react'
 import NextImage from 'next/image'
 import type { Deck } from '@/store/deckStore'
@@ -414,6 +415,19 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const imageRequestCacheRef = useRef<Map<string, Promise<string | null>>>(new Map())
   const fusedSourceDecksRef = useRef<string>('') // Track last merged source IDs to avoid re-setting state
   const fusedCardsMergedRef = useRef<boolean>(false) // Prevent repeated card merging for fused decks
+  const isSmUp = useMediaQuery('(min-width: 48em)')
+  const isMdUp = useMediaQuery('(min-width: 62em)')
+  const modalWidth = isMdUp
+    ? 'min(1500px, calc(100vw - 64px))'
+    : isSmUp
+      ? 'min(1100px, calc(100vw - 48px))'
+      : 'calc(100vw - 24px)'
+  const modalMinWidth = isMdUp ? 'min(1100px, calc(100vw - 64px))' : 'auto'
+  const detailPaneStyle: React.CSSProperties = isMdUp
+    ? { position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: 'calc(70vh + 50px)' }
+    : { position: 'static', alignSelf: 'stretch', maxHeight: 'none' }
+  const detailPanelWidth = isMdUp ? 'min(60vw, 900px)' : '100%'
+  const detailPanelMinWidth = isMdUp ? '520px' : '0'
 
   useEffect(() => {
     cardImagesRef.current = cardImages
@@ -3882,9 +3896,9 @@ const originalCardMeta = useMemo(() => {
           backgroundColor: 'rgba(30, 41, 59, 0.98)',
           border: '1px solid rgba(74, 144, 226, 0.3)',
           maxWidth: '1500px',
-          width: 'min(1500px, calc(100vw - 64px))',
-          minWidth: 'min(1100px, calc(100vw - 64px))',
-          minHeight: 'calc(80vh + 50px)',
+          width: modalWidth,
+          minWidth: modalMinWidth,
+          minHeight: isMdUp ? 'calc(80vh + 50px)' : 'calc(85vh - 24px)',
           transition: 'transform 300ms ease-in-out, opacity 300ms ease-in-out',
         },
         header: {
@@ -3893,8 +3907,8 @@ const originalCardMeta = useMemo(() => {
         },
         body: {
           padding: '1.5rem',
-          maxHeight: 'calc(80vh + 50px)',
-          minHeight: 'calc(70vh + 50px)',
+          maxHeight: isMdUp ? 'calc(80vh + 50px)' : 'calc(85vh - 24px)',
+          minHeight: isMdUp ? 'calc(70vh + 50px)' : 'auto',
           overflowY: 'auto',
         },
         overlay: {
@@ -4038,7 +4052,7 @@ const originalCardMeta = useMemo(() => {
         {/* Right column - detailed card information */}
         <div
           className="lg:col-span-2 flex flex-col h-full"
-          style={{ position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: 'calc(70vh + 50px)' }}
+          style={detailPaneStyle}
         >
           {selectedCard ? (
             <Stack gap="lg">
@@ -4050,8 +4064,8 @@ const originalCardMeta = useMemo(() => {
                   backgroundColor: 'rgba(30, 41, 59, 0.6)',
                   minHeight: '42vh',
                   maxHeight: '52vh',
-                  width: 'min(60vw, 900px)',
-                  minWidth: '520px',
+                  width: detailPanelWidth,
+                  minWidth: detailPanelMinWidth,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -4224,8 +4238,8 @@ const originalCardMeta = useMemo(() => {
                 className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
                 style={{
                   backgroundColor: 'rgba(30, 41, 59, 0.6)',
-                  width: 'min(60vw, 900px)',
-                  minWidth: '520px',
+                  width: detailPanelWidth,
+                  minWidth: detailPanelMinWidth,
                   boxSizing: 'border-box',
                 }}
               >

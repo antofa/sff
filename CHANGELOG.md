@@ -50,5 +50,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Add B2 set support in set detection, tags, filters, and rarity icons.
 - Rename the player deck search button to "Load Decks".
 - Fix deck grid wrapping when the viewport only allows two columns.
+- Make the deck details modal responsive at narrow widths.
 
 ### Fixed
