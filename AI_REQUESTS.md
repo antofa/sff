@@ -164,3 +164,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: abdae70
   Request: Scroll to the card label on selection and keep narrow frame height stable across viewport sizes.
   Date: 2026-01-28
+- Commit: e40206e
+  Request: Reduce vertical padding around narrow card images and scroll to keep card titles visible.
+  Date: 2026-01-28
