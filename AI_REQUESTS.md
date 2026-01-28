@@ -95,3 +95,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 66bd971
   Request: Revert the rich OG deck preview (header chips, composition chips, footer, gradient frame) and keep only the image.
   Date: 2026-01-28
+- Commit: 61da1a6
+  Request: Shift the deck preview image right and add a left column with creatures/spells/solbind plus owner, score (x100 rounded), and expiry.
+  Date: 2026-01-28
