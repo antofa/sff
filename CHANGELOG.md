@@ -30,5 +30,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Center forgeborn images vertically by anchoring and translating to the frame center.
 - Lower forgeborn images slightly within the frame.
 - Make `/api/deck/[id]` resilient when Supabase env vars are missing.
+- Make `/api/saved-decks` return empty data when Supabase is not configured.
 
 ### Fixed

@@ -13,9 +13,10 @@ import {
 import type { Deck } from '@/store/deckStore'
 import type { Database } from '@/types/database'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServer = createClient<Database>(supabaseUrl, supabaseServiceKey)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseServer =
+  supabaseUrl && supabaseServiceKey ? createClient<Database>(supabaseUrl, supabaseServiceKey) : null
 
 /**
  * GET /api/saved-decks
@@ -33,6 +34,13 @@ const supabaseServer = createClient<Database>(supabaseUrl, supabaseServiceKey)
  */
 export async function GET(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { decks: [], count: 0, warning: 'Supabase is not configured' },
+        { status: 200 }
+      )
+    }
+
     const searchParams = request.nextUrl.searchParams
     const playerName = searchParams.get('player')
     const forSale = searchParams.get('forSale') === 'true'
@@ -121,6 +129,13 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Supabase is not configured' },
+        { status: 503 }
+      )
+    }
+
     const body = await request.json()
     
     const { 
