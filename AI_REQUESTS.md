@@ -35,3 +35,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: cd1ca5b
   Request: Increase the on-screen size of forgeborn images (they appear too small).
   Date: 2026-01-28
+- Commit: 6ed913c
+  Request: Forgeborn images are still too small; increase their displayed size.
+  Date: 2026-01-28
