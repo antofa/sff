@@ -29,3 +29,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 15a5ba0
   Request: Fix the NextAuth dev error by allowing auth to run without Discord credentials.
   Date: 2026-01-28
+- Commit: ea36456
+  Request: Fix the NextAuth dev error that still appears by skipping session fetch when auth is not configured and adding a dev secret fallback.
+  Date: 2026-01-28
