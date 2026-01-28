@@ -11,5 +11,6 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Updated contribution rules in `AGENTS.md` (build/commit flow and logging).
+- Switched `AI_REQUESTS.md` request entries to English and added an English-only rule in `AGENTS.md`.
 
 ### Fixed

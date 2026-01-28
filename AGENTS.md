@@ -40,6 +40,7 @@ Required when enabling auth or database features:
 - Update `CHANGELOG.md` with notable changes.
 - Add an entry to `AI_REQUESTS.md` with the resulting commit SHA and the user prompt.
   - Note: commit SHAs change if a commit is amended, so record the SHA in a follow-up commit that updates only `AI_REQUESTS.md`.
+- Write all code, comments, and text in all files in English.
 - Use App Router conventions; server actions and API routes live under `app/`.
 - When updating API behavior, check `lib/api.ts` and `app/api/*` for consistency.
 - Keep styles consistent with Tailwind + Mantine usage in existing components.
