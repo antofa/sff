@@ -107,3 +107,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 2c77130
   Request: Reduce the left column font sizes by 1.5x and include Solbind cards in the deck list text.
   Date: 2026-01-28
+- Commit: ec35720
+  Request: Order the deck list as forgeborn, creatures, spells, then solbind.
+  Date: 2026-01-28
