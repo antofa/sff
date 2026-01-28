@@ -319,7 +319,7 @@ const CardListItem = memo(function CardListItem({
         // CSS containment for better performance - browser can skip rendering off-screen items
         contentVisibility: 'auto',
         containIntrinsicSize: '0 40px', // Approximate height for layout
-        scrollMarginTop: '120px',
+        scrollMarginTop: '160px',
       }}
     >
       <Button
@@ -459,6 +459,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     const target = document.querySelector(`[data-card-id="${id}"]`)
     if (target && 'scrollIntoView' in target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const offset = 96
+      window.scrollBy({ top: -offset, behavior: 'smooth' })
     }
   }, [selectedCard, isMdUp])
 
@@ -3150,7 +3152,7 @@ const originalCardMeta = useMemo(() => {
     const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
 
     const baseFrameWidthPx = compact ? 240 : 288
-    const baseFrameHeightPx = compact ? 400 : 480
+    const baseFrameHeightPx = compact ? 380 : 480
     const frameWidthPx = baseFrameWidthPx
     const frameHeightPx = baseFrameHeightPx
     const isResizedForgeborn = isForgeborn && !!effectiveImageUrl && effectiveImageUrl.includes('/resized/')
@@ -3189,7 +3191,7 @@ const originalCardMeta = useMemo(() => {
           {!hasError ? (
             <div
               className="relative w-full flex flex-col items-center justify-center"
-              style={{ gap: '0.2rem', marginTop: compact ? 0 : '-1.5rem' }}
+              style={{ gap: '0.15rem', marginTop: compact ? 0 : '-1.5rem' }}
             >
               <div
                 className="relative w-full flex items-center justify-center"
@@ -3247,7 +3249,7 @@ const originalCardMeta = useMemo(() => {
               </div>
 
               {!isForgeborn && (
-                <Group gap="xs" justify="center" style={{ marginTop: compact ? '0.15rem' : '-1.5rem' }}>
+                <Group gap="xs" justify="center" style={{ marginTop: compact ? '0.1rem' : '-1.5rem' }}>
                   {([1, 2, 3] as const)
                     .filter(level => {
                       if (!isSolbind) return true

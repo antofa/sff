@@ -70,5 +70,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Prefer explicit cardSetId/cardSetNo over computed deckSet in deck list display.
 - Set deck list pagination size to 100 for regular and fused decks.
 - Keep number input spinners visible while showing a separate clear button in filters.
+- Improve narrow card scroll offset and tighten card frame spacing.
 
 ### Fixed
