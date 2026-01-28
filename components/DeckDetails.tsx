@@ -299,6 +299,10 @@ interface CardListItemProps {
   factionIconPath: string | null
   rarityIconPath: string | null
   factionColor: string
+  showInlineImage?: boolean
+  inlineImageUrl?: string | null
+  inlineIsLoading?: boolean
+  inlineHasError?: boolean
   onClick: () => void
 }
 
@@ -308,6 +312,10 @@ const CardListItem = memo(function CardListItem({
   factionIconPath, 
   rarityIconPath, 
   factionColor,
+  showInlineImage,
+  inlineImageUrl,
+  inlineIsLoading,
+  inlineHasError,
   onClick 
 }: CardListItemProps) {
   return (
@@ -383,6 +391,41 @@ const CardListItem = memo(function CardListItem({
           </Text>
         </Group>
       </Button>
+      {showInlineImage ? (
+        <div
+          style={{
+            marginTop: '8px',
+            padding: '8px',
+            borderRadius: '10px',
+            border: '1px solid rgba(74, 144, 226, 0.2)',
+            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+          }}
+        >
+          {inlineImageUrl && !inlineHasError ? (
+            <img
+              src={inlineImageUrl}
+              alt={card.name}
+              style={{
+                width: '100%',
+                height: 'auto',
+                display: 'block',
+                objectFit: 'contain',
+              }}
+            />
+          ) : inlineIsLoading ? (
+            <Group gap="xs" justify="center">
+              <Loader size="sm" color="rgba(74, 144, 226, 0.8)" />
+              <Text size="xs" className="text-gray-300">
+                Loading image...
+              </Text>
+            </Group>
+          ) : (
+            <Text size="xs" className="text-gray-300 text-center">
+              Image unavailable
+            </Text>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 })
@@ -3935,6 +3978,15 @@ const originalCardMeta = useMemo(() => {
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {forgebornCards.map((card, index) => {
                       const props = getCardListItemProps(card)
+                      const isInline = !isMdUp && selectedCard?.id === card.id
+                      const cardLevels = cardImages[card.id]
+                      const inlineImageUrl =
+                        (cardLevels && cardLevels[selectedLevel]) ||
+                        cardLevels?.[1] ||
+                        cardLevels?.[2] ||
+                        cardLevels?.[3] ||
+                        null
+                      const inlineHasError = imageErrors.has(`${card.id}-${selectedLevel}`)
                       return (
                         <CardListItem
                           key={`forgeborn-${card.id}-${index}`}
@@ -3943,6 +3995,10 @@ const originalCardMeta = useMemo(() => {
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
+                          showInlineImage={isInline}
+                          inlineImageUrl={inlineImageUrl}
+                          inlineIsLoading={isInline && !inlineImageUrl && !inlineHasError}
+                          inlineHasError={inlineHasError}
                           onClick={() => handleSelectCard(card)}
                         />
                       )
@@ -3960,6 +4016,15 @@ const originalCardMeta = useMemo(() => {
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {creatureCards.map((card, index) => {
                       const props = getCardListItemProps(card)
+                      const isInline = !isMdUp && selectedCard?.id === card.id
+                      const cardLevels = cardImages[card.id]
+                      const inlineImageUrl =
+                        (cardLevels && cardLevels[selectedLevel]) ||
+                        cardLevels?.[1] ||
+                        cardLevels?.[2] ||
+                        cardLevels?.[3] ||
+                        null
+                      const inlineHasError = imageErrors.has(`${card.id}-${selectedLevel}`)
                       return (
                         <CardListItem
                           key={`creature-${card.id}-${index}`}
@@ -3968,6 +4033,10 @@ const originalCardMeta = useMemo(() => {
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
+                          showInlineImage={isInline}
+                          inlineImageUrl={inlineImageUrl}
+                          inlineIsLoading={isInline && !inlineImageUrl && !inlineHasError}
+                          inlineHasError={inlineHasError}
                           onClick={() => handleSelectCard(card)}
                         />
                       )
@@ -3985,6 +4054,15 @@ const originalCardMeta = useMemo(() => {
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {spellCards.map((card, index) => {
                       const props = getCardListItemProps(card)
+                      const isInline = !isMdUp && selectedCard?.id === card.id
+                      const cardLevels = cardImages[card.id]
+                      const inlineImageUrl =
+                        (cardLevels && cardLevels[selectedLevel]) ||
+                        cardLevels?.[1] ||
+                        cardLevels?.[2] ||
+                        cardLevels?.[3] ||
+                        null
+                      const inlineHasError = imageErrors.has(`${card.id}-${selectedLevel}`)
                       return (
                         <CardListItem
                           key={`spell-${card.id}-${index}`}
@@ -3993,6 +4071,10 @@ const originalCardMeta = useMemo(() => {
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
+                          showInlineImage={isInline}
+                          inlineImageUrl={inlineImageUrl}
+                          inlineIsLoading={isInline && !inlineImageUrl && !inlineHasError}
+                          inlineHasError={inlineHasError}
                           onClick={() => handleSelectCard(card)}
                         />
                       )
@@ -4010,6 +4092,15 @@ const originalCardMeta = useMemo(() => {
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {solbindCards.map((card, index) => {
                       const props = getCardListItemProps(card)
+                      const isInline = !isMdUp && selectedCard?.id === card.id
+                      const cardLevels = cardImages[card.id]
+                      const inlineImageUrl =
+                        (cardLevels && cardLevels[selectedLevel]) ||
+                        cardLevels?.[1] ||
+                        cardLevels?.[2] ||
+                        cardLevels?.[3] ||
+                        null
+                      const inlineHasError = imageErrors.has(`${card.id}-${selectedLevel}`)
                       return (
                         <CardListItem
                           key={`solbind-${card.id}-${index}`}
@@ -4018,6 +4109,10 @@ const originalCardMeta = useMemo(() => {
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
+                          showInlineImage={isInline}
+                          inlineImageUrl={inlineImageUrl}
+                          inlineIsLoading={isInline && !inlineImageUrl && !inlineHasError}
+                          inlineHasError={inlineHasError}
                           onClick={() => handleSelectCard(card)}
                         />
                       )
@@ -4035,6 +4130,15 @@ const originalCardMeta = useMemo(() => {
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {normalizedCards.map((card, index) => {
                       const props = getCardListItemProps(card)
+                      const isInline = !isMdUp && selectedCard?.id === card.id
+                      const cardLevels = cardImages[card.id]
+                      const inlineImageUrl =
+                        (cardLevels && cardLevels[selectedLevel]) ||
+                        cardLevels?.[1] ||
+                        cardLevels?.[2] ||
+                        cardLevels?.[3] ||
+                        null
+                      const inlineHasError = imageErrors.has(`${card.id}-${selectedLevel}`)
                       return (
                         <CardListItem
                           key={`card-${card.id}-${index}`}
@@ -4043,6 +4147,10 @@ const originalCardMeta = useMemo(() => {
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
+                          showInlineImage={isInline}
+                          inlineImageUrl={inlineImageUrl}
+                          inlineIsLoading={isInline && !inlineImageUrl && !inlineHasError}
+                          inlineHasError={inlineHasError}
                           onClick={() => handleSelectCard(card)}
                         />
                       )

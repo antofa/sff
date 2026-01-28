@@ -54,5 +54,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Reduce forgeborn scale on narrow modals to avoid image clipping.
 - Allow modal header badges/links to wrap on narrow widths.
 - Allow deck title and header badges to wrap on all widths when needed.
+- Show the selected card image inline under its name on narrow modals.
 
 ### Fixed
