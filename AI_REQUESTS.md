@@ -11,3 +11,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 3a560c1
   Request: Add a CHANGELOG.md file to track changes; add another file to keep a history of all AI requests, including the commit ID and the request that led to it.
   Date: 2026-01-28
+- Commit: bd6a274
+  Request: Translate all AI_REQUESTS.md entries to English; add a rule in AGENTS.md to write all code, comments, and text in English.
+  Date: 2026-01-28
