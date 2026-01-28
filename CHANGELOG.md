@@ -20,5 +20,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Skip forgeborn rotation when using `/resized/` images.
 - Added a safe fallback auth provider when Discord credentials are missing.
 - Disabled session polling when auth is not configured and added a dev secret fallback.
+- Increased the display scale for unrotated forgeborn images.
 
 ### Fixed
