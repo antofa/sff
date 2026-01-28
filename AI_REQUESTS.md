@@ -62,3 +62,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: cc7f248
   Request: Fix direct deck links failing with JSON parse errors (likely due to missing Supabase config).
   Date: 2026-01-28
+- Commit: 030e621
+  Request: Fix /all-decks failing with HTTP 500 from /api/saved-decks when Supabase is not configured.
+  Date: 2026-01-28
