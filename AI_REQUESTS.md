@@ -161,3 +161,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 5623c88
   Request: Reduce empty space in narrow card frames and ensure level buttons are fully visible.
   Date: 2026-01-28
+- Commit: abdae70
+  Request: Scroll to the card label on selection and keep narrow frame height stable across viewport sizes.
+  Date: 2026-01-28
