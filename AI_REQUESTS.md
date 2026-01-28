@@ -116,3 +116,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: b4787e2
   Request: Prevent deck searches from restarting when the tab loses and regains focus.
   Date: 2026-01-28
+- Commit: d8eb603
+  Request: Add the new B2 set everywhere, including tags and filters.
+  Date: 2026-01-28
