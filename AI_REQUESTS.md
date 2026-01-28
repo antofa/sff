@@ -146,3 +146,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 3ab9a81
   Request: In narrow mode, show rarity/type/tag badges after the last card in the list.
   Date: 2026-01-28
+- Commit: 8dc805c
+  Request: Remove extra nested scrollbars in the narrow deck details view.
+  Date: 2026-01-28
