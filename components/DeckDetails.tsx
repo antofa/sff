@@ -4260,6 +4260,87 @@ const originalCardMeta = useMemo(() => {
                   </Stack>
                 </div>
               )}
+
+              {!isMdUp && (deckTags.length > 0 || creatureTypeEntries.length > 0 || raritySummary.size > 0 || deckCounts.total > 0) && (
+                <Paper
+                  p="md"
+                  className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
+                  style={{
+                    backgroundColor: 'rgba(30, 41, 59, 0.6)',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <Stack gap="xs">
+                    <Group gap="xs" wrap="wrap">
+                      {deckCounts.creatures ? (
+                        <Badge color="green" variant="light" size="sm">
+                          {pluralize(deckCounts.creatures, 'Creature')}
+                        </Badge>
+                      ) : null}
+                      {deckCounts.spells ? (
+                        <Badge color="pink" variant="light" size="sm">
+                          {pluralize(deckCounts.spells, 'Spell')}
+                        </Badge>
+                      ) : null}
+                      {deckCounts.solbind ? (
+                        <Badge color="orange" variant="light" size="sm">
+                          {pluralize(deckCounts.solbind, 'Solbind')}
+                        </Badge>
+                      ) : null}
+                      {Array.from(raritySummary.entries())
+                        .sort(([a], [b]) => {
+                          const order: Record<string, number> = {
+                            Solbind: 0,
+                            Common: 1,
+                            'Common Common': 2,
+                            'Common Rare': 3,
+                            Rare: 4,
+                            'Rare Common': 5,
+                            'Rare Rare': 6,
+                            'Darkforge Rare': 7,
+                            Darkforge: 8,
+                            LS: 9,
+                          }
+                          return (order[a] ?? 99) - (order[b] ?? 99)
+                        })
+                        .map(([rarity, count]) => (
+                          <Badge
+                            key={`rarity-${rarity}`}
+                            variant="light"
+                            size="sm"
+                            style={{ backgroundColor: getRarityBadgeColor(rarity), color: 'white', border: 'none' }}
+                          >
+                            {pluralize(count, rarity)}
+                          </Badge>
+                        ))}
+                    </Group>
+
+                    {deckTags.length > 0 && (
+                      <Group gap="xs" className="flex-wrap">
+                        {deckTags.map((tag) => (
+                          <Badge key={`tag-${tag}`} color="violet" variant="light" size="sm">
+                            {tag.toString().toUpperCase()}
+                          </Badge>
+                        ))}
+                      </Group>
+                    )}
+
+                    {creatureTypeEntries.length > 0 && (
+                      <Group gap="xs" className="flex-wrap">
+                        {creatureTypeEntries.map(([type, count]) => {
+                          const pretty = type.charAt(0).toUpperCase() + type.slice(1)
+                          return (
+                            <Badge key={`ctype-${type}`} color="grape" variant="outline" size="sm">
+                              {`${pretty} ${count}`}
+                            </Badge>
+                          )
+                        })}
+                      </Group>
+                    )}
+                  </Stack>
+                </Paper>
+              )}
             </Stack>
           </ScrollArea>
         </div>

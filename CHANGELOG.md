@@ -56,5 +56,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Allow deck title and header badges to wrap on all widths when needed.
 - Show the selected card image inline under its name on narrow modals.
 - Render the full card frame inline under the selected list item in narrow mode.
+- Show rarity and tag badges after the card list on narrow modals.
 
 ### Fixed
