@@ -29,20 +29,19 @@ const buildCandidates = (rawId: string) => {
 
 const resolveForgebornImageUrl = (forgebornId?: string | null) => {
   if (!forgebornId) return null
+  const cleanId = String(forgebornId).replace(/_/g, ' ')
+  if (cleanId.includes(' ')) {
+    return getForgebornAlternativeUrl(cleanId)
+  }
   if (forgebornId.includes('-')) {
     return getForgebornAlternativeUrl(forgebornId)
   }
   return getCardImageUrl(forgebornId, 1, true)
 }
 
-const summarizeDeck = (deck: any) => {
+const listDeckCards = (deck: any) => {
   const cards = Array.isArray(deck?.cards) ? deck.cards : []
   const forgebornId = deck?.forgeborn?.id || deck?.forgebornId
-
-  let creatures = 0
-  let spells = 0
-  let solbind = 0
-  let other = 0
 
   const isForgebornCard = (card: any) => {
     const id = typeof card === 'string' ? card : card?.id
@@ -56,29 +55,31 @@ const summarizeDeck = (deck: any) => {
     return typeLower.includes('forgeborn') || rarityLower.includes('forgeborn')
   }
 
+  const unique = new Set<string>()
+  const names: string[] = []
+
+  const addName = (name?: string | null) => {
+    const trimmed = (name || '').trim()
+    if (!trimmed) return
+    if (unique.has(trimmed)) return
+    unique.add(trimmed)
+    names.push(trimmed)
+  }
+
+  if (forgebornId) {
+    addName(deck?.forgeborn?.name || forgebornId)
+  }
+
   cards.forEach((card: any) => {
     if (isForgebornCard(card)) return
-    const typeValue = typeof card === 'string' ? '' : card?.type || card?.cardType || ''
-    const rarityValue = typeof card === 'string' ? '' : card?.rarity || ''
-    const typeLower = String(typeValue).toLowerCase()
-    const rarityLower = String(rarityValue).toLowerCase()
-
-    if (typeLower.includes('creature')) {
-      creatures += 1
+    if (typeof card === 'string') {
+      addName(card)
       return
     }
-    if (typeLower.includes('spell')) {
-      spells += 1
-      return
-    }
-    if (typeLower.includes('solbind') || rarityLower.includes('solbind')) {
-      solbind += 1
-      return
-    }
-    other += 1
+    addName(card?.name || card?.id)
   })
 
-  return { creatures, spells, solbind, other }
+  return names
 }
 
 export async function generateMetadata(
@@ -106,18 +107,9 @@ export async function generateMetadata(
     const deck = normalizeDeck(rawDeck)
     const forgebornName = rawDeck?.forgeborn?.name || deck?.forgeborn?.name || deck?.forgebornId
     const forgebornImageUrl = resolveForgebornImageUrl(rawDeck?.forgeborn?.id || deck?.forgebornId)
-    const counts = summarizeDeck(deck)
-
-    const parts = [
-      forgebornName ? `Forgeborn: ${forgebornName}` : null,
-      `Creatures: ${counts.creatures}`,
-      `Spells: ${counts.spells}`,
-      counts.solbind > 0 ? `Solbind: ${counts.solbind}` : null,
-      counts.other > 0 ? `Other: ${counts.other}` : null,
-    ].filter(Boolean)
-
-    const title = deck?.name ? `${deck.name} - Deck` : titleFallback
-    const description = parts.length > 0 ? parts.join('. ') + '.' : 'SolForge Fusion deck overview.'
+    const cardNames = listDeckCards(deck)
+    const description = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
+    const title = titleFallback
 
     return {
       title,
@@ -131,7 +123,7 @@ export async function generateMetadata(
           : undefined,
       },
       twitter: {
-        card: forgebornImageUrl ? 'summary_large_image' : 'summary',
+        card: forgebornImageUrl ? 'summary' : 'summary',
         title,
         description,
         images: forgebornImageUrl ? [forgebornImageUrl] : undefined,
