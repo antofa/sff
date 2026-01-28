@@ -170,3 +170,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: d4f050f
   Request: Add B3 set detection (using cardSetId) across the app, and ensure B2 is detected the same way, including tags, filters, and rarity icons.
   Date: 2026-01-28
+- Commit: 2f0cd98
+  Request: Fix the search input so URL params no longer overwrite a new username when loading decks.
+  Date: 2026-01-28
