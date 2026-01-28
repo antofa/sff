@@ -53,7 +53,61 @@ export async function GET(
     }
   }
 
-  const imageSrc = imageData ? `data:image/jpeg;base64,${Buffer.from(imageData).toString('base64')}` : null
+  const toBase64 = (buffer: ArrayBuffer) => {
+    const bytes = new Uint8Array(buffer)
+    let binary = ''
+    const chunkSize = 0x8000
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+    }
+    return btoa(binary)
+  }
+
+  const getImageSize = (buffer: ArrayBuffer) => {
+    const bytes = new Uint8Array(buffer)
+    if (bytes.length >= 24 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+      const view = new DataView(buffer)
+      return { width: view.getUint32(16), height: view.getUint32(20) }
+    }
+
+    if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+      let offset = 2
+      while (offset + 9 < bytes.length) {
+        if (bytes[offset] !== 0xff) {
+          offset += 1
+          continue
+        }
+        const marker = bytes[offset + 1]
+        const length = (bytes[offset + 2] << 8) + bytes[offset + 3]
+        const isSof =
+          marker === 0xc0 ||
+          marker === 0xc1 ||
+          marker === 0xc2 ||
+          marker === 0xc3 ||
+          marker === 0xc5 ||
+          marker === 0xc6 ||
+          marker === 0xc7 ||
+          marker === 0xc9 ||
+          marker === 0xca ||
+          marker === 0xcb ||
+          marker === 0xcd ||
+          marker === 0xce ||
+          marker === 0xcf
+        if (isSof) {
+          const height = (bytes[offset + 5] << 8) + bytes[offset + 6]
+          const width = (bytes[offset + 7] << 8) + bytes[offset + 8]
+          return { width, height }
+        }
+        if (length <= 0) break
+        offset += 2 + length
+      }
+    }
+    return null
+  }
+
+  const imageSize = imageData ? getImageSize(imageData) : null
+  const shouldRotate = !!imageSize && imageSize.width > imageSize.height
+  const imageSrc = imageData ? `data:image/jpeg;base64,${toBase64(imageData)}` : null
 
   return new ImageResponse(
     (
@@ -83,6 +137,8 @@ export async function GET(
                 width: '100%',
                 height: '100%',
                 objectFit: 'contain',
+                transform: shouldRotate ? 'rotate(-90deg)' : undefined,
+                transformOrigin: 'center center',
               }}
             />
           ) : (
