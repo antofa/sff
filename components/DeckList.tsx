@@ -2416,7 +2416,7 @@ const buildSearchParamsFromState = (
 type ViewMode = 'decks' | 'fused'
 
 export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {}, deckCreatureTypesMap = {} }: DeckListProps) {
-  const PAGE_SIZE = 300
+  const PAGE_SIZE = 100
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null)
   const [detailsOpened, setDetailsOpened] = useState(false)
   const [parentFusedDeck, setParentFusedDeck] = useState<Deck | null>(null)

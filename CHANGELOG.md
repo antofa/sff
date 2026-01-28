@@ -68,5 +68,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Prevent URL auto-search from overwriting manual username input.
 - Ensure force refresh bypasses cached deck pages and fused deck requests.
 - Prefer explicit cardSetId/cardSetNo over computed deckSet in deck list display.
+- Set deck list pagination size to 100 for regular and fused decks.
 
 ### Fixed
