@@ -173,3 +173,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 2f0cd98
   Request: Fix the search input so URL params no longer overwrite a new username when loading decks.
   Date: 2026-01-28
+- Commit: ad7dbe8
+  Request: Make force refresh bypass cached deck pages and fused deck requests.
+  Date: 2026-01-28
