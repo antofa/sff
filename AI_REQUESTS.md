@@ -101,3 +101,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 25e00af
   Request: Add set info above the column, plus rarity counts and creature tags below the deck composition.
   Date: 2026-01-28
+- Commit: da700bc
+  Request: Add ELO under score and double the font size for the entire left column.
+  Date: 2026-01-28
