@@ -325,6 +325,8 @@ const CardListItem = memo(function CardListItem({
         variant={isSelected ? 'filled' : 'subtle'}
         onClick={onClick}
         className="w-full h-auto"
+        data-card-scroll={card.id}
+        style={{ scrollMarginTop: '72px' }}
         styles={{
           root: {
             backgroundColor: isSelected 
@@ -454,7 +456,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     if (!selectedCard || isMdUp) return
     const id = selectedCard.id
     if (!id) return
-    const target = document.querySelector(`[data-card-id="${id}"]`)
+    const target = document.querySelector(`[data-card-scroll="${id}"]`)
     if (target && 'scrollIntoView' in target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
@@ -3193,7 +3195,7 @@ const originalCardMeta = useMemo(() => {
                 className="relative w-full flex items-center justify-center"
                 style={{
                   width: `min(${frameWidthPx}px, ${compact ? '88vw' : '70vw'})`,
-                  height: `min(${frameHeightPx}px, ${compact ? '56vh' : '70vh'})`,
+                  height: compact ? `${frameHeightPx}px` : `min(${frameHeightPx}px, 70vh)`,
                 }}
               >
                 {effectiveImageUrl && (
