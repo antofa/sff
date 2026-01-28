@@ -9,6 +9,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - `AGENTS.md` with project notes and contribution rules.
 - `CHANGELOG.md` to track notable changes.
 - `AI_REQUESTS.md` to record agent requests and resulting commits.
+- Added `*_DarkforgeCommon.png` rarity icons (B1, S1–S4) under `public/images/icons/rarity/`.
 
 ### Changed
 - Updated contribution rules in `AGENTS.md` (build/commit flow and logging).
