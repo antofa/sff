@@ -36,5 +36,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Use a custom OG image for deck links and set the preview title to the deck name.
 - Auto-rotate OG forgeborn images when they are landscape.
 - Flip OG rotation logic to keep images horizontal.
+- Scale up OG forgeborn images to reduce empty space.
 
 ### Fixed

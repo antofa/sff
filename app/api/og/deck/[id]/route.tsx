@@ -123,8 +123,8 @@ export async function GET(
       >
         <div
           style={{
-            width: '1120px',
-            height: '550px',
+            width: '1160px',
+            height: '600px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -137,7 +137,7 @@ export async function GET(
                 width: '100%',
                 height: '100%',
                 objectFit: 'contain',
-                transform: shouldRotate ? 'rotate(-90deg)' : undefined,
+                transform: `${shouldRotate ? 'rotate(-90deg)' : ''} scale(1.08)`.trim(),
                 transformOrigin: 'center center',
               }}
             />
