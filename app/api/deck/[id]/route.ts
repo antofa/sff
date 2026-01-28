@@ -417,34 +417,36 @@ export async function GET(
       let cardSetNoFromDb: string | null | undefined = fusedRaw.cardSetNo ?? null
       let cardSetIdFromDb: string | null | undefined = fusedRaw.cardSetId ?? null
 
-      try {
-        const altIds = Array.from(
-          new Set(
-            [
-              candidate,
-              candidate.toLowerCase(),
-              candidate.replace(/^Fused[_-]?/i, ''),
-              candidate.replace(/^Fused[_-]?/i, '').toLowerCase(),
-            ].filter(Boolean)
+      if (supabase) {
+        try {
+          const altIds = Array.from(
+            new Set(
+              [
+                candidate,
+                candidate.toLowerCase(),
+                candidate.replace(/^Fused[_-]?/i, ''),
+                candidate.replace(/^Fused[_-]?/i, '').toLowerCase(),
+              ].filter(Boolean)
+            )
           )
-        )
 
-        const { data: metaRows, error: metaError } = await supabase
-          .from('player_decks')
-          .select('deck_rank, deck_score, elo, card_set_no, card_set_id')
-          .in('deck_id', altIds)
-          .limit(1)
+          const { data: metaRows, error: metaError } = await supabase
+            .from('player_decks')
+            .select('deck_rank, deck_score, elo, card_set_no, card_set_id')
+            .in('deck_id', altIds)
+            .limit(1)
 
-        if (!metaError && metaRows && metaRows.length > 0) {
-          const meta = metaRows[0]
-          deckRankFromDb = deckRankFromDb ?? meta.deck_rank ?? null
-          deckScoreFromDb = deckScoreFromDb ?? (meta.deck_score as any as number | null) ?? null
-          eloFromDb = eloFromDb ?? (meta.elo as any as number | null) ?? null
-          cardSetNoFromDb = cardSetNoFromDb ?? (meta.card_set_no as any as string | null) ?? null
-          cardSetIdFromDb = cardSetIdFromDb ?? (meta.card_set_id as any as string | null) ?? null
+          if (!metaError && metaRows && metaRows.length > 0) {
+            const meta = metaRows[0]
+            deckRankFromDb = deckRankFromDb ?? meta.deck_rank ?? null
+            deckScoreFromDb = deckScoreFromDb ?? (meta.deck_score as any as number | null) ?? null
+            eloFromDb = eloFromDb ?? (meta.elo as any as number | null) ?? null
+            cardSetNoFromDb = cardSetNoFromDb ?? (meta.card_set_no as any as string | null) ?? null
+            cardSetIdFromDb = cardSetIdFromDb ?? (meta.card_set_id as any as string | null) ?? null
+          }
+        } catch (err) {
+          console.warn('[API] Failed to load fused deck meta from Supabase:', err)
         }
-      } catch (err) {
-        console.warn('[API] Failed to load fused deck meta from Supabase:', err)
       }
 
       const deckRankResolved: string | null | undefined = deckRankFromDb ?? deckRankFromListing ?? null

@@ -31,5 +31,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Lower forgeborn images slightly within the frame.
 - Make `/api/deck/[id]` resilient when Supabase env vars are missing.
 - Make `/api/saved-decks` return empty data when Supabase is not configured.
+- Add deck-specific Open Graph metadata with forgeborn image and composition summary.
 
 ### Fixed
