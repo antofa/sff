@@ -89,3 +89,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: e2b952d
   Request: Add a header with faction/set/format, composition chips, and a footer line to the deck preview.
   Date: 2026-01-28
+- Commit: 294d729
+  Request: Fix the OG deck image error requiring explicit flex display on divs with multiple children.
+  Date: 2026-01-28
