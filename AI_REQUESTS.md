@@ -83,3 +83,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 73074e1
   Request: Make the deck preview image larger to reduce empty background space.
   Date: 2026-01-28
+- Commit: 4b6e3fa
+  Request: Set the OG preview image scale to 1.5.
+  Date: 2026-01-28
