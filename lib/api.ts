@@ -491,12 +491,12 @@ export function formatCardName(cardId: string): string {
 export function getCardImageUrl(cardId: string, level: number = 1, isForgeborn: boolean = false): string {
   if (!cardId) return ''
   
-  // Forgeborn cards use format: {cardId}.jpg from /public/cards/ (NOT resized)
+  // Forgeborn cards use format: {cardId}.jpg from /public/cards/resized/
   // The cardId should preserve spaces and be URL-encoded (e.g., "s1aa1steel rosetta134" -> "s1aa1steel%20rosetta134")
-  // Note: For forgeborn, we try the original ID first (with dash if present), then fall back to space replacement
-  // This is handled in loadSingleImage function in DeckDetails.tsx
+  // Note: for forgeborn we prefer the space variant, then fall back to the dash variant.
+  // This is handled in loadSingleImage function in DeckDetails.tsx.
   if (isForgeborn) {
-    const forgebornBaseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
+    const forgebornBaseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards/resized'
     // URL encode the cardId as-is (preserve original format, whether it has dash or space)
     const encodedCardId = encodeURIComponent(cardId)
     return `${forgebornBaseUrl}/${encodedCardId}.jpg`
@@ -529,12 +529,12 @@ export function getCardImageUrl(cardId: string, level: number = 1, isForgeborn: 
 }
 
 /**
- * Generate alternative URL for forgeborn card by replacing dash with space
- * Used as fallback if the original URL doesn't work
+ * Generate a forgeborn URL with spaces instead of dashes (resized).
+ * Used as the preferred candidate before the dash variant.
  */
 export function getForgebornAlternativeUrl(cardId: string): string {
   if (!cardId) return ''
-  const forgebornBaseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
+  const forgebornBaseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards/resized'
   // Replace dash with space if it appears before a number (common pattern: "steel-rosetta134" -> "steel rosetta134")
   let processedCardId = cardId
   // Pattern: look for dash followed by lowercase letters and then numbers (e.g., "steel-rosetta134")

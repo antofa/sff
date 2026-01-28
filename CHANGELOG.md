@@ -16,5 +16,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Switched `AI_REQUESTS.md` request entries to English and added an English-only rule in `AGENTS.md`.
 - Added a UTC date requirement for `CHANGELOG.md` entries.
 - Require committing every change without prompting.
+- Prefer forgeborn image URLs with spaces, falling back to dash variants (resized path).
 
 ### Fixed

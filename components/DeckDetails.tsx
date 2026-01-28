@@ -260,7 +260,12 @@ async function loadSingleImage(cardId: string, level: number, isForgeborn: boole
     }
   }
 
-  addCandidate(imageUrl)
+  if (isForgeborn) {
+    addCandidate(getForgebornAlternativeUrl(cardId))
+    addCandidate(imageUrl)
+  } else {
+    addCandidate(imageUrl)
+  }
 
   if (isSet99 && !isForgeborn) {
     const baseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
@@ -273,9 +278,7 @@ async function loadSingleImage(cardId: string, level: number, isForgeborn: boole
     }
   }
 
-  if (isForgeborn && cardId.includes('-')) {
-    addCandidate(getForgebornAlternativeUrl(cardId))
-  }
+  // Forgeborn candidates are handled above to prefer the space variant first.
 
   for (const candidate of candidates) {
     const loadedUrl = await loadImageUrlWithCache(candidate, timeoutMs)
