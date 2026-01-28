@@ -50,3 +50,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: e0af813
   Request: The forgeborn image is too high; reduce the vertical offset.
   Date: 2026-01-28
+- Commit: 687cc51
+  Request: Set the forgeborn top offset to 0% and report the objectPosition value.
+  Date: 2026-01-28
