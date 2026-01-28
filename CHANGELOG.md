@@ -61,5 +61,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Lock background scroll while the deck details modal is open.
 - Drop manual body scrolling so the modal uses a single scroll container.
 - Auto-scroll the selected card into view on narrow layouts and give the card frame more height.
+- Reduce empty space in narrow card frames and ensure level buttons fit.
 
 ### Fixed

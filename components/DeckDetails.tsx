@@ -3148,7 +3148,7 @@ const originalCardMeta = useMemo(() => {
     const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
 
     const baseFrameWidthPx = compact ? 240 : 288
-    const baseFrameHeightPx = compact ? 460 : 480
+    const baseFrameHeightPx = compact ? 420 : 480
     const frameWidthPx = baseFrameWidthPx
     const frameHeightPx = baseFrameHeightPx
     const isResizedForgeborn = isForgeborn && !!effectiveImageUrl && effectiveImageUrl.includes('/resized/')
@@ -3168,32 +3168,32 @@ const originalCardMeta = useMemo(() => {
 
     return (
       <Paper
-        p={compact ? 'md' : 'xl'}
+        p={compact ? 'sm' : 'xl'}
         className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
         style={{
           backgroundColor: 'rgba(30, 41, 59, 0.6)',
-          minHeight: compact ? '38vh' : '42vh',
-          maxHeight: compact ? '68vh' : '52vh',
+          minHeight: compact ? 'auto' : '42vh',
+          maxHeight: compact ? 'none' : '52vh',
           width: compact ? '100%' : detailPanelWidth,
           minWidth: compact ? '0' : detailPanelMinWidth,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           boxSizing: 'border-box',
-          overflow: 'hidden',
+          overflow: compact ? 'visible' : 'hidden',
         }}
       >
         <div className="text-center w-full">
           {!hasError ? (
             <div
               className="relative w-full flex flex-col items-center justify-center"
-              style={{ gap: '0.15rem', marginTop: compact ? 0 : '-1.5rem' }}
+              style={{ gap: '0.35rem', marginTop: compact ? 0 : '-1.5rem' }}
             >
               <div
                 className="relative w-full flex items-center justify-center"
                 style={{
                   width: `min(${frameWidthPx}px, ${compact ? '88vw' : '70vw'})`,
-                  height: `min(${frameHeightPx}px, ${compact ? '68vh' : '70vh'})`,
+                  height: `min(${frameHeightPx}px, ${compact ? '56vh' : '70vh'})`,
                 }}
               >
                 {effectiveImageUrl && (
