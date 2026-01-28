@@ -38,3 +38,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 6ed913c
   Request: Forgeborn images are still too small; increase their displayed size.
   Date: 2026-01-28
+- Commit: d9c018a
+  Request: Set the forgeborn image scale to 2.2.
+  Date: 2026-01-28
