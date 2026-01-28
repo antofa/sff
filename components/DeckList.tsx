@@ -4841,16 +4841,27 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Count"
-                              value={currentValue ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  creaturesValue: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <NumberInput
+                                placeholder="Count"
+                                value={currentValue ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    creaturesValue: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -4863,6 +4874,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -4878,11 +4893,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -4923,12 +4934,24 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Count"
-                              value={currentValue ?? undefined}
-                              onChange={(value) => update({ freeCreaturesValue: typeof value === 'number' ? value : null })}
-                              min={0}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                              <NumberInput
+                                placeholder="Count"
+                                value={currentValue ?? undefined}
+                                onChange={(value) => update({ freeCreaturesValue: typeof value === 'number' ? value : null })}
+                                min={0}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    fontSize: '14px',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -4941,6 +4964,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -4956,11 +4983,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1, minWidth: 0 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5031,17 +5054,28 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 option: { color: 'white' },
                               }}
                             />
-                            <NumberInput
-                              placeholder="Count"
-                              value={currentCount ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  creatureTypeCount: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              disabled={!currentType}
-                              rightSection={currentCount !== null && currentCount !== undefined ? (
+                            <div style={{ position: 'relative', flex: '0 0 120px' }}>
+                              <NumberInput
+                                placeholder="Count"
+                                value={currentCount ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    creatureTypeCount: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                disabled={!currentType}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentCount !== null && currentCount !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5054,6 +5088,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5069,11 +5107,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: '0 0 120px' }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5114,16 +5148,27 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Count"
-                              value={currentValue ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  spellsValue: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <NumberInput
+                                placeholder="Count"
+                                value={currentValue ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    spellsValue: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5136,6 +5181,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5151,11 +5200,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5196,12 +5241,24 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Count"
-                              value={currentValue ?? undefined}
-                              onChange={(value) => update({ freeSpellsValue: typeof value === 'number' ? value : null })}
-                              min={0}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                              <NumberInput
+                                placeholder="Count"
+                                value={currentValue ?? undefined}
+                                onChange={(value) => update({ freeSpellsValue: typeof value === 'number' ? value : null })}
+                                min={0}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    fontSize: '14px',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5214,6 +5271,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5229,11 +5290,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1, minWidth: 0 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5281,16 +5338,28 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 option: { color: 'white' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Min count"
-                              value={currentCount ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  spellTypeCount: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              rightSection={currentCount !== null && currentCount !== undefined ? (
+                            <div style={{ position: 'relative', flex: '0 0 120px' }}>
+                              <NumberInput
+                                placeholder="Min count"
+                                value={currentCount ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    spellTypeCount: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                style={{ width: '100%' }}
+                                disabled={!currentType}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentCount !== null && currentCount !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5303,6 +5372,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5318,12 +5391,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: '0 0 120px' }}
-                              disabled={!currentType}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5428,14 +5496,25 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="ELO value"
-                              value={currentValue ?? ''}
-                              onChange={(value) => {
-                                update({ eloValue: typeof value === 'number' ? value : null })
-                              }}
-                              min={0}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <NumberInput
+                                placeholder="ELO value"
+                                value={currentValue ?? ''}
+                                onChange={(value) => {
+                                  update({ eloValue: typeof value === 'number' ? value : null })
+                                }}
+                                min={0}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5448,6 +5527,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5463,11 +5546,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5508,18 +5587,29 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Score value (0-100)"
-                              value={currentValue ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  scoreValue: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              max={100}
-                              step={1}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <NumberInput
+                                placeholder="Score value (0-100)"
+                                value={currentValue ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    scoreValue: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                max={100}
+                                step={1}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5532,6 +5622,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5547,11 +5641,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5606,16 +5696,28 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Min count"
-                              value={currentCount ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  rarityCount: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              rightSection={currentCount !== null && currentCount !== undefined ? (
+                            <div style={{ position: 'relative', flex: '0 0 120px' }}>
+                              <NumberInput
+                                placeholder="Min count"
+                                value={currentCount ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    rarityCount: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                style={{ width: '100%' }}
+                                disabled={!currentType}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentCount !== null && currentCount !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5628,6 +5730,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5643,12 +5749,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: '0 0 120px' }}
-                              disabled={!currentType}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
