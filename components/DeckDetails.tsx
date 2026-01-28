@@ -4100,7 +4100,7 @@ const originalCardMeta = useMemo(() => {
                     const frameHeightPx = baseFrameHeightPx
                     const isResizedForgeborn = isForgeborn && !!effectiveImageUrl && effectiveImageUrl.includes('/resized/')
                     const shouldRotateForgeborn = isForgeborn && !isResizedForgeborn
-                    const forgebornScale = shouldRotateForgeborn ? 1.44 : isForgeborn ? 1.35 : 1
+                    const forgebornScale = shouldRotateForgeborn ? 1.44 : isForgeborn ? 1.6 : 1
 
                     const imageKey = effectiveImageUrl ? `${selectedCard.id}-${effectiveLevel}-${effectiveImageUrl}` : ''
                     const isImageReady = !!(imageKey && imageLoadStatus[imageKey])
@@ -4127,7 +4127,9 @@ const originalCardMeta = useMemo(() => {
                               className="object-contain"
                               sizes="(max-width: 1024px) 80vw, 420px"
                               style={{
-                                transform: shouldRotateForgeborn ? `rotate(-90deg) scale(${forgebornScale})` : 'none',
+                                transform: isForgeborn
+                                  ? `${shouldRotateForgeborn ? 'rotate(-90deg) ' : ''}scale(${forgebornScale})`
+                                  : 'none',
                                 transformOrigin: 'center center',
                                 opacity: isImageReady ? 1 : 0,
                                 transition: 'opacity 120ms ease',
