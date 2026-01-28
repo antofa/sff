@@ -19,5 +19,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Prefer forgeborn image URLs with spaces, falling back to dash variants (resized path).
 - Skip forgeborn rotation when using `/resized/` images.
 - Added a safe fallback auth provider when Discord credentials are missing.
+- Disabled session polling when auth is not configured and added a dev secret fallback.
 
 ### Fixed

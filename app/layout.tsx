@@ -21,6 +21,8 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const authEnabled = Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET)
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head />
@@ -38,7 +40,7 @@ export default function RootLayout({
             `,
           }}
         />
-        <SessionProvider>
+        <SessionProvider enabled={authEnabled}>
           <MantineProvider
             defaultColorScheme="dark"
             theme={{
