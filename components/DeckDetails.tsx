@@ -435,6 +435,18 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     cardImagesRef.current = cardImages
   }, [cardImages])
 
+  useEffect(() => {
+    if (!opened) return
+    const htmlOverflow = document.documentElement.style.overflow
+    const bodyOverflow = document.body.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.documentElement.style.overflow = htmlOverflow
+      document.body.style.overflow = bodyOverflow
+    }
+  }, [opened])
+
   // Всегда работаем с обогащенной декой (computed поля) для сетов/expiry/тегов
   const deckForDisplay = useMemo(() => {
     const base = fullDeckData || deck
