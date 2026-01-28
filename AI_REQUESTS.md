@@ -71,3 +71,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 478dce7
   Request: Use only card names in deck preview text and avoid a stretched forgeborn image.
   Date: 2026-01-28
+- Commit: 7691a09
+  Request: Use the deck name as the preview title and generate a larger, non-stretched forgeborn image.
+  Date: 2026-01-28
