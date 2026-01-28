@@ -176,3 +176,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ad7dbe8
   Request: Make force refresh bypass cached deck pages and fused deck requests.
   Date: 2026-01-28
+- Commit: 8e07196
+  Request: Fix deck list set badges to prefer explicit cardSetId/cardSetNo so B3/B2 display correctly.
+  Date: 2026-01-28
