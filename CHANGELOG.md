@@ -33,5 +33,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Make `/api/saved-decks` return empty data when Supabase is not configured.
 - Add deck-specific Open Graph metadata with forgeborn image and composition summary.
 - Switch deck link previews to list card names only and use a non-stretched forgeborn image.
+- Use a custom OG image for deck links and set the preview title to the deck name.
 
 ### Fixed

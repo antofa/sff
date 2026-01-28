@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import DeckPageClient from './DeckPageClient'
-import { fetchDeckDetails, getCardImageUrl, getForgebornAlternativeUrl, normalizeDeck } from '@/lib/api'
+import { fetchDeckDetails, normalizeDeck } from '@/lib/api'
 
 const buildCandidates = (rawId: string) => {
   const stripDeckPrefixes = (value: string) =>
@@ -27,16 +28,12 @@ const buildCandidates = (rawId: string) => {
   )
 }
 
-const resolveForgebornImageUrl = (forgebornId?: string | null) => {
-  if (!forgebornId) return null
-  const cleanId = String(forgebornId).replace(/_/g, ' ')
-  if (cleanId.includes(' ')) {
-    return getForgebornAlternativeUrl(cleanId)
-  }
-  if (forgebornId.includes('-')) {
-    return getForgebornAlternativeUrl(forgebornId)
-  }
-  return getCardImageUrl(forgebornId, 1, true)
+const resolveBaseUrl = async () => {
+  const headersList = await headers()
+  const host = headersList.get('host')
+  if (!host) return null
+  const proto = headersList.get('x-forwarded-proto') || 'http'
+  return `${proto}://${host}`
 }
 
 const listDeckCards = (deck: any) => {
@@ -106,10 +103,11 @@ export async function generateMetadata(
 
     const deck = normalizeDeck(rawDeck)
     const forgebornName = rawDeck?.forgeborn?.name || deck?.forgeborn?.name || deck?.forgebornId
-    const forgebornImageUrl = resolveForgebornImageUrl(rawDeck?.forgeborn?.id || deck?.forgebornId)
     const cardNames = listDeckCards(deck)
     const description = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
-    const title = titleFallback
+    const title = deck?.name || titleFallback
+    const baseUrl = await resolveBaseUrl()
+    const ogImageUrl = baseUrl ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}` : undefined
 
     return {
       title,
@@ -118,15 +116,22 @@ export async function generateMetadata(
         title,
         description,
         type: 'website',
-        images: forgebornImageUrl
-          ? [{ url: forgebornImageUrl, alt: forgebornName ? `Forgeborn ${forgebornName}` : 'Forgeborn card' }]
+        images: ogImageUrl
+          ? [
+              {
+                url: ogImageUrl,
+                width: 1200,
+                height: 630,
+                alt: forgebornName ? `Forgeborn ${forgebornName}` : 'Forgeborn card',
+              },
+            ]
           : undefined,
       },
       twitter: {
-        card: forgebornImageUrl ? 'summary' : 'summary',
+        card: ogImageUrl ? 'summary_large_image' : 'summary',
         title,
         description,
-        images: forgebornImageUrl ? [forgebornImageUrl] : undefined,
+        images: ogImageUrl ? [ogImageUrl] : undefined,
       },
     }
   } catch {
