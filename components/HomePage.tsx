@@ -456,7 +456,7 @@ export default function Home() {
                   className="bg-gradient-to-r from-sf-primary to-sf-secondary hover:from-sf-primary/90 hover:to-sf-secondary/90 transition-all shadow-lg hover:shadow-xl"
                   style={{ minWidth: 270, height: 60 }}
                 >
-                  Search Decks
+                  Load Decks
                 </Button>
                 <div className="flex-1 flex justify-end">
                   <Checkbox
