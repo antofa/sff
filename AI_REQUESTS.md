@@ -20,3 +20,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: e095953
   Request: Download https://solforgefusion.com/images/cards/rarity/S4_DarkforgeCommon.png for all sets and place it next to the other rarity icons on the server.
   Date: 2026-01-28
+- Commit: 638dfd1
+  Request: Change the forgeborn image URL to try the space-encoded variant first, then fall back to the dash variant.
+  Date: 2026-01-28
