@@ -26,3 +26,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 671f307
   Request: If a forgeborn image is loaded from a /resized/ URL, do not rotate it when displaying.
   Date: 2026-01-28
+- Commit: 15a5ba0
+  Request: Fix the NextAuth dev error by allowing auth to run without Discord credentials.
+  Date: 2026-01-28
