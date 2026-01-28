@@ -3,9 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 import { fetchDeckDetails, normalizeDeck, getPlayerDecks } from '@/lib/api'
 import type { Database, PlayerDeckRow } from '@/types/database'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabase =
+  supabaseUrl && supabaseServiceKey
+    ? createClient<Database>(supabaseUrl, supabaseServiceKey)
+    : null
 
 const mergeFromPlayerDecks = async (deck: any) => {
   const owner =
@@ -135,78 +138,80 @@ export async function GET(
     )
 
     // 1) Try Supabase (player_decks) for each candidate
-    for (const candidate of candidates) {
-      const { data, error } = await supabase
-        .from('player_decks')
-        .select('*')
-        .eq('deck_id', candidate)
-        .order('updated_at', { ascending: false })
-        .limit(1)
+    if (supabase) {
+      for (const candidate of candidates) {
+        const { data, error } = await supabase
+          .from('player_decks')
+          .select('*')
+          .eq('deck_id', candidate)
+          .order('updated_at', { ascending: false })
+          .limit(1)
 
-      if (error) {
-        console.error('[API] /api/deck supabase error:', error)
-        continue
-      }
-
-      if (data && data.length > 0) {
-        const row = data[0] as PlayerDeckRow
-        let profile: { player_name?: string | null; display_name?: string | null; discord_name?: string | null } | undefined
-        if (row.user_id) {
-          try {
-            const { data: profileRow, error: profileError } = await supabase
-              .from('player_profiles')
-              .select('player_name, display_name, discord_name')
-              .eq('user_id', row.user_id)
-              .single()
-            if (!profileError && profileRow) {
-              profile = profileRow as any
-            }
-          } catch (profileErr) {
-            console.warn('[API] /api/deck profile lookup failed:', profileErr)
-          }
+        if (error) {
+          console.error('[API] /api/deck supabase error:', error)
+          continue
         }
 
-        const supabaseDeck = mapSupabaseRowToDeck(row, profile)
-        const needsHydration = true // We no longer store cards/tags/forgeborn in DB; always hydrate from external API
-
-        if (needsHydration) {
-          try {
-            const raw = await fetchDeckDetails(stripDeckPrefixes(candidate))
-            if (raw) {
-              const normalized = normalizeDeck(raw)
-              const owner =
-                supabaseDeck.playerName ||
-                raw.playerName ||
-                raw.player_name ||
-                raw.username ||
-                raw.userName ||
-                raw.owner ||
-                raw?.myUser?.username ||
-                raw?.users?.[0]?.username ||
-                raw?.users?.[0]?.user?.username ||
-                raw?.Users?.[0]?.UserName ||
-                undefined
-              const username = raw?.myUser?.username || raw?.username || raw?.userName || owner
-
-              const hydratedDeck = {
-                ...supabaseDeck,
-                ...normalized,
-                playerName: owner || supabaseDeck.playerName,
-                username: username || supabaseDeck.playerName,
-                is_for_sale: supabaseDeck.is_for_sale,
-                is_nft: supabaseDeck.is_nft,
-                price: supabaseDeck.price,
+        if (data && data.length > 0) {
+          const row = data[0] as PlayerDeckRow
+          let profile: { player_name?: string | null; display_name?: string | null; discord_name?: string | null } | undefined
+          if (row.user_id) {
+            try {
+              const { data: profileRow, error: profileError } = await supabase
+                .from('player_profiles')
+                .select('player_name, display_name, discord_name')
+                .eq('user_id', row.user_id)
+                .single()
+              if (!profileError && profileRow) {
+                profile = profileRow as any
               }
-
-              const enriched = await mergeFromPlayerDecks(hydratedDeck)
-              return NextResponse.json({ deck: enriched })
+            } catch (profileErr) {
+              console.warn('[API] /api/deck profile lookup failed:', profileErr)
             }
-          } catch (err) {
-            console.warn('[API] Hydration from external API failed, using Supabase deck:', err)
           }
-        }
 
-        return NextResponse.json({ deck: supabaseDeck })
+          const supabaseDeck = mapSupabaseRowToDeck(row, profile)
+          const needsHydration = true // We no longer store cards/tags/forgeborn in DB; always hydrate from external API
+
+          if (needsHydration) {
+            try {
+              const raw = await fetchDeckDetails(stripDeckPrefixes(candidate))
+              if (raw) {
+                const normalized = normalizeDeck(raw)
+                const owner =
+                  supabaseDeck.playerName ||
+                  raw.playerName ||
+                  raw.player_name ||
+                  raw.username ||
+                  raw.userName ||
+                  raw.owner ||
+                  raw?.myUser?.username ||
+                  raw?.users?.[0]?.username ||
+                  raw?.users?.[0]?.user?.username ||
+                  raw?.Users?.[0]?.UserName ||
+                  undefined
+                const username = raw?.myUser?.username || raw?.username || raw?.userName || owner
+
+                const hydratedDeck = {
+                  ...supabaseDeck,
+                  ...normalized,
+                  playerName: owner || supabaseDeck.playerName,
+                  username: username || supabaseDeck.playerName,
+                  is_for_sale: supabaseDeck.is_for_sale,
+                  is_nft: supabaseDeck.is_nft,
+                  price: supabaseDeck.price,
+                }
+
+                const enriched = await mergeFromPlayerDecks(hydratedDeck)
+                return NextResponse.json({ deck: enriched })
+              }
+            } catch (err) {
+              console.warn('[API] Hydration from external API failed, using Supabase deck:', err)
+            }
+          }
+
+          return NextResponse.json({ deck: supabaseDeck })
+        }
       }
     }
 
