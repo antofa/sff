@@ -53,5 +53,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Make the deck details modal responsive at narrow widths.
 - Reduce forgeborn scale on narrow modals to avoid image clipping.
 - Allow modal header badges/links to wrap on narrow widths.
+- Allow deck title and header badges to wrap on all widths when needed.
 
 ### Fixed
