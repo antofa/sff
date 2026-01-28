@@ -32,3 +32,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ea36456
   Request: Fix the NextAuth dev error that still appears by skipping session fetch when auth is not configured and adding a dev secret fallback.
   Date: 2026-01-28
+- Commit: cd1ca5b
+  Request: Increase the on-screen size of forgeborn images (they appear too small).
+  Date: 2026-01-28
