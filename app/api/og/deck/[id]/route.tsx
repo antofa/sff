@@ -106,7 +106,7 @@ export async function GET(
   }
 
   const imageSize = imageData ? getImageSize(imageData) : null
-  const shouldRotate = !!imageSize && imageSize.width > imageSize.height
+  const shouldRotate = !!imageSize && imageSize.height > imageSize.width
   const imageSrc = imageData ? `data:image/jpeg;base64,${toBase64(imageData)}` : null
 
   return new ImageResponse(
