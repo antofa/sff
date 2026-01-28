@@ -43,5 +43,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Shift the OG deck image to the right and add a left column with counts and metadata.
 - Add set, rarity counts, and creature tags to the OG left column.
 - Add ELO to the OG metadata and scale the left column typography.
+- Reduce OG left column font sizes and include Solbind cards in deck list text.
 
 ### Fixed

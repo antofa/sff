@@ -289,24 +289,24 @@ export async function GET(
             width: '300px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '16px',
+            gap: '12px',
             color: '#e2e8f0',
             fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 36 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 24 }}>
             <span style={{ color: '#94a3b8' }}>Set</span>
             <span style={{ fontWeight: 600 }}>{setValue}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 36 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 24 }}>
             <span style={{ color: '#94a3b8' }}>Creatures</span>
             <span style={{ fontWeight: 600 }}>{cardCounts.creatures}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 36 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 24 }}>
             <span style={{ color: '#94a3b8' }}>Spells</span>
             <span style={{ fontWeight: 600 }}>{cardCounts.spells}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 36 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 24 }}>
             <span style={{ color: '#94a3b8' }}>Solbind</span>
             <span style={{ fontWeight: 600 }}>{cardCounts.solbind}</span>
           </div>
@@ -315,7 +315,7 @@ export async function GET(
               display: 'flex',
               flexDirection: 'column',
               gap: '6px',
-              fontSize: 30,
+              fontSize: 20,
               lineHeight: 1.3,
             }}
           >
@@ -327,7 +327,7 @@ export async function GET(
               display: 'flex',
               flexDirection: 'column',
               gap: '6px',
-              fontSize: 30,
+              fontSize: 20,
               lineHeight: 1.3,
             }}
           >
@@ -335,7 +335,7 @@ export async function GET(
             <span style={{ color: '#e2e8f0' }}>{tagText}</span>
           </div>
           <div style={{ height: '1px', backgroundColor: 'rgba(148, 163, 184, 0.25)' }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 34 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 23 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
               <span style={{ color: '#94a3b8' }}>Owner</span>
               <span style={{ fontWeight: 600 }}>{ownerLabel}</span>

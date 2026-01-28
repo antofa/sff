@@ -38,6 +38,8 @@ const resolveBaseUrl = async () => {
 
 const listDeckCards = (deck: any) => {
   const cards = Array.isArray(deck?.cards) ? deck.cards : []
+  const solbindCards = Array.isArray(deck?.solbinds) ? deck.solbinds : []
+  const allCards = cards.concat(solbindCards)
   const forgebornId = deck?.forgeborn?.id || deck?.forgebornId
 
   const isForgebornCard = (card: any) => {
@@ -67,13 +69,13 @@ const listDeckCards = (deck: any) => {
     addName(deck?.forgeborn?.name || forgebornId)
   }
 
-  cards.forEach((card: any) => {
+  allCards.forEach((card: any) => {
     if (isForgebornCard(card)) return
     if (typeof card === 'string') {
       addName(card)
       return
     }
-    addName(card?.name || card?.id)
+    addName(card?.name || card?.title || card?.cardTitle || card?.cardName || card?.id || card?.cardId)
   })
 
   return names
