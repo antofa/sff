@@ -149,3 +149,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 8dc805c
   Request: Remove extra nested scrollbars in the narrow deck details view.
   Date: 2026-01-28
+- Commit: 4b0765c
+  Request: Reduce the deck details view to a single scrollbar in narrow mode.
+  Date: 2026-01-28
