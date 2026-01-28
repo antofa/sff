@@ -156,6 +156,7 @@ export async function GET(
   let creatureTags: Array<[string, number]> = []
   let owner: string | null = null
   let score: number | null = null
+  let elo: number | null = null
   let expiry: string | null = null
   let setLabel: string | null = null
 
@@ -177,6 +178,7 @@ export async function GET(
 
       owner = deck?.playerName || deck?.username || deck?.owner || null
       score = formatScore(deck?.deckScore ?? deck?.elo ?? deck?.deckRank ?? null)
+      elo = formatScore(deck?.elo ?? null)
       expiry = formatExpiry(
         deck?.expireAt ?? deck?.expire ?? deck?.expire_date ?? deck?.expireDate ?? deck?.pExpiry ?? null
       )
@@ -257,6 +259,7 @@ export async function GET(
 
   const ownerLabel = owner || '-'
   const scoreLabel = score === null ? '-' : String(score)
+  const eloLabel = elo === null ? '-' : String(elo)
   const expiryLabel = expiry || '-'
   const setValue = setLabel || '-'
   const rarityText =
@@ -286,24 +289,24 @@ export async function GET(
             width: '300px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '14px',
+            gap: '16px',
             color: '#e2e8f0',
             fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 36 }}>
             <span style={{ color: '#94a3b8' }}>Set</span>
             <span style={{ fontWeight: 600 }}>{setValue}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 36 }}>
             <span style={{ color: '#94a3b8' }}>Creatures</span>
             <span style={{ fontWeight: 600 }}>{cardCounts.creatures}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 36 }}>
             <span style={{ color: '#94a3b8' }}>Spells</span>
             <span style={{ fontWeight: 600 }}>{cardCounts.spells}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 36 }}>
             <span style={{ color: '#94a3b8' }}>Solbind</span>
             <span style={{ fontWeight: 600 }}>{cardCounts.solbind}</span>
           </div>
@@ -312,7 +315,7 @@ export async function GET(
               display: 'flex',
               flexDirection: 'column',
               gap: '6px',
-              fontSize: 15,
+              fontSize: 30,
               lineHeight: 1.3,
             }}
           >
@@ -324,7 +327,7 @@ export async function GET(
               display: 'flex',
               flexDirection: 'column',
               gap: '6px',
-              fontSize: 15,
+              fontSize: 30,
               lineHeight: 1.3,
             }}
           >
@@ -332,7 +335,7 @@ export async function GET(
             <span style={{ color: '#e2e8f0' }}>{tagText}</span>
           </div>
           <div style={{ height: '1px', backgroundColor: 'rgba(148, 163, 184, 0.25)' }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 17 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 34 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
               <span style={{ color: '#94a3b8' }}>Owner</span>
               <span style={{ fontWeight: 600 }}>{ownerLabel}</span>
@@ -340,6 +343,10 @@ export async function GET(
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
               <span style={{ color: '#94a3b8' }}>Score</span>
               <span style={{ fontWeight: 600 }}>{scoreLabel}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+              <span style={{ color: '#94a3b8' }}>ELO</span>
+              <span style={{ fontWeight: 600 }}>{eloLabel}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
               <span style={{ color: '#94a3b8' }}>Expiry</span>
