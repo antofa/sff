@@ -119,3 +119,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: d8eb603
   Request: Add the new B2 set everywhere, including tags and filters.
   Date: 2026-01-28
+- Commit: ad02edf
+  Request: Rename the player deck search button text to \"Load Decks\".
+  Date: 2026-01-28
