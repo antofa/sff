@@ -134,3 +134,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 731b9b9
   Request: Allow deck detail header text (API/SFF/ELO/score/etc.) to wrap on narrow windows.
   Date: 2026-01-28
+- Commit: deed9e0
+  Request: Ensure the entire deck detail header (title, icons, owner badge, etc.) wraps to new lines.
+  Date: 2026-01-28
