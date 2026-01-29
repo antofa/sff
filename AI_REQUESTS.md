@@ -224,3 +224,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 14cd194
   Request: Disable Supabase usage across the project.
   Date: 2026-01-29
+- Commit: 72808de
+  Request: Remove Supabase deck save/load code paths and APIs.
+  Date: 2026-01-29
