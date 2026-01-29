@@ -191,3 +191,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 4055ac5
   Request: Keep the card image and tag panels fixed in wide deck detail modals while the card list scrolls.
   Date: 2026-01-28
+- Commit: 17cc31d
+  Request: Fix fused deck creature tags in the deck list to match the detail view.
+  Date: 2026-01-28
