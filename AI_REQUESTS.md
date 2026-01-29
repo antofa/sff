@@ -287,3 +287,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 02094b0
   Request: Expand the header changelog to show full entries and update the merge date.
   Date: 2026-01-29
+- Commit: 8d23d55
+  Request: Summarize the changelog modal instead of mirroring CHANGELOG.md.
+  Date: 2026-01-29
