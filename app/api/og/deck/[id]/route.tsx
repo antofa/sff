@@ -288,7 +288,7 @@ export async function GET(
     : null
   const setIconSrc = setIconData
     ? `data:image/png;base64,${toBase64(setIconData)}`
-    : null
+    : setIconUrl
 
   const ownerLabel = owner || '-'
   const scoreLabel = score === null ? '-' : String(score)
@@ -331,10 +331,23 @@ export async function GET(
             <span style={{ color: '#94a3b8' }}>Set</span>
             <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
               {setIconSrc ? (
-                <img
-                  src={setIconSrc}
-                  style={{ width: '22px', height: '22px', objectFit: 'contain' }}
-                />
+                <span
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '6px',
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                    border: '1px solid rgba(148, 163, 184, 0.25)',
+                  }}
+                >
+                  <img
+                    src={setIconSrc}
+                    style={{ width: '20px', height: '20px', objectFit: 'contain' }}
+                  />
+                </span>
               ) : null}
               {setValue}
             </span>

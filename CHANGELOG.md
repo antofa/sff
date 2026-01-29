@@ -103,3 +103,4 @@ Dates use UTC and roll over at 00:00 UTC.
 - Ignore non-deck API responses when building deck metadata so fused fallbacks can run.
 - Populate fused deck forgeborn data from source halves to render OG images.
 - Add a set icon before the set value in OG previews for non-fused decks.
+- Allow OG set icons to render from direct URLs when base64 fetches fail.
