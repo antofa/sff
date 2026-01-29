@@ -281,3 +281,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 5670daf
   Request: Show fused set labels with per-faction icons in OG previews.
   Date: 2026-01-29
+- Commit: d9eacd0
+  Request: Add a versioned changelog icon under feedback in the header.
+  Date: 2026-01-29
