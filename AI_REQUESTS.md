@@ -260,3 +260,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 45338f0
   Request: Fix fused deck previews still showing fallback metadata.
   Date: 2026-01-29
+- Commit: 326a943
+  Request: Fix fused deck previews by ignoring invalid deck responses in metadata.
+  Date: 2026-01-29
