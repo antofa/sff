@@ -12,6 +12,8 @@ import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForg
 import { logWithTimestamp } from '@/lib/logger'
 import { pluralize } from '@/lib/pluralize'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
+import { fetchCreatureTypesForDeckId } from '@/lib/creatureTypeOverrides'
+import { useDeckStore } from '@/store/deckStore'
 
 type CreatureTypeMap = Record<string, number>
 
@@ -1586,6 +1588,36 @@ const originalCardMeta = useMemo(() => {
     }
     return buildCreatureTypeEntries(deckLike, { fallbackCards: uniqueNormalizedCards })
   }, [fullDeckData, deck, uniqueNormalizedCards, deckCreatureTypesMap, allDecks])
+
+  const fusedHalfIds = useMemo(() => {
+    const ids = new Set<string>()
+    const addId = (value?: string | null) => {
+      const trimmed = (value || '').trim()
+      if (trimmed) ids.add(trimmed)
+    }
+    const deckAny = (fullDeckData || deck) as any
+    if (Array.isArray(deckAny?.myDecks)) {
+      deckAny.myDecks.forEach((d: any) => addId(d?.id || d?.deckId || d?.deck_id))
+    }
+    if (Array.isArray(deckAny?.fusedDeckIds)) {
+      deckAny.fusedDeckIds.forEach((id: string) => addId(id))
+    }
+    getFusedDeckSourceDecks.forEach((d) => addId((d as any)?.id || (d as any)?.deckId || (d as any)?.deck_id))
+    fusedSourceDecks.forEach((d) => addId((d as any)?.id || (d as any)?.deckId || (d as any)?.deck_id))
+    return Array.from(ids)
+  }, [fullDeckData, deck, getFusedDeckSourceDecks, fusedSourceDecks])
+
+  useEffect(() => {
+    if (!opened || fusedHalfIds.length === 0) return
+    const store = useDeckStore.getState()
+    fusedHalfIds.forEach((id) => {
+      fetchCreatureTypesForDeckId(id).then((creatureType) => {
+        if (creatureType && Object.keys(creatureType).length > 0) {
+          store.setDeckCreatureType(id, creatureType)
+        }
+      })
+    })
+  }, [opened, fusedHalfIds])
 
   // Helper function to load images in parallel with a concurrency limit
   const loadImagesInParallel = async (

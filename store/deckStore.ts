@@ -837,6 +837,7 @@ interface DeckStore {
   currentEventSource: EventSource | null
   fetchDecks: (playerName: string, options?: { force?: boolean; keepExisting?: boolean }) => Promise<void>
   clearDecks: () => void
+  setDeckCreatureType: (deckId: string, creatureType: Record<string, number>) => void
   restartFetchIfLoading: () => void
 }
 
@@ -1500,6 +1501,15 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       deckCreatureTypes: {},
       currentEventSource: null,
     })
+  },
+  setDeckCreatureType: (deckId: string, creatureType: Record<string, number>) => {
+    if (!deckId || !creatureType) return
+    set((state) => ({
+      deckCreatureTypes: {
+        ...state.deckCreatureTypes,
+        [deckId]: creatureType,
+      },
+    }))
   },
   restartFetchIfLoading: () => {
     const { loading, currentPlayer, fetchDecks, currentEventSource } = get()
