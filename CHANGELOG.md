@@ -87,5 +87,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Cache corrected half-deck creature tags separately and prefer them for fused tags.
 - Disable Supabase-backed routes and clients when Supabase is turned off.
 - Remove Supabase deck storage/loading endpoints and delete Supabase deck helpers.
+- Avoid repeated creature tag updates that caused fused deck modal hangs.
 
 ### Fixed

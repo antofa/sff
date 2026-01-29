@@ -1507,6 +1507,15 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   },
   setDeckCreatureType: (deckId: string, creatureType: Record<string, number>) => {
     if (!deckId || !creatureType) return
+    const existing = get().deckCreatureTypes[deckId]
+    if (existing) {
+      const existingKeys = Object.keys(existing)
+      const nextKeys = Object.keys(creatureType)
+      if (existingKeys.length === nextKeys.length) {
+        const isSame = existingKeys.every((key) => existing[key] === creatureType[key])
+        if (isSame) return
+      }
+    }
     set((state) => ({
       deckCreatureTypes: {
         ...state.deckCreatureTypes,

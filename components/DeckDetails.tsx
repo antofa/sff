@@ -1620,7 +1620,7 @@ const originalCardMeta = useMemo(() => {
         }
       })
     })
-  }, [opened, fusedHalfIds, deckCreatureTypesMap])
+  }, [opened, fusedHalfIds])
 
   // Helper function to load images in parallel with a concurrency limit
   const loadImagesInParallel = async (
