@@ -233,3 +233,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 85dfd64
   Request: Add an isFused URL parameter to persist fused view selection on reload.
   Date: 2026-01-29
+- Commit: 4637a6e
+  Request: Stop auto-search from restarting a previous player after a manual search.
+  Date: 2026-01-29
