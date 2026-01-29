@@ -3,6 +3,8 @@ import { headers } from 'next/headers'
 import DeckPageClient from './DeckPageClient'
 import { fetchDeckDetails, normalizeDeck } from '@/lib/api'
 
+export const dynamic = 'force-dynamic'
+
 const buildCandidates = (rawId: string) => {
   const stripDeckPrefixes = (value: string) =>
     value
