@@ -294,9 +294,9 @@ function getBorderColors(deck: Deck, now: number) {
 }
 
 // Helper function to determine deck set: if any card is from B1/B2/B3, return that set, otherwise use deck.cardSetNo
-function getDeckSet(deck: Deck): string | null {
+function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null {
   if (!deck) return null
-  
+  const allDecks = options?.allDecks || []
   const deckAny = deck as any
   const normalizeSetValue = (value?: string | number | null): string | null => {
     if (value === undefined || value === null) return null
@@ -328,6 +328,21 @@ function getDeckSet(deck: Deck): string | null {
     if (lower.startsWith('s4-')) return 'S4'
     return null
   }
+  const resolveSetFromSource = (sourceDeck?: Deck | null): string | null => {
+    if (!sourceDeck) return null
+    const sourceAny = sourceDeck as any
+    const explicitSet = normalizeSetValue(
+      sourceAny.cardSetNo ?? sourceAny.cardSetId ?? sourceAny.card_set_id ?? sourceAny.card_set_no
+    )
+    if (explicitSet) return explicitSet
+    const derived = deriveSetFromId(sourceAny.id)
+    if (derived) return normalizeSetValue(derived)
+    if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
+      const bSet = getBSetFromCards(sourceDeck.cards)
+      if (bSet) return bSet
+    }
+    return null
+  }
   
   // For fused decks, check cards from source decks (myDecks) if cards array is empty
   if (deckAny.format === 'Fused' && (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0)) {
@@ -335,14 +350,17 @@ function getDeckSet(deck: Deck): string | null {
     if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
       for (const sourceDeck of deckAny.myDecks) {
         if (!sourceDeck) continue
-        const explicitSet = sourceDeck.cardSetNo || sourceDeck.cardSetId || deriveSetFromId(sourceDeck.id)
-        if (explicitSet) {
-          return explicitSet
-        }
-        if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
-          const bSet = getBSetFromCards(sourceDeck.cards)
-          if (bSet) return bSet
-        }
+        const resolved = resolveSetFromSource(sourceDeck)
+        if (resolved) return resolved
+      }
+    }
+
+    if (deckAny.fusedDeckIds && Array.isArray(deckAny.fusedDeckIds) && allDecks.length > 0) {
+      for (const id of deckAny.fusedDeckIds) {
+        if (!id) continue
+        const match = allDecks.find((d) => d?.id === id)
+        const resolved = resolveSetFromSource(match)
+        if (resolved) return resolved
       }
     }
     
@@ -1211,18 +1229,18 @@ const FusedDeckCard = memo(function FusedDeckCard({
     const list: Array<{ faction: string; setNo: string | number | null }> = []
     pickedSources.forEach((src) => {
       if (src?.faction) {
-        let setNo = getDeckSet(src) || deriveSetFromId((src as any).id)
+        let setNo = getDeckSet(src, { allDecks }) || deriveSetFromId((src as any).id)
         if (!setNo && src.id && allDecksMap.has(src.id)) {
           const mapped = allDecksMap.get(src.id)
           if (mapped) {
-            setNo = getDeckSet(mapped) || deriveSetFromId((mapped as any)?.id)
+            setNo = getDeckSet(mapped, { allDecks }) || deriveSetFromId((mapped as any)?.id)
           }
         }
         list.push({ faction: src.faction, setNo: setNo || null })
       }
     })
     if (list.length === 0 && deck.faction) {
-      const deckSet = getDeckSet(deck) || deriveSetFromId(deck.id)
+      const deckSet = getDeckSet(deck, { allDecks }) || deriveSetFromId(deck.id)
       list.push({ faction: deck.faction, setNo: deckSet || null })
     }
     return list
@@ -1374,7 +1392,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
     if (setLabels.size === 0) {
       const bSet = getBSetFromCards(aggregatedCards as any[])
       if (bSet) setLabels.add(formatSetName(bSet) || bSet)
-      const parentSet = getDeckSet(deck)
+      const parentSet = getDeckSet(deck, { allDecks })
       if (parentSet) {
         const label = formatSetName(parentSet)
         if (label) setLabels.add(label)
@@ -1382,7 +1400,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
     }
 
     return Array.from(setLabels)
-  }, [factionSets, aggregatedCards, deck])
+  }, [factionSets, aggregatedCards, deck, allDecks])
 
   const counts = useMemo(() => {
     let derived: { total: number; creatures: number; spells: number; solbind: number } | null = null
@@ -2947,7 +2965,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     
     allDecks.forEach(deck => {
       // Use getDeckSet to determine the actual set (B1 if any card is from B1, otherwise deck.cardSetNo)
-      const deckSet = getDeckSet(deck)
+      const deckSet = getDeckSet(deck, { allDecks: decks })
       if (deckSet) {
         cardSetNosSet.add(deckSet)
       }
@@ -3457,7 +3475,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
 
       const getDeckSetString = () => {
         if (deckSetCache !== undefined) return deckSetCache
-        const deckSet = getDeckSet(deck)
+        const deckSet = getDeckSet(deck, { allDecks: decks })
         deckSetCache = deckSet ? String(deckSet).trim() : null
         return deckSetCache
       }
