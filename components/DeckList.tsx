@@ -72,16 +72,54 @@ const buildFusedCreatureTypeEntries = (
     if (isFusedDeckLike(d)) return
     regularByName.set(d.name.trim().toLowerCase(), d)
   })
+  const regularById = new Map<string, Deck>()
+  allDecks.forEach((d) => {
+    if (!d?.id) return
+    if (isFusedDeckLike(d)) return
+    regularById.set(String(d.id).trim().toLowerCase(), d)
+  })
+
+  const normalizeName = (value?: string | null) => (value ? value.trim().toLowerCase() : '')
+  const normalizeId = (value?: string | null) => {
+    if (!value) return ''
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/^deck[_-]?/i, '')
+      .replace(/^fused[_-]?/i, '')
+  }
+  const resolveCreatureMap = (d?: Deck | null) => {
+    if (!d) return undefined
+    const mapFromStore = d.id ? deckCreatureTypesMap[d.id] : undefined
+    if (mapFromStore && Object.keys(mapFromStore).length > 0) return mapFromStore
+    if (d.computed?.creatureType && Object.keys(d.computed.creatureType).length > 0) {
+      return d.computed.creatureType as CreatureTypeMap
+    }
+    try {
+      const computed = computeCreatureTypesForDeck(d)
+      if (computed && Object.keys(computed).length > 0) return computed
+    } catch {
+      // ignore
+    }
+    return undefined
+  }
 
   const sourceCandidates: Array<{ id?: string; name?: string }> = []
   const deckAny = deck as any
   if (Array.isArray(options.sourceDecks) && options.sourceDecks.length > 0) {
     options.sourceDecks.forEach((d) => {
-      if (d?.id || d?.name) sourceCandidates.push({ id: d.id, name: d.name })
+      if (d?.id || d?.name || (d as any)?.deckId || (d as any)?.deckName) {
+        sourceCandidates.push({
+          id: (d as any).id || (d as any).deckId,
+          name: (d as any).name || (d as any).deckName,
+        })
+      }
     })
   } else if (Array.isArray(deckAny.myDecks)) {
     deckAny.myDecks.forEach((d: any) => {
-      if (d?.id || d?.name) sourceCandidates.push({ id: d.id, name: d.name })
+      if (d?.id || d?.name || d?.deckId || d?.deckName) {
+        sourceCandidates.push({ id: d.id || d.deckId, name: d.name || d.deckName })
+      }
     })
   } else if (Array.isArray(deckAny.fusedDeckIds)) {
     deckAny.fusedDeckIds.forEach((id: string) => sourceCandidates.push({ id }))
@@ -100,18 +138,31 @@ const buildFusedCreatureTypeEntries = (
   }
 
   sourceCandidates.forEach(({ id, name }) => {
-    if (id && !seenIds.has(id)) {
-      seenIds.add(id)
-      addMap(deckCreatureTypesMap[id])
-      if (deckCreatureTypesMap[id]) return
+    if (id) {
+      const normalizedId = normalizeId(String(id))
+      if (normalizedId && !seenIds.has(normalizedId)) {
+        seenIds.add(normalizedId)
+        const byStore = deckCreatureTypesMap[id] || deckCreatureTypesMap[normalizedId]
+        if (byStore) {
+          addMap(byStore)
+          return
+        }
+        const match = regularById.get(normalizedId)
+        const resolved = resolveCreatureMap(match)
+        if (resolved) {
+          addMap(resolved)
+          return
+        }
+      }
     }
     if (name) {
-      const normalized = name.trim().toLowerCase()
+      const normalized = normalizeName(String(name))
       if (!normalized || seenNames.has(normalized)) return
       seenNames.add(normalized)
       const match = regularByName.get(normalized)
       if (match?.id) {
-        addMap(deckCreatureTypesMap[match.id])
+        const resolved = resolveCreatureMap(match)
+        if (resolved) addMap(resolved)
       }
     }
   })
