@@ -197,3 +197,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 188dba1
   Request: Fetch fused deck details when subtype data is missing so creature tags match the direct deck view.
   Date: 2026-01-28
+- Commit: 42a30e1
+  Request: Sum fused creature tags from cached regular deck halves and add a .env example.
+  Date: 2026-01-29
