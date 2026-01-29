@@ -107,3 +107,4 @@ Dates use UTC and roll over at 00:00 UTC.
 - Allow OG set icons to render from direct URLs when base64 fetches fail.
 - Fix OG renderer crash by removing unsupported inline-flex display values.
 - Add a header changelog modal with versioned highlights.
+- Summarize header changelog content instead of mirroring the full CHANGELOG.
