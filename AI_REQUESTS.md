@@ -263,3 +263,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 326a943
   Request: Fix fused deck previews by ignoring invalid deck responses in metadata.
   Date: 2026-01-29
+- Commit: 357dbf6
+  Request: Fix missing forgeborn image in fused deck previews.
+  Date: 2026-01-29
