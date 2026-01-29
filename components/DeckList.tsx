@@ -312,6 +312,11 @@ function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null 
   if (!deck) return null
   const allDecks = options?.allDecks || []
   const deckAny = deck as any
+  const isFused =
+    String(deckAny?.format || '').toLowerCase().includes('fused') ||
+    Boolean(deckAny?.is_fused) ||
+    String(deckAny?.id || '').toLowerCase().startsWith('fused_') ||
+    String(deckAny?.id || '').toLowerCase().startsWith('deck_fused_')
 
   const explicitSet = normalizeSetLabel(deckAny.cardSetId ?? deckAny.card_set_id ?? deckAny.cardSetNo ?? deckAny.card_set_no)
   if (explicitSet) return explicitSet
@@ -348,7 +353,7 @@ function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null 
   }
   
   // For fused decks, check cards from source decks (myDecks) if cards array is empty
-  if (deckAny.format === 'Fused' && (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0)) {
+  if (isFused && (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0)) {
     // Check source decks (myDecks) for explicit set first, then B1/B2 cards
     if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
       for (const sourceDeck of deckAny.myDecks) {
