@@ -209,3 +209,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 1599cb1
   Request: Fix fused creature tags by resolving half deck ids/names and computing locally when cached tags are missing.
   Date: 2026-01-29
+- Commit: 000d863
+  Request: Fetch half-deck details on demand to correct fused creature tags in lists and modals.
+  Date: 2026-01-29
