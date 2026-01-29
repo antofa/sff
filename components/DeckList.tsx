@@ -352,8 +352,8 @@ function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null 
     return null
   }
   
-  // For fused decks, check cards from source decks (myDecks) if cards array is empty
-  if (isFused && (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0)) {
+  // For fused decks, always prefer source halves (myDecks/fusedDeckIds) for set resolution
+  if (isFused) {
     // Check source decks (myDecks) for explicit set first, then B1/B2 cards
     if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
       for (const sourceDeck of deckAny.myDecks) {
@@ -371,7 +371,13 @@ function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null 
         if (resolved) return resolved
       }
     }
-    
+
+    // If halves don't resolve, try fused deck cards
+    if (deck.cards && Array.isArray(deck.cards) && deck.cards.length > 0) {
+      const bSet = getBSetFromCards(deck.cards)
+      if (bSet) return bSet
+    }
+
     // Fallback: check fused deck itself for set
     const derivedParentSet = deckAny.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id)
     if (derivedParentSet) {

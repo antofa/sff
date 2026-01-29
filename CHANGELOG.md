@@ -94,5 +94,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Normalize numeric card set values to S* so fused set filtering matches S3/S4.
 - Normalize selected card set filters to match fused set labels.
 - Detect fused decks by id/flags when resolving card sets for filters.
+- Always resolve fused card sets from halves even when fused cards are present.
 
 ### Fixed
