@@ -206,3 +206,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 8acc624
   Request: Add retries for 5xx fused deck fetches, keep progress moving on fused errors, and keep build dependency updates.
   Date: 2026-01-29
+- Commit: 1599cb1
+  Request: Fix fused creature tags by resolving half deck ids/names and computing locally when cached tags are missing.
+  Date: 2026-01-29
