@@ -1193,6 +1193,18 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         }
       })
 
+      es.addEventListener('fused-error', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data || '{}')
+          const message = data.message || 'Fused decks unavailable'
+          set({ error: message })
+          updateSteps('fetchFused', 'done', message)
+          activateTagsIfReady(latestTagMessage)
+        } catch (err) {
+          console.warn('[Store] Failed to parse fused-error event:', err)
+        }
+      })
+
       es.addEventListener('decks-ready', (event) => {
         try {
           const data = JSON.parse((event as MessageEvent).data || '{}')

@@ -484,25 +484,37 @@ const processDeckBatch = async (
           })
         }
 
-        const fused = await fetchFusedDecksFromAPI(playerName, {
-          force,
-          onPage: ({ page, received, totalSoFar: running, pageSize }) => {
-            fusedProgress({ page, received, totalSoFar: running, pageSize })
-          },
-        }).then((result) => {
-          fusedProgress({ totalSoFar: result.length })
-          const fusedWithTypes = Array.isArray(result) ? result.map(addCreatureTypes) : []
-          tagState.totalDecks = (regularWithTypes?.length || 0) + fusedWithTypes.length
-          enqueueTags(fusedWithTypes, {
-            includePerDeck: true,
+        let fused: any[] = []
+        let fusedError: string | null = null
+        try {
+          fused = await fetchFusedDecksFromAPI(playerName, {
+            force,
+            onPage: ({ page, received, totalSoFar: running, pageSize }) => {
+              fusedProgress({ page, received, totalSoFar: running, pageSize })
+            },
+          }).then((result) => {
+            fusedProgress({ totalSoFar: result.length })
+            const fusedWithTypes = Array.isArray(result) ? result.map(addCreatureTypes) : []
+            tagState.totalDecks = (regularWithTypes?.length || 0) + fusedWithTypes.length
+            enqueueTags(fusedWithTypes, {
+              includePerDeck: true,
+            })
+            writeEvent(controller, 'fused-complete', {
+              fusedCount: fusedWithTypes.length,
+              fusedPages: fusedWithTypes.length > 0 ? 1 : 0,
+            })
+            logStage(`fused fetch done count=${fusedWithTypes.length}`)
+            return fusedWithTypes
           })
+        } catch (error) {
+          fusedError = error instanceof Error ? error.message : 'Failed to fetch fused decks'
+          console.warn('[API /decks/stream] Fused fetch failed:', fusedError)
+          writeEvent(controller, 'fused-error', { message: fusedError })
           writeEvent(controller, 'fused-complete', {
-            fusedCount: fusedWithTypes.length,
-            fusedPages: fusedWithTypes.length > 0 ? 1 : 0,
+            fusedCount: 0,
+            fusedPages: 0,
           })
-          logStage(`fused fetch done count=${fusedWithTypes.length}`)
-          return fusedWithTypes
-        })
+        }
 
         // Send decks immediately so fetch step can complete on client
         writeEvent(controller, 'decks-ready', {
@@ -513,6 +525,7 @@ const processDeckBatch = async (
             fusedCount: fused.length,
             regularPages: meta.pages ?? meta.regularPages ?? 1,
             fusedPages: fused.length > 0 ? 1 : 0,
+            fusedError,
           },
         })
         logStage('decks-ready emitted to client')
@@ -535,6 +548,7 @@ const processDeckBatch = async (
             fusedCount: fused.length,
             regularPages: meta.pages ?? meta.regularPages ?? 1,
             fusedPages: fused.length > 0 ? 1 : 0,
+            fusedError,
           },
           tags: tagPayload,
         })

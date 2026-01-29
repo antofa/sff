@@ -713,7 +713,32 @@ export async function fetchFusedDecksFromAPI(
       ;(fetchOptions as any).next = { revalidate: 3600 }
     }
 
-    const response = await fetch(url, fetchOptions)
+    const maxAttempts = 3
+    let response: Response | null = null
+    let lastError: unknown = null
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        response = await fetch(url, fetchOptions)
+        if (response.ok) break
+        if (response.status >= 500 && attempt < maxAttempts) {
+          await fusedLog(`[API] Fused decks retry ${attempt}/${maxAttempts} after HTTP ${response.status}`)
+          await new Promise((resolve) => setTimeout(resolve, 500 * attempt))
+          continue
+        }
+        break
+      } catch (err) {
+        lastError = err
+        if (attempt < maxAttempts) {
+          await fusedLog(`[API] Fused decks retry ${attempt}/${maxAttempts} after network error`)
+          await new Promise((resolve) => setTimeout(resolve, 500 * attempt))
+          continue
+        }
+      }
+    }
+
+    if (!response) {
+      throw lastError instanceof Error ? lastError : new Error('Failed to fetch fused decks')
+    }
 
     if (!response.ok) {
       if (response.status === 404) {

@@ -77,5 +77,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Fetch fused deck details when subtype data is missing to keep creature tags accurate.
 - Compute fused creature tags by summing cached tags from the two source decks.
 - Reset deck search state when navigating home from the header logo.
+- Keep deck search progress moving when fused deck fetch fails.
+- Retry fused deck fetches on 5xx responses.
 
 ### Fixed
