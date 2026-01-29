@@ -200,3 +200,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 42a30e1
   Request: Sum fused creature tags from cached regular deck halves and add a .env example.
   Date: 2026-01-29
+- Commit: 078be22
+  Request: Reset deck search state when clicking the header logo to return to a clean home page.
+  Date: 2026-01-29
