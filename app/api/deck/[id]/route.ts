@@ -304,6 +304,20 @@ export async function GET(
         }
       })
 
+      const resolveFusedForgeborn = (sources: any[]) => {
+        for (const src of sources) {
+          if (!src) continue
+          const forgeborn = (src as any)?.forgeborn || null
+          const forgebornId = (src as any)?.forgebornId || (forgeborn && (forgeborn as any)?.id) || null
+          if (forgeborn || forgebornId) {
+            return { forgeborn, forgebornId }
+          }
+        }
+        return { forgeborn: null, forgebornId: null }
+      }
+
+      const sourceForgeborn = resolveFusedForgeborn(sourcesWithMeta)
+
       const deckRankResolved: string | null | undefined = deckRankFromListing ?? null
 
       const fusedDeck = {
@@ -315,8 +329,8 @@ export async function GET(
         fusedDeckIds: sourceDecks.map((d: any) => d?.id || d?.deckId || d?.deck_id).filter(Boolean),
         created: fusedRaw.created || fusedRaw.CreatedAt || fusedRaw.createdAt || null,
         updatedAt: fusedRaw.updated || fusedRaw.UpdatedAt || fusedRaw.updatedAt || null,
-        forgeborn: fusedRaw.forgeborn || null,
-        forgebornId: fusedRaw.forgeborn?.id || fusedRaw.forgebornId || null,
+        forgeborn: fusedRaw.forgeborn || sourceForgeborn.forgeborn || null,
+        forgebornId: fusedRaw.forgeborn?.id || fusedRaw.forgebornId || sourceForgeborn.forgebornId || null,
         deckRank: deckRankResolved ?? null,
         cardSetNo: fusedRaw.cardSetNo ?? null,
         cardSetId: fusedRaw.cardSetId ?? null,

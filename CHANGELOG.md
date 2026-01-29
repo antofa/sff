@@ -101,3 +101,4 @@ Dates use UTC and roll over at 00:00 UTC.
 - Generate deck preview metadata for fused decks by falling back to the internal deck API.
 - Force deck pages to render metadata dynamically so fused previews resolve at request time.
 - Ignore non-deck API responses when building deck metadata so fused fallbacks can run.
+- Populate fused deck forgeborn data from source halves to render OG images.
