@@ -194,3 +194,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 17cc31d
   Request: Fix fused deck creature tags in the deck list to match the detail view.
   Date: 2026-01-28
+- Commit: 188dba1
+  Request: Fetch fused deck details when subtype data is missing so creature tags match the direct deck view.
+  Date: 2026-01-28
