@@ -2611,6 +2611,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   )
   const lastSyncedQueryRef = useRef<string>('')
   const isHydratedRef = useRef(false)
+  const isViewModeHydratedRef = useRef(false)
 
   // Debounced filters for text inputs (0.5 second delay)
   // Use Mantine's useDebouncedValue with trailing: true (default behavior)
@@ -2657,6 +2658,22 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   }, [searchParamsString])
 
   useEffect(() => {
+    if (isViewModeHydratedRef.current) return
+    const params =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams(searchParamsString)
+    const isFused = params.get('isFused')
+    if (isFused) {
+      const normalized = isFused.toLowerCase()
+      if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'fused') {
+        setViewMode('fused')
+      }
+    }
+    isViewModeHydratedRef.current = true
+  }, [searchParamsString])
+
+  useEffect(() => {
     if (!isHydratedRef.current) return
     const baseParams =
       typeof window !== 'undefined'
@@ -2669,11 +2686,16 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       debouncedInstanceFilters,
       baseParams
     )
+    if (viewMode === 'fused') {
+      params.set('isFused', '1')
+    } else {
+      params.delete('isFused')
+    }
     const nextString = params.toString()
     if (nextString === lastSyncedQueryRef.current) return
     lastSyncedQueryRef.current = nextString
     router.replace(`?${nextString}`, { scroll: false })
-  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, router, searchParamsString])
+  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, router, searchParamsString, viewMode])
   
   // Ref to store scroll position and first visible deck ID
   const scrollPositionRef = useRef<number>(0)
