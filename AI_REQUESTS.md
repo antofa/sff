@@ -230,3 +230,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 4badf94
   Request: Fix fused deck modal hang by avoiding repeated creature tag updates.
   Date: 2026-01-29
+- Commit: 85dfd64
+  Request: Add an isFused URL parameter to persist fused view selection on reload.
+  Date: 2026-01-29
