@@ -83,5 +83,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Fetch half-deck details on demand to correct fused creature tags in list and modal views.
 - Preserve detailed deck cards when enriching from player listings.
 - Retry fused half tag fetches when cached creature tags are missing.
+- Prefer subtype-rich half deck data over cached tags when summing fused creature tags.
 
 ### Fixed

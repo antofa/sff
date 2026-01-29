@@ -91,19 +91,39 @@ const buildFusedCreatureTypeEntries = (
       .replace(/^deck[_-]?/i, '')
       .replace(/^fused[_-]?/i, '')
   }
+  const hasSubtypeData = (cards?: any[]) => {
+    if (!Array.isArray(cards)) return false
+    return cards.some((card) => {
+      if (!card || typeof card !== 'object') return false
+      return Boolean(
+        card.cardSubType ||
+          card.CardSubType ||
+          card.SubType ||
+          card.subType ||
+          card.SUBTYPE
+      )
+    })
+  }
+
   const resolveCreatureMap = (d?: Deck | null) => {
     if (!d) return undefined
-    const mapFromStore = d.id ? deckCreatureTypesMap[d.id] : undefined
-    if (mapFromStore && Object.keys(mapFromStore).length > 0) return mapFromStore
+    const candidateCards =
+      (Array.isArray((d as any).cardList) && (d as any).cardList) ||
+      (Array.isArray((d as any).cards) && (d as any).cards) ||
+      ((d as any).cards && typeof (d as any).cards === 'object' ? Object.values((d as any).cards) : [])
+    if (hasSubtypeData(candidateCards)) {
+      try {
+        const computed = computeCreatureTypesForDeck({ cards: candidateCards })
+        if (computed && Object.keys(computed).length > 0) return computed
+      } catch {
+        // ignore
+      }
+    }
     if (d.computed?.creatureType && Object.keys(d.computed.creatureType).length > 0) {
       return d.computed.creatureType as CreatureTypeMap
     }
-    try {
-      const computed = computeCreatureTypesForDeck(d)
-      if (computed && Object.keys(computed).length > 0) return computed
-    } catch {
-      // ignore
-    }
+    const mapFromStore = d.id ? deckCreatureTypesMap[d.id] : undefined
+    if (mapFromStore && Object.keys(mapFromStore).length > 0) return mapFromStore
     return undefined
   }
 
@@ -1346,8 +1366,6 @@ const FusedDeckCard = memo(function FusedDeckCard({
     const store = useDeckStore.getState()
     halfDeckIds.forEach((id) => {
       if (!id) return
-      const existing = deckCreatureTypesMap?.[id]
-      if (existing && Object.keys(existing).length > 0) return
       if (creatureTypeOverrideRequested.has(id)) return
       creatureTypeOverrideRequested.add(id)
       fetchCreatureTypesForDeckId(id).then((creatureType) => {
