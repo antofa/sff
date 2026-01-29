@@ -245,3 +245,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 8096311
   Request: Normalize selected card set filters so fused S-sets match.
   Date: 2026-01-29
+- Commit: 5058c39
+  Request: Fix fused set filtering when format flag is missing.
+  Date: 2026-01-29
