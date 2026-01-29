@@ -257,3 +257,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a93a121
   Request: Make social preview metadata render for fused decks too.
   Date: 2026-01-29
+- Commit: 45338f0
+  Request: Fix fused deck previews still showing fallback metadata.
+  Date: 2026-01-29
