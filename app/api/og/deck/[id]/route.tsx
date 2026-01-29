@@ -154,6 +154,7 @@ export async function GET(
 
   let forgebornImageUrl: string | null = null
   let factionIconUrl: string | null = null
+  let fusedSetEntries: Array<{ label: string; iconUrl: string | null }> = []
   let cardCounts = { creatures: 0, spells: 0, solbind: 0 }
   let rarityEntries: Array<[string, number]> = []
   let creatureTags: Array<[string, number]> = []
@@ -162,6 +163,15 @@ export async function GET(
   let elo: number | null = null
   let expiry: string | null = null
   let setLabel: string | null = null
+
+  const resolveFactionIconUrl = (factionRaw?: string | null) => {
+    const factionKey = factionRaw ? String(factionRaw).trim().toLowerCase() : ''
+    if (factionKey === 'alloyin') return `${origin}/images/icons/alloyin.png`
+    if (factionKey === 'nekrium') return `${origin}/images/icons/nekrium.png`
+    if (factionKey === 'tempys') return `${origin}/images/icons/tempys.png`
+    if (factionKey === 'uterra') return `${origin}/images/icons/uterra.png`
+    return null
+  }
 
   try {
     const res = await fetch(`${origin}/api/deck/${encodeURIComponent(deckId)}`, {
@@ -179,23 +189,35 @@ export async function GET(
       rarityEntries = countRarities(deck)
       creatureTags = getCreatureTags(deck)
       setLabel = formatSetLabel(deck?.cardSetNo, deck?.cardSetId)
-      if (!isFused) {
+      if (isFused) {
+        const sources = Array.isArray(deck?.myDecks) ? deck.myDecks : []
+        const mappedEntries: Array<{ label: string; iconUrl: string | null } | null> = sources.map(
+          (src: any) => {
+            const label = formatSetLabel(src?.cardSetNo, src?.cardSetId)
+            if (!label) return null
+            const factionRaw =
+              src?.faction ||
+              src?.factionName ||
+              src?.deckFaction ||
+              src?.forgeborn?.faction ||
+              null
+            return {
+              label,
+              iconUrl: resolveFactionIconUrl(factionRaw),
+            }
+          }
+        )
+        fusedSetEntries = mappedEntries
+          .filter((entry): entry is { label: string; iconUrl: string | null } => !!entry)
+          .slice(0, 2)
+      } else {
         const factionRaw =
           deck?.faction ||
           deck?.factionName ||
           deck?.deckFaction ||
           deck?.forgeborn?.faction ||
           null
-        const factionKey = factionRaw ? String(factionRaw).trim().toLowerCase() : ''
-        if (factionKey === 'alloyin') {
-          factionIconUrl = `${origin}/images/icons/alloyin.png`
-        } else if (factionKey === 'nekrium') {
-          factionIconUrl = `${origin}/images/icons/nekrium.png`
-        } else if (factionKey === 'tempys') {
-          factionIconUrl = `${origin}/images/icons/tempys.png`
-        } else if (factionKey === 'uterra') {
-          factionIconUrl = `${origin}/images/icons/uterra.png`
-        }
+        factionIconUrl = resolveFactionIconUrl(factionRaw)
       }
 
       owner = deck?.playerName || deck?.username || deck?.owner || null
@@ -221,18 +243,6 @@ export async function GET(
     }
   }
 
-  let factionIconData: ArrayBuffer | null = null
-  if (factionIconUrl) {
-    try {
-      const iconRes = await fetch(factionIconUrl)
-      if (iconRes.ok) {
-        factionIconData = await iconRes.arrayBuffer()
-      }
-    } catch {
-      factionIconData = null
-    }
-  }
-
   const toBase64 = (buffer: ArrayBuffer) => {
     const bytes = new Uint8Array(buffer)
     let binary = ''
@@ -241,6 +251,35 @@ export async function GET(
       binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
     }
     return btoa(binary)
+  }
+
+  const loadIcon = async (url: string | null) => {
+    if (!url) return { url: null, data: null }
+    try {
+      const iconRes = await fetch(url)
+      if (iconRes.ok) {
+        return { url, data: await iconRes.arrayBuffer() }
+      }
+    } catch {
+      // ignore
+    }
+    return { url, data: null }
+  }
+
+  let factionIconData: ArrayBuffer | null = null
+  if (factionIconUrl) {
+    const result = await loadIcon(factionIconUrl)
+    factionIconData = result.data
+  }
+
+  let fusedSetIconMap = new Map<string, string | null>()
+  if (fusedSetEntries.length > 0) {
+    const uniqueUrls = Array.from(new Set(fusedSetEntries.map((entry) => entry.iconUrl).filter(Boolean)))
+    const loaded = await Promise.all(uniqueUrls.map((url) => loadIcon(url as string)))
+    loaded.forEach((item) => {
+      const src = item.data ? `data:image/png;base64,${toBase64(item.data)}` : item.url
+      if (item.url) fusedSetIconMap.set(item.url, src || null)
+    })
   }
 
   const getImageInfo = (buffer: ArrayBuffer) => {
@@ -294,6 +333,11 @@ export async function GET(
     ? `data:image/png;base64,${toBase64(factionIconData)}`
     : factionIconUrl
 
+  const fusedSetDisplay = fusedSetEntries.map((entry) => ({
+    label: entry.label,
+    iconSrc: entry.iconUrl ? fusedSetIconMap.get(entry.iconUrl) || entry.iconUrl : null,
+  }))
+
   const ownerLabel = owner || '-'
   const scoreLabel = score === null ? '-' : String(score)
   const eloLabel = elo === null ? '-' : String(elo)
@@ -333,28 +377,55 @@ export async function GET(
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 24 }}>
             <span style={{ color: '#94a3b8' }}>Set</span>
-            <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {factionIconSrc ? (
-                <div
-                  style={{
-                    width: '24px',
-                    height: '24px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: '6px',
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-                    border: '1px solid rgba(148, 163, 184, 0.25)',
-                  }}
-                >
-                  <img
-                    src={factionIconSrc}
-                    style={{ width: '20px', height: '20px', objectFit: 'contain' }}
-                  />
-                </div>
-              ) : null}
-              {setValue}
-            </div>
+            {fusedSetDisplay.length > 0 ? (
+              <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {fusedSetDisplay.map((entry, idx) => (
+                  <div key={`${entry.label}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {entry.iconSrc ? (
+                      <div
+                        style={{
+                          width: '24px',
+                          height: '24px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                          border: '1px solid rgba(148, 163, 184, 0.25)',
+                        }}
+                      >
+                        <img src={entry.iconSrc} style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
+                      </div>
+                    ) : null}
+                    <span>{entry.label}</span>
+                    {idx < fusedSetDisplay.length - 1 ? <span style={{ color: '#94a3b8' }}>,</span> : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {factionIconSrc ? (
+                  <div
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '6px',
+                      backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                      border: '1px solid rgba(148, 163, 184, 0.25)',
+                    }}
+                  >
+                    <img
+                      src={factionIconSrc}
+                      style={{ width: '20px', height: '20px', objectFit: 'contain' }}
+                    />
+                  </div>
+                ) : null}
+                {setValue}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 24 }}>
             <span style={{ color: '#94a3b8' }}>Creatures</span>
