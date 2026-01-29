@@ -218,3 +218,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 75d5ef5
   Request: Prefer subtype-rich half deck data over cached fused tags when summing creature types.
   Date: 2026-01-29
+- Commit: e034b3d
+  Request: Prefer cached half-deck creature tags over fused data and skip owner merges when fetching half details.
+  Date: 2026-01-29
