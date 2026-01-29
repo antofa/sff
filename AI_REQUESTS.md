@@ -290,3 +290,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 8d23d55
   Request: Summarize the changelog modal instead of mirroring CHANGELOG.md.
   Date: 2026-01-29
+- Commit: 127547e
+  Request: Use the dev→master merge commit date for the changelog version.
+  Date: 2026-01-29
