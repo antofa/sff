@@ -307,6 +307,8 @@ function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null 
     if (lower === 'b2') return 'B2'
     if (lower === 'b1') return 'B1'
     if (lower === 'd0') return 'S99'
+    const sMatch = lower.match(/^s?(\d+)$/)
+    if (sMatch) return `S${sMatch[1]}`
     return text
   }
 

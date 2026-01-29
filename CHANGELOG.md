@@ -91,5 +91,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Persist fused view selection in the URL using an isFused query parameter.
 - Prevent URL auto-search from overriding a just-submitted manual player search.
 - Fix card set filtering for fused decks by resolving sets from source halves.
+- Normalize numeric card set values to S* so fused set filtering matches S3/S4.
 
 ### Fixed
