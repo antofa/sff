@@ -248,3 +248,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 5058c39
   Request: Fix fused set filtering when format flag is missing.
   Date: 2026-01-29
+- Commit: d6e1049
+  Request: Ensure fused set filtering always uses half decks.
+  Date: 2026-01-29
