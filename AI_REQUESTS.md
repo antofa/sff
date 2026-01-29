@@ -266,3 +266,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 357dbf6
   Request: Fix missing forgeborn image in fused deck previews.
   Date: 2026-01-29
+- Commit: 570d131
+  Request: Add a set icon before the set value in OG previews for half decks.
+  Date: 2026-01-29
