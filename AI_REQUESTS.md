@@ -239,3 +239,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: d5dfea5
   Request: Fix card set filtering for fused decks in the list view.
   Date: 2026-01-29
+- Commit: 0aebcd0
+  Request: Fix S-set card set filtering for fused decks by normalizing numeric sets.
+  Date: 2026-01-29
