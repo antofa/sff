@@ -127,6 +127,10 @@ export async function generateMetadata(
     for (const candidate of candidates) {
       const raw = await fetchDeckDetails(candidate)
       if (raw) {
+        const rawId = raw?.id || raw?.deckId || raw?.deck_id
+        if (!rawId) {
+          continue
+        }
         rawDeck = raw
         break
       }
