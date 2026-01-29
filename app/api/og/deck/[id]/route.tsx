@@ -329,13 +329,13 @@ export async function GET(
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 24 }}>
             <span style={{ color: '#94a3b8' }}>Set</span>
-            <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
               {setIconSrc ? (
-                <span
+                <div
                   style={{
                     width: '24px',
                     height: '24px',
-                    display: 'inline-flex',
+                    display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderRadius: '6px',
@@ -347,10 +347,10 @@ export async function GET(
                     src={setIconSrc}
                     style={{ width: '20px', height: '20px', objectFit: 'contain' }}
                   />
-                </span>
+                </div>
               ) : null}
               {setValue}
-            </span>
+            </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 24 }}>
             <span style={{ color: '#94a3b8' }}>Creatures</span>
