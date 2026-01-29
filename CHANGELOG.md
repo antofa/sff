@@ -73,5 +73,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Improve narrow card scroll offset and tighten card frame spacing.
 - Keep the card detail frames fixed in wide deck modals while the card list scrolls.
 - Use fused deck cards to compute creature tags in list view.
+- Fetch fused deck details when subtype data is missing to keep creature tags accurate.
 
 ### Fixed

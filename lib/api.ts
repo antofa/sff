@@ -827,6 +827,20 @@ export async function fetchFusedDecksFromAPI(
       return cached.cards
     }
 
+    const hasSubtypeData = (cards: any[]): boolean => {
+      if (!Array.isArray(cards) || cards.length === 0) return false
+      return cards.some((card) => {
+        if (!card || typeof card !== 'object') return false
+        return Boolean(
+          card.cardSubType ||
+            card.CardSubType ||
+            card.SubType ||
+            card.subType ||
+            card.SUBTYPE
+        )
+      })
+    }
+
     for (const fusedDeck of fusedDecks) {
       const allCards: any[] = []
       const enrichedMyDecks: any[] = Array.isArray(fusedDeck.myDecks) ? [] : []
@@ -881,8 +895,10 @@ export async function fetchFusedDecksFromAPI(
         }
       }
 
-      // If still no cards, fetch fused deck details from API as fallback (even when fusedDeckIds are absent)
-      if (allCards.length === 0) {
+      const needsSubtypeFetch = allCards.length > 0 && !hasSubtypeData(allCards)
+
+      // If still no cards or subtype data is missing, fetch fused deck details from API as fallback
+      if (allCards.length === 0 || needsSubtypeFetch) {
         decksNeedingFetch++
         const fetchStarted = Date.now()
         const details = await fetchDeckDetails(String(fusedDeck.id))
@@ -891,6 +907,7 @@ export async function fetchFusedDecksFromAPI(
           fallbackFetched++
           const detailedCards = collectCards(details)
           if (detailedCards.length > 0) {
+            allCards.length = 0
             allCards.push(...detailedCards)
           }
           // Enrich fused deck with extra fields from detail response
