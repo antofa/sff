@@ -221,3 +221,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: e034b3d
   Request: Prefer cached half-deck creature tags over fused data and skip owner merges when fetching half details.
   Date: 2026-01-29
+- Commit: 14cd194
+  Request: Disable Supabase usage across the project.
+  Date: 2026-01-29
