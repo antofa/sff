@@ -212,3 +212,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 000d863
   Request: Fetch half-deck details on demand to correct fused creature tags in lists and modals.
   Date: 2026-01-29
+- Commit: 3b1c69c
+  Request: Refresh fused creature tags by retrying half-deck lookups and preserving detailed cards.
+  Date: 2026-01-29
