@@ -15,7 +15,7 @@ export const fetchCreatureTypesForDeckId = async (deckId: string): Promise<Recor
 
   const promise = (async () => {
     try {
-      const res = await fetch(`/api/deck/${encodeURIComponent(normalized)}`)
+      const res = await fetch(`/api/deck/${encodeURIComponent(normalized)}?skipOwnerMerge=1`)
       const json = await res.json()
       if (!res.ok || !json?.deck) return null
       const creatureType = computeCreatureTypesForDeck(json.deck)

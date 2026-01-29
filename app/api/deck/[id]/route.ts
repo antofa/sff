@@ -92,11 +92,12 @@ const mapSupabaseRowToDeck = (row: PlayerDeckRow, profile?: { player_name?: stri
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id?: string }> }
 ) {
   const { id } = await context.params
   const deckId = id
+  const skipOwnerMerge = request.nextUrl.searchParams.get('skipOwnerMerge') === '1'
 
   if (!deckId) {
     return NextResponse.json({ error: 'Deck id is required' }, { status: 400 })
@@ -206,7 +207,7 @@ export async function GET(
                   price: supabaseDeck.price,
                 }
 
-                const enriched = await mergeFromPlayerDecks(hydratedDeck)
+                const enriched = skipOwnerMerge ? hydratedDeck : await mergeFromPlayerDecks(hydratedDeck)
                 return NextResponse.json({ deck: enriched })
               }
             } catch (err) {
@@ -247,7 +248,7 @@ export async function GET(
           if (username && !(deck as any).username) {
             ;(deck as any).username = username
           }
-          const enriched = await mergeFromPlayerDecks(deck)
+          const enriched = skipOwnerMerge ? deck : await mergeFromPlayerDecks(deck)
           return NextResponse.json({ deck: enriched })
         } catch (e) {
           console.warn('[API] normalizeDeck failed, will try fused fallback:', e)

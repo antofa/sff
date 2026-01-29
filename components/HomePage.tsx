@@ -32,6 +32,7 @@ export default function Home() {
     forgebornNameIndex,
     deckTags,
     deckCreatureTypes,
+    deckCreatureTypeOverrides,
     currentPlayer,
   } = useDeckStore()
   const lastSearchRef = useRef<string>('')
@@ -636,6 +637,7 @@ export default function Home() {
               precomputedForgebornNames={forgebornNameIndex}
               deckTagsMap={deckTags}
               deckCreatureTypesMap={deckCreatureTypes}
+              deckCreatureTypeOverrides={deckCreatureTypeOverrides}
             />
           )}
           

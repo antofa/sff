@@ -62,12 +62,14 @@ const buildFusedCreatureTypeEntries = (
   deck: Deck,
   options: {
     deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+    deckCreatureTypeOverrides?: Record<string, CreatureTypeMap>
     allDecks?: Deck[]
     sourceDecks?: Deck[]
   } = {}
 ) => {
   if (!isFusedDeckLike(deck)) return []
   const deckCreatureTypesMap = options.deckCreatureTypesMap || {}
+  const deckCreatureTypeOverrides = options.deckCreatureTypeOverrides || {}
   const allDecks = options.allDecks || []
   const regularByName = new Map<string, Deck>()
   allDecks.forEach((d) => {
@@ -91,34 +93,13 @@ const buildFusedCreatureTypeEntries = (
       .replace(/^deck[_-]?/i, '')
       .replace(/^fused[_-]?/i, '')
   }
-  const hasSubtypeData = (cards?: any[]) => {
-    if (!Array.isArray(cards)) return false
-    return cards.some((card) => {
-      if (!card || typeof card !== 'object') return false
-      return Boolean(
-        card.cardSubType ||
-          card.CardSubType ||
-          card.SubType ||
-          card.subType ||
-          card.SUBTYPE
-      )
-    })
-  }
-
   const resolveCreatureMap = (d?: Deck | null) => {
     if (!d) return undefined
-    const candidateCards =
-      (Array.isArray((d as any).cardList) && (d as any).cardList) ||
-      (Array.isArray((d as any).cards) && (d as any).cards) ||
-      ((d as any).cards && typeof (d as any).cards === 'object' ? Object.values((d as any).cards) : [])
-    if (hasSubtypeData(candidateCards)) {
-      try {
-        const computed = computeCreatureTypesForDeck({ cards: candidateCards })
-        if (computed && Object.keys(computed).length > 0) return computed
-      } catch {
-        // ignore
-      }
-    }
+    const override =
+      (d.id && deckCreatureTypeOverrides[d.id]) ||
+      (d.id && deckCreatureTypeOverrides[String(d.id).trim().toLowerCase()]) ||
+      undefined
+    if (override && Object.keys(override).length > 0) return override
     if (d.computed?.creatureType && Object.keys(d.computed.creatureType).length > 0) {
       return d.computed.creatureType as CreatureTypeMap
     }
@@ -1144,6 +1125,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
   allDecks,
   fusedExpiryResolver,
   deckCreatureTypesMap,
+  deckCreatureTypeOverrides,
 }: {
   deck: Deck
   sourceDecks?: [Deck | null, Deck | null]
@@ -1158,6 +1140,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
     minExpiringDate: string | null
   }
   deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+  deckCreatureTypeOverrides?: Record<string, CreatureTypeMap>
 }) {
   const [renderNow] = useState(() => Date.now())
   const fusedDeckAny = deck as any
@@ -1339,10 +1322,11 @@ const FusedDeckCard = memo(function FusedDeckCard({
     () =>
       buildFusedCreatureTypeEntries(deck, {
         deckCreatureTypesMap,
+        deckCreatureTypeOverrides,
         allDecks,
         sourceDecks: pickedSources,
       }),
-    [deck, deckCreatureTypesMap, allDecks, pickedSources]
+    [deck, deckCreatureTypesMap, deckCreatureTypeOverrides, allDecks, pickedSources]
   )
 
   const halfDeckIds = useMemo(() => {
@@ -1944,6 +1928,7 @@ interface DeckListProps {
   precomputedForgebornNames?: string[]
   deckTagsMap?: Record<string, string[]>
   deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+  deckCreatureTypeOverrides?: Record<string, CreatureTypeMap>
 }
 
 interface FilterState {
@@ -2602,7 +2587,7 @@ const buildSearchParamsFromState = (
 
 type ViewMode = 'decks' | 'fused'
 
-export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {}, deckCreatureTypesMap = {} }: DeckListProps) {
+export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {}, deckCreatureTypesMap = {}, deckCreatureTypeOverrides = {} }: DeckListProps) {
   const PAGE_SIZE = 100
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null)
   const [detailsOpened, setDetailsOpened] = useState(false)
@@ -6187,6 +6172,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               allDecks={[...decks, ...fusedDecks]}
                               fusedExpiryResolver={getFusedDeckExpiryStatus}
                               deckCreatureTypesMap={deckCreatureTypesMap}
+                              deckCreatureTypeOverrides={deckCreatureTypeOverrides}
                             />
                           )
                         })}
@@ -6261,6 +6247,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         allDecks={[...decks, ...fusedDecks]}
         parentFusedDeck={parentFusedDeck}
         deckCreatureTypesMap={deckCreatureTypesMap}
+        deckCreatureTypeOverrides={deckCreatureTypeOverrides}
       />
     </>
   )

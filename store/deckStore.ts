@@ -834,6 +834,7 @@ interface DeckStore {
   forgebornNameIndex: string[]
   deckTags: Record<string, string[]>
   deckCreatureTypes: Record<string, Record<string, number>>
+  deckCreatureTypeOverrides: Record<string, Record<string, number>>
   currentEventSource: EventSource | null
   fetchDecks: (playerName: string, options?: { force?: boolean; keepExisting?: boolean }) => Promise<void>
   clearDecks: () => void
@@ -855,6 +856,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   forgebornNameIndex: [],
   deckTags: {},
   deckCreatureTypes: {},
+  deckCreatureTypeOverrides: {},
   currentEventSource: null,
   fetchDecks: async (playerName: string, options?: { force?: boolean; keepExisting?: boolean }) => {
     const forceRefresh = options?.force ?? false
@@ -1499,6 +1501,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       forgebornNameIndex: [],
       deckTags: {},
       deckCreatureTypes: {},
+      deckCreatureTypeOverrides: {},
       currentEventSource: null,
     })
   },
@@ -1507,6 +1510,10 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     set((state) => ({
       deckCreatureTypes: {
         ...state.deckCreatureTypes,
+        [deckId]: creatureType,
+      },
+      deckCreatureTypeOverrides: {
+        ...state.deckCreatureTypeOverrides,
         [deckId]: creatureType,
       },
     }))

@@ -61,11 +61,13 @@ const buildFusedCreatureTypeEntries = (
   deck: Deck,
   options: {
     deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+    deckCreatureTypeOverrides?: Record<string, CreatureTypeMap>
     allDecks?: Deck[]
   } = {}
 ) => {
   if (!isFusedDeckLike(deck)) return []
   const deckCreatureTypesMap = options.deckCreatureTypesMap || {}
+  const deckCreatureTypeOverrides = options.deckCreatureTypeOverrides || {}
   const allDecks = options.allDecks || []
   const regularByName = new Map<string, Deck>()
   allDecks.forEach((d) => {
@@ -89,34 +91,13 @@ const buildFusedCreatureTypeEntries = (
       .replace(/^deck[_-]?/i, '')
       .replace(/^fused[_-]?/i, '')
   }
-  const hasSubtypeData = (cards?: any[]) => {
-    if (!Array.isArray(cards)) return false
-    return cards.some((card) => {
-      if (!card || typeof card !== 'object') return false
-      return Boolean(
-        card.cardSubType ||
-          card.CardSubType ||
-          card.SubType ||
-          card.subType ||
-          card.SUBTYPE
-      )
-    })
-  }
-
   const resolveCreatureMap = (d?: Deck | null) => {
     if (!d) return undefined
-    const candidateCards =
-      (Array.isArray((d as any).cardList) && (d as any).cardList) ||
-      (Array.isArray((d as any).cards) && (d as any).cards) ||
-      ((d as any).cards && typeof (d as any).cards === 'object' ? Object.values((d as any).cards) : [])
-    if (hasSubtypeData(candidateCards)) {
-      try {
-        const computed = computeCreatureTypesForDeck({ cards: candidateCards })
-        if (computed && Object.keys(computed).length > 0) return computed
-      } catch {
-        // ignore
-      }
-    }
+    const override =
+      (d.id && deckCreatureTypeOverrides[d.id]) ||
+      (d.id && deckCreatureTypeOverrides[String(d.id).trim().toLowerCase()]) ||
+      undefined
+    if (override && Object.keys(override).length > 0) return override
     if (d.computed?.creatureType && Object.keys(d.computed.creatureType).length > 0) {
       return d.computed.creatureType as CreatureTypeMap
     }
@@ -540,9 +521,10 @@ interface DeckDetailsProps {
   allDecks?: Deck[]
   parentFusedDeck?: Deck | null
   deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+  deckCreatureTypeOverrides?: Record<string, CreatureTypeMap>
 }
 
-export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [], parentFusedDeck, deckCreatureTypesMap }: DeckDetailsProps) {
+export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [], parentFusedDeck, deckCreatureTypesMap, deckCreatureTypeOverrides }: DeckDetailsProps) {
   const [selectedCard, setSelectedCard] = useState<CardInfo | null>(null)
   const [selectedLevel, setSelectedLevel] = useState<number>(1) // Current card level (1, 2, or 3)
   const [cardImages, setCardImages] = useState<Record<string, Record<number, string>>>({}) // cardId -> level -> imageUrl
@@ -1602,12 +1584,12 @@ const originalCardMeta = useMemo(() => {
     const deckLike = fullDeckData || deck
     if (!deckLike) return []
     if (isFusedDeckLike(deckLike)) {
-      const fusedEntries = buildFusedCreatureTypeEntries(deckLike, { deckCreatureTypesMap, allDecks })
+      const fusedEntries = buildFusedCreatureTypeEntries(deckLike, { deckCreatureTypesMap, deckCreatureTypeOverrides, allDecks })
       if (fusedEntries.length > 0) return fusedEntries
       return []
     }
     return buildCreatureTypeEntries(deckLike, { fallbackCards: uniqueNormalizedCards })
-  }, [fullDeckData, deck, uniqueNormalizedCards, deckCreatureTypesMap, allDecks])
+  }, [fullDeckData, deck, uniqueNormalizedCards, deckCreatureTypesMap, deckCreatureTypeOverrides, allDecks])
 
   const fusedHalfIds = useMemo(() => {
     const ids = new Set<string>()
