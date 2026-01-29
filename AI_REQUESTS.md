@@ -284,3 +284,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: d9eacd0
   Request: Add a versioned changelog icon under feedback in the header.
   Date: 2026-01-29
+- Commit: 02094b0
+  Request: Expand the header changelog to show full entries and update the merge date.
+  Date: 2026-01-29
