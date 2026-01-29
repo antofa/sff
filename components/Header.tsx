@@ -1,7 +1,7 @@
 'use client'
 
-import { Container, Group, Button, Text, Avatar, Menu, Loader, Tooltip, Paper } from '@mantine/core'
-import { IconMail, IconBrandDiscord, IconLogout, IconUser, IconArrowUpRight, IconArrowDownRight } from '@tabler/icons-react'
+import { Container, Group, Button, Text, Avatar, Menu, Loader, Tooltip, Paper, Divider } from '@mantine/core'
+import { IconMail, IconBrandDiscord, IconLogout, IconUser, IconArrowUpRight, IconArrowDownRight, IconNotes } from '@tabler/icons-react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -29,6 +29,21 @@ const TOKENS: TokenInfo[] = [
   { id: 'ethereum', symbol: 'ETH', label: 'ETH' },
   { id: 'solforge-fusion', symbol: 'SFG', label: 'SFG' },
 ]
+
+const CHANGELOG_SUMMARY = {
+  version: '0.0.1',
+  date: 'Pending merge',
+  highlights: {
+    added: [
+      'Fused deck OG previews now render with forgeborn art and fused metadata.',
+      'Changelog summary menu is available from the header.',
+    ],
+    fixed: [
+      'Fused deck card-set resolution now uses source halves for filtering.',
+      'OG preview fallbacks handle invalid deck responses and missing icons.',
+    ],
+  },
+}
 
 const formatPrice = (value?: number | null) => {
   if (value === undefined || value === null || Number.isNaN(value)) return '—'
@@ -376,22 +391,73 @@ export function Header() {
             */}
           </Group>
 
-          <Group gap="xs" wrap="nowrap">
-            <Tooltip label="Leave Feedback" position="bottom" withArrow>
-              <Button
-                component="a"
-                href="https://j5e8zoao.forms.app/sffd-feedback"
-                target="_blank"
-                rel="noopener noreferrer"
-                variant="subtle"
-                color="gray"
-                size="sm"
-                className="text-white hover:bg-sf-primary/20 transition-colors"
-                aria-label="Leave Feedback form"
-              >
-                <IconMail size={18} />
-              </Button>
-            </Tooltip>
+            <Group gap="xs" wrap="nowrap">
+            <div className="flex flex-col items-center gap-1">
+              <Tooltip label="Leave Feedback" position="bottom" withArrow>
+                <Button
+                  component="a"
+                  href="https://j5e8zoao.forms.app/sffd-feedback"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  className="text-white hover:bg-sf-primary/20 transition-colors"
+                  aria-label="Leave Feedback form"
+                >
+                  <IconMail size={18} />
+                </Button>
+              </Tooltip>
+              <Menu shadow="md" width={320} position="bottom-end" withArrow>
+                <Menu.Target>
+                  <Button
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    className="text-white hover:bg-sf-primary/20 transition-colors"
+                    aria-label="Changelog summary"
+                  >
+                    <IconNotes size={18} />
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <div className="px-3 py-2">
+                    <Text size="sm" fw={700}>
+                      Changelog {CHANGELOG_SUMMARY.version}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Merge date: {CHANGELOG_SUMMARY.date}
+                    </Text>
+                  </div>
+                  <Divider />
+                  <div className="px-3 py-2">
+                    <Text size="xs" fw={700} c="teal.3" tt="uppercase">
+                      New
+                    </Text>
+                    <div className="mt-1 space-y-1">
+                      {CHANGELOG_SUMMARY.highlights.added.map((item) => (
+                        <Text key={item} size="xs" c="gray.1">
+                          • {item}
+                        </Text>
+                      ))}
+                    </div>
+                  </div>
+                  <Divider />
+                  <div className="px-3 py-2">
+                    <Text size="xs" fw={700} c="blue.3" tt="uppercase">
+                      Fixed
+                    </Text>
+                    <div className="mt-1 space-y-1">
+                      {CHANGELOG_SUMMARY.highlights.fixed.map((item) => (
+                        <Text key={item} size="xs" c="gray.1">
+                          • {item}
+                        </Text>
+                      ))}
+                    </div>
+                  </div>
+                </Menu.Dropdown>
+              </Menu>
+            </div>
 
             {status === 'loading' ? (
               <Loader size="sm" color="blue" />

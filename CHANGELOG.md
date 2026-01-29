@@ -106,3 +106,4 @@ Dates use UTC and roll over at 00:00 UTC.
 - Show fused half set labels with per-faction icons in OG previews.
 - Allow OG set icons to render from direct URLs when base64 fetches fail.
 - Fix OG renderer crash by removing unsupported inline-flex display values.
+- Add a header changelog menu with versioned highlights.
