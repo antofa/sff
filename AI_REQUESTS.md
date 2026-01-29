@@ -227,3 +227,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 72808de
   Request: Remove Supabase deck save/load code paths and APIs.
   Date: 2026-01-29
+- Commit: 4badf94
+  Request: Fix fused deck modal hang by avoiding repeated creature tag updates.
+  Date: 2026-01-29
