@@ -251,3 +251,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: d6e1049
   Request: Ensure fused set filtering always uses half decks.
   Date: 2026-01-29
+- Commit: be93cde
+  Request: Fix fused deck filter returning zero results for S99 despite an existing fused deck.
+  Date: 2026-01-29
