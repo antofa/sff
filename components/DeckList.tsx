@@ -294,28 +294,29 @@ function getBorderColors(deck: Deck, now: number) {
 }
 
 // Helper function to determine deck set: if any card is from B1/B2/B3, return that set, otherwise use deck.cardSetNo
+const normalizeSetLabel = (value?: string | number | null): string | null => {
+  if (value === undefined || value === null) return null
+  const text = String(value).trim()
+  if (!text) return null
+  const lower = text.toLowerCase()
+  if (lower === 'b3') return 'B3'
+  if (lower === 'b2') return 'B2'
+  if (lower === 'b1') return 'B1'
+  if (lower === 'd0') return 'S99'
+  const sMatch = lower.match(/^s?(\d+)$/)
+  if (sMatch) return `S${sMatch[1]}`
+  return text
+}
+
 function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null {
   if (!deck) return null
   const allDecks = options?.allDecks || []
   const deckAny = deck as any
-  const normalizeSetValue = (value?: string | number | null): string | null => {
-    if (value === undefined || value === null) return null
-    const text = String(value).trim()
-    if (!text) return null
-    const lower = text.toLowerCase()
-    if (lower === 'b3') return 'B3'
-    if (lower === 'b2') return 'B2'
-    if (lower === 'b1') return 'B1'
-    if (lower === 'd0') return 'S99'
-    const sMatch = lower.match(/^s?(\d+)$/)
-    if (sMatch) return `S${sMatch[1]}`
-    return text
-  }
 
-  const explicitSet = normalizeSetValue(deckAny.cardSetId ?? deckAny.card_set_id ?? deckAny.cardSetNo ?? deckAny.card_set_no)
+  const explicitSet = normalizeSetLabel(deckAny.cardSetId ?? deckAny.card_set_id ?? deckAny.cardSetNo ?? deckAny.card_set_no)
   if (explicitSet) return explicitSet
   if (deckAny?.computed && deckAny.computed.deckSet !== undefined) {
-    return normalizeSetValue(deckAny.computed.deckSet as string | null)
+    return normalizeSetLabel(deckAny.computed.deckSet as string | null)
   }
 
   const deriveSetFromId = (id?: string | null): string | null => {
@@ -333,12 +334,12 @@ function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null 
   const resolveSetFromSource = (sourceDeck?: Deck | null): string | null => {
     if (!sourceDeck) return null
     const sourceAny = sourceDeck as any
-    const explicitSet = normalizeSetValue(
+    const explicitSet = normalizeSetLabel(
       sourceAny.cardSetNo ?? sourceAny.cardSetId ?? sourceAny.card_set_id ?? sourceAny.card_set_no
     )
     if (explicitSet) return explicitSet
     const derived = deriveSetFromId(sourceAny.id)
-    if (derived) return normalizeSetValue(derived)
+    if (derived) return normalizeSetLabel(derived)
     if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
       const bSet = getBSetFromCards(sourceDeck.cards)
       if (bSet) return bSet
@@ -4323,7 +4324,11 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               }
             if (cardSetState.cardSetNo.length > 0) {
               const deckSetStr = getDeckSetString()
-              const match = !!deckSetStr && cardSetState.cardSetNo.includes(deckSetStr)
+              const deckSetNormalized = normalizeSetLabel(deckSetStr)
+              const selectedSets = cardSetState.cardSetNo
+                .map((value) => normalizeSetLabel(value))
+                .filter((value): value is string => Boolean(value))
+              const match = !!deckSetNormalized && selectedSets.includes(deckSetNormalized)
               if (!applyMode(match, cardSetState.cardSetNoMode || 'include')) {
                 return false
               }
