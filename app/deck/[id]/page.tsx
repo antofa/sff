@@ -120,12 +120,28 @@ export async function generateMetadata(
   try {
     const candidates = buildCandidates(deckId)
     let rawDeck: any = null
+    const baseUrl = await resolveBaseUrl()
 
     for (const candidate of candidates) {
       const raw = await fetchDeckDetails(candidate)
       if (raw) {
         rawDeck = raw
         break
+      }
+    }
+
+    if (!rawDeck && baseUrl) {
+      try {
+        const res = await fetch(`${baseUrl}/api/deck/${encodeURIComponent(deckId)}?skipOwnerMerge=1`, {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        })
+        if (res.ok) {
+          const json = await res.json()
+          rawDeck = json?.deck || null
+        }
+      } catch {
+        rawDeck = null
       }
     }
 
@@ -138,7 +154,6 @@ export async function generateMetadata(
     const cardNames = listDeckCards(deck)
     const description = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
     const title = deck?.name || titleFallback
-    const baseUrl = await resolveBaseUrl()
     const ogImageUrl = baseUrl ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}` : undefined
 
     return {

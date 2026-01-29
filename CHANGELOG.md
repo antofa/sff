@@ -98,3 +98,4 @@ Dates use UTC and roll over at 00:00 UTC.
 
 ### Fixed
 - Populate fused deck card set values from source halves to keep card-set filtering reliable.
+- Generate deck preview metadata for fused decks by falling back to the internal deck API.
