@@ -72,5 +72,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Keep number input spinners visible while showing a separate clear button in filters.
 - Improve narrow card scroll offset and tighten card frame spacing.
 - Keep the card detail frames fixed in wide deck modals while the card list scrolls.
+- Use fused deck cards to compute creature tags in list view.
 
 ### Fixed

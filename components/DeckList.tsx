@@ -17,9 +17,27 @@ const buildCreatureTypeEntries = (
   deck: Deck,
   options: { deckCreatureTypesMap?: Record<string, CreatureTypeMap>; fallbackCards?: any[] } = {}
 ) => {
+  const deckAny = deck as any
+  if (deckAny?.format === 'Fused' && options.fallbackCards && options.fallbackCards.length > 0) {
+    try {
+      const fallbackMap = computeCreatureTypesForDeck({ cards: options.fallbackCards })
+      if (fallbackMap && Object.keys(fallbackMap).length > 0) {
+        return Object.entries(fallbackMap)
+          .filter(([, count]) => Number(count) > 0)
+          .sort((a, b) => {
+            const diff = Number(b[1]) - Number(a[1])
+            if (diff !== 0) return diff
+            return a[0].localeCompare(b[0])
+          })
+      }
+    } catch (err) {
+      console.warn('[DeckList] fused creatureType fallback failed', err)
+    }
+  }
+
   let creatureMap: CreatureTypeMap | undefined =
     (deck.computed?.creatureType as CreatureTypeMap | undefined) ||
-    ((deck as any).creatureType as CreatureTypeMap | undefined)
+    (deckAny.creatureType as CreatureTypeMap | undefined)
 
   if (!creatureMap && options.deckCreatureTypesMap && deck.id) {
     creatureMap = options.deckCreatureTypesMap[deck.id]
