@@ -153,7 +153,7 @@ export async function GET(
   const origin = new URL(request.url).origin
 
   let forgebornImageUrl: string | null = null
-  let setIconUrl: string | null = null
+  let factionIconUrl: string | null = null
   let cardCounts = { creatures: 0, spells: 0, solbind: 0 }
   let rarityEntries: Array<[string, number]> = []
   let creatureTags: Array<[string, number]> = []
@@ -179,18 +179,22 @@ export async function GET(
       rarityEntries = countRarities(deck)
       creatureTags = getCreatureTags(deck)
       setLabel = formatSetLabel(deck?.cardSetNo, deck?.cardSetId)
-      if (!isFused && setLabel) {
-        const normalized = String(setLabel).trim().toUpperCase()
-        const setNoMatch = normalized.match(/^S(\d+)$/)
-        if (normalized.startsWith('B')) {
-          setIconUrl = `${origin}/images/icons/rarity/${normalized}_DarkforgeCommon.png`
-        } else if (setNoMatch) {
-          let setNo = setNoMatch[1]
-          if (setNo === '99') setNo = '1'
-          if (!['1', '2', '3', '4'].includes(setNo)) {
-            setNo = '1'
-          }
-          setIconUrl = `${origin}/images/icons/rarity/S${setNo}_DarkforgeCommon.png`
+      if (!isFused) {
+        const factionRaw =
+          deck?.faction ||
+          deck?.factionName ||
+          deck?.deckFaction ||
+          deck?.forgeborn?.faction ||
+          null
+        const factionKey = factionRaw ? String(factionRaw).trim().toLowerCase() : ''
+        if (factionKey === 'alloyin') {
+          factionIconUrl = `${origin}/images/icons/alloyin.png`
+        } else if (factionKey === 'nekrium') {
+          factionIconUrl = `${origin}/images/icons/nekrium.png`
+        } else if (factionKey === 'tempys') {
+          factionIconUrl = `${origin}/images/icons/tempys.png`
+        } else if (factionKey === 'uterra') {
+          factionIconUrl = `${origin}/images/icons/uterra.png`
         }
       }
 
@@ -217,15 +221,15 @@ export async function GET(
     }
   }
 
-  let setIconData: ArrayBuffer | null = null
-  if (setIconUrl) {
+  let factionIconData: ArrayBuffer | null = null
+  if (factionIconUrl) {
     try {
-      const iconRes = await fetch(setIconUrl)
+      const iconRes = await fetch(factionIconUrl)
       if (iconRes.ok) {
-        setIconData = await iconRes.arrayBuffer()
+        factionIconData = await iconRes.arrayBuffer()
       }
     } catch {
-      setIconData = null
+      factionIconData = null
     }
   }
 
@@ -286,9 +290,9 @@ export async function GET(
   const imageSrc = imageData
     ? `data:${imageInfo?.mime || 'image/jpeg'};base64,${toBase64(imageData)}`
     : null
-  const setIconSrc = setIconData
-    ? `data:image/png;base64,${toBase64(setIconData)}`
-    : setIconUrl
+  const factionIconSrc = factionIconData
+    ? `data:image/png;base64,${toBase64(factionIconData)}`
+    : factionIconUrl
 
   const ownerLabel = owner || '-'
   const scoreLabel = score === null ? '-' : String(score)
@@ -330,7 +334,7 @@ export async function GET(
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 24 }}>
             <span style={{ color: '#94a3b8' }}>Set</span>
             <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {setIconSrc ? (
+              {factionIconSrc ? (
                 <div
                   style={{
                     width: '24px',
@@ -344,7 +348,7 @@ export async function GET(
                   }}
                 >
                   <img
-                    src={setIconSrc}
+                    src={factionIconSrc}
                     style={{ width: '20px', height: '20px', objectFit: 'contain' }}
                   />
                 </div>
