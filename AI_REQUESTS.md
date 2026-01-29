@@ -215,3 +215,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 3b1c69c
   Request: Refresh fused creature tags by retrying half-deck lookups and preserving detailed cards.
   Date: 2026-01-29
+- Commit: 75d5ef5
+  Request: Prefer subtype-rich half deck data over cached fused tags when summing creature types.
+  Date: 2026-01-29
