@@ -275,3 +275,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: c044bdc
   Request: Fix OG preview crash and restore set icon rendering.
   Date: 2026-01-29
+- Commit: d4f4d43
+  Request: Use faction icon instead of set icon in OG previews.
+  Date: 2026-01-29
