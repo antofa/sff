@@ -17,6 +17,8 @@ type CreatureTypeMap = Record<string, number>
 
 const KNOWN_FORGEBORN_NAMES = ['cercee', 'ironbeard', 'xerxes', 'kitaru', 'nova']
 
+const isFusedDeckLike = (deck: any) => String(deck?.format || '').toLowerCase() === 'fused'
+
 const buildCreatureTypeEntries = (
   deckLike: any,
   options: { fallbackCards?: any[] } = {}
@@ -45,6 +47,73 @@ const buildCreatureTypeEntries = (
   if (!creatureMap || typeof creatureMap !== 'object') return []
 
   return Object.entries(creatureMap)
+    .filter(([, count]) => Number(count) > 0)
+    .sort((a, b) => {
+      const diff = Number(b[1]) - Number(a[1])
+      if (diff !== 0) return diff
+      return a[0].localeCompare(b[0])
+    })
+}
+
+const buildFusedCreatureTypeEntries = (
+  deck: Deck,
+  options: {
+    deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+    allDecks?: Deck[]
+  } = {}
+) => {
+  if (!isFusedDeckLike(deck)) return []
+  const deckCreatureTypesMap = options.deckCreatureTypesMap || {}
+  const allDecks = options.allDecks || []
+  const regularByName = new Map<string, Deck>()
+  allDecks.forEach((d) => {
+    if (!d?.name) return
+    if (isFusedDeckLike(d)) return
+    regularByName.set(d.name.trim().toLowerCase(), d)
+  })
+
+  const sourceCandidates: Array<{ id?: string; name?: string }> = []
+  const deckAny = deck as any
+  if (Array.isArray(deckAny.myDecks)) {
+    deckAny.myDecks.forEach((d: any) => {
+      if (d?.id || d?.name) sourceCandidates.push({ id: d.id, name: d.name })
+    })
+  } else if (Array.isArray(deckAny.fusedDeckIds)) {
+    deckAny.fusedDeckIds.forEach((id: string) => sourceCandidates.push({ id }))
+  }
+
+  const seenIds = new Set<string>()
+  const seenNames = new Set<string>()
+  const combined: CreatureTypeMap = {}
+
+  const addMap = (map?: CreatureTypeMap) => {
+    if (!map) return
+    Object.entries(map).forEach(([type, count]) => {
+      if (typeof count !== 'number') return
+      combined[type] = (combined[type] || 0) + count
+    })
+  }
+
+  sourceCandidates.forEach(({ id, name }) => {
+    if (id && !seenIds.has(id)) {
+      seenIds.add(id)
+      addMap(deckCreatureTypesMap[id])
+      if (deckCreatureTypesMap[id]) return
+    }
+    if (name) {
+      const normalized = name.trim().toLowerCase()
+      if (!normalized || seenNames.has(normalized)) return
+      seenNames.add(normalized)
+      const match = regularByName.get(normalized)
+      if (match?.id) {
+        addMap(deckCreatureTypesMap[match.id])
+      }
+    }
+  })
+
+  if (Object.keys(combined).length === 0) return []
+
+  return Object.entries(combined)
     .filter(([, count]) => Number(count) > 0)
     .sort((a, b) => {
       const diff = Number(b[1]) - Number(a[1])
@@ -402,9 +471,10 @@ interface DeckDetailsProps {
   onDeckClick: (deck: Deck, parentDeck?: Deck | null) => void
   allDecks?: Deck[]
   parentFusedDeck?: Deck | null
+  deckCreatureTypesMap?: Record<string, CreatureTypeMap>
 }
 
-export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [], parentFusedDeck }: DeckDetailsProps) {
+export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [], parentFusedDeck, deckCreatureTypesMap }: DeckDetailsProps) {
   const [selectedCard, setSelectedCard] = useState<CardInfo | null>(null)
   const [selectedLevel, setSelectedLevel] = useState<number>(1) // Current card level (1, 2, or 3)
   const [cardImages, setCardImages] = useState<Record<string, Record<number, string>>>({}) // cardId -> level -> imageUrl
@@ -1460,10 +1530,16 @@ const originalCardMeta = useMemo(() => {
     return Array.from(tagSet)
   }, [deck, fullDeckData, uniqueNormalizedCards])
 
-  const creatureTypeEntries = useMemo(
-    () => buildCreatureTypeEntries(fullDeckData || deck, { fallbackCards: uniqueNormalizedCards }),
-    [fullDeckData, deck, uniqueNormalizedCards]
-  )
+  const creatureTypeEntries = useMemo(() => {
+    const deckLike = fullDeckData || deck
+    if (!deckLike) return []
+    if (isFusedDeckLike(deckLike)) {
+      const fusedEntries = buildFusedCreatureTypeEntries(deckLike, { deckCreatureTypesMap, allDecks })
+      if (fusedEntries.length > 0) return fusedEntries
+      return []
+    }
+    return buildCreatureTypeEntries(deckLike, { fallbackCards: uniqueNormalizedCards })
+  }, [fullDeckData, deck, uniqueNormalizedCards, deckCreatureTypesMap, allDecks])
 
   // Helper function to load images in parallel with a concurrency limit
   const loadImagesInParallel = async (

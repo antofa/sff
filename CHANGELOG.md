@@ -3,13 +3,14 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
-## [Unreleased] - 2026-01-28
+## [Unreleased] - 2026-01-29
 
 ### Added
 - `AGENTS.md` with project notes and contribution rules.
 - `CHANGELOG.md` to track notable changes.
 - `AI_REQUESTS.md` to record agent requests and resulting commits.
 - Added `*_DarkforgeCommon.png` rarity icons (B1, S1–S4) under `public/images/icons/rarity/`.
+- `.env.example` with required environment variables.
 
 ### Changed
 - Updated contribution rules in `AGENTS.md` (build/commit flow and logging).
@@ -74,5 +75,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Keep the card detail frames fixed in wide deck modals while the card list scrolls.
 - Use fused deck cards to compute creature tags in list view.
 - Fetch fused deck details when subtype data is missing to keep creature tags accurate.
+- Compute fused creature tags by summing cached tags from the two source decks.
 
 ### Fixed

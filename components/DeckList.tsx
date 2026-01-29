@@ -18,23 +18,6 @@ const buildCreatureTypeEntries = (
   options: { deckCreatureTypesMap?: Record<string, CreatureTypeMap>; fallbackCards?: any[] } = {}
 ) => {
   const deckAny = deck as any
-  if (deckAny?.format === 'Fused' && options.fallbackCards && options.fallbackCards.length > 0) {
-    try {
-      const fallbackMap = computeCreatureTypesForDeck({ cards: options.fallbackCards })
-      if (fallbackMap && Object.keys(fallbackMap).length > 0) {
-        return Object.entries(fallbackMap)
-          .filter(([, count]) => Number(count) > 0)
-          .sort((a, b) => {
-            const diff = Number(b[1]) - Number(a[1])
-            if (diff !== 0) return diff
-            return a[0].localeCompare(b[0])
-          })
-      }
-    } catch (err) {
-      console.warn('[DeckList] fused creatureType fallback failed', err)
-    }
-  }
-
   let creatureMap: CreatureTypeMap | undefined =
     (deck.computed?.creatureType as CreatureTypeMap | undefined) ||
     (deckAny.creatureType as CreatureTypeMap | undefined)
@@ -62,6 +45,80 @@ const buildCreatureTypeEntries = (
   if (!creatureMap || typeof creatureMap !== 'object') return []
 
   return Object.entries(creatureMap)
+    .filter(([, count]) => Number(count) > 0)
+    .sort((a, b) => {
+      const diff = Number(b[1]) - Number(a[1])
+      if (diff !== 0) return diff
+      return a[0].localeCompare(b[0])
+    })
+}
+
+const isFusedDeckLike = (deck: any) => String(deck?.format || '').toLowerCase() === 'fused'
+
+const buildFusedCreatureTypeEntries = (
+  deck: Deck,
+  options: {
+    deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+    allDecks?: Deck[]
+    sourceDecks?: Deck[]
+  } = {}
+) => {
+  if (!isFusedDeckLike(deck)) return []
+  const deckCreatureTypesMap = options.deckCreatureTypesMap || {}
+  const allDecks = options.allDecks || []
+  const regularByName = new Map<string, Deck>()
+  allDecks.forEach((d) => {
+    if (!d?.name) return
+    if (isFusedDeckLike(d)) return
+    regularByName.set(d.name.trim().toLowerCase(), d)
+  })
+
+  const sourceCandidates: Array<{ id?: string; name?: string }> = []
+  const deckAny = deck as any
+  if (Array.isArray(options.sourceDecks) && options.sourceDecks.length > 0) {
+    options.sourceDecks.forEach((d) => {
+      if (d?.id || d?.name) sourceCandidates.push({ id: d.id, name: d.name })
+    })
+  } else if (Array.isArray(deckAny.myDecks)) {
+    deckAny.myDecks.forEach((d: any) => {
+      if (d?.id || d?.name) sourceCandidates.push({ id: d.id, name: d.name })
+    })
+  } else if (Array.isArray(deckAny.fusedDeckIds)) {
+    deckAny.fusedDeckIds.forEach((id: string) => sourceCandidates.push({ id }))
+  }
+
+  const seenIds = new Set<string>()
+  const seenNames = new Set<string>()
+  const combined: CreatureTypeMap = {}
+
+  const addMap = (map?: CreatureTypeMap) => {
+    if (!map) return
+    Object.entries(map).forEach(([type, count]) => {
+      if (typeof count !== 'number') return
+      combined[type] = (combined[type] || 0) + count
+    })
+  }
+
+  sourceCandidates.forEach(({ id, name }) => {
+    if (id && !seenIds.has(id)) {
+      seenIds.add(id)
+      addMap(deckCreatureTypesMap[id])
+      if (deckCreatureTypesMap[id]) return
+    }
+    if (name) {
+      const normalized = name.trim().toLowerCase()
+      if (!normalized || seenNames.has(normalized)) return
+      seenNames.add(normalized)
+      const match = regularByName.get(normalized)
+      if (match?.id) {
+        addMap(deckCreatureTypesMap[match.id])
+      }
+    }
+  })
+
+  if (Object.keys(combined).length === 0) return []
+
+  return Object.entries(combined)
     .filter(([, count]) => Number(count) > 0)
     .sort((a, b) => {
       const diff = Number(b[1]) - Number(a[1])
@@ -1205,8 +1262,13 @@ const FusedDeckCard = memo(function FusedDeckCard({
   // Memoize aggregated cards to avoid recomputation across derived calculations
   const aggregatedCards = useMemo(() => aggregateCards(), [aggregateCards])
   const creatureTypeEntries = useMemo(
-    () => buildCreatureTypeEntries(deck, { deckCreatureTypesMap, fallbackCards: aggregatedCards }),
-    [deck, deckCreatureTypesMap, aggregatedCards]
+    () =>
+      buildFusedCreatureTypeEntries(deck, {
+        deckCreatureTypesMap,
+        allDecks,
+        sourceDecks: pickedSources,
+      }),
+    [deck, deckCreatureTypesMap, allDecks, pickedSources]
   )
 
   const fusedSetLabels = useMemo(() => {
@@ -6091,6 +6153,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         }}
         allDecks={[...decks, ...fusedDecks]}
         parentFusedDeck={parentFusedDeck}
+        deckCreatureTypesMap={deckCreatureTypesMap}
       />
     </>
   )
