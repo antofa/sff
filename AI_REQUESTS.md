@@ -278,3 +278,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: d4f4d43
   Request: Use faction icon instead of set icon in OG previews.
   Date: 2026-01-29
+- Commit: 5670daf
+  Request: Show fused set labels with per-faction icons in OG previews.
+  Date: 2026-01-29
