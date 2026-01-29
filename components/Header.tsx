@@ -32,7 +32,7 @@ const TOKENS: TokenInfo[] = [
 
 const CHANGELOG_SUMMARY = {
   version: '0.0.1',
-  date: '2026-01-29',
+  date: '—',
 }
 
 const CHANGELOG_FULL = {
@@ -163,6 +163,7 @@ export function Header() {
   const [prices, setPrices] = useState<Record<string, TokenPrice>>({})
   const [loadingPrices, setLoadingPrices] = useState(false)
   const [errorPrices, setErrorPrices] = useState<string | null>(null)
+  const [releaseDate, setReleaseDate] = useState<string>(CHANGELOG_SUMMARY.date)
   const [changelogOpened, setChangelogOpened] = useState(false)
   const logoSrc = '/images/solforge-logo.png'
 
@@ -175,6 +176,21 @@ export function Header() {
   }
 
   useEffect(() => {
+    let canceled = false
+    const fetchReleaseDate = async () => {
+      try {
+        const res = await fetch('/api/release', { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json()
+        if (!canceled && data?.mergeDate) {
+          setReleaseDate(String(data.mergeDate))
+        }
+      } catch {
+        // ignore
+      }
+    }
+    fetchReleaseDate()
+
     const readPriceCache = () => {
       if (typeof window === 'undefined') return null
       try {
@@ -246,6 +262,7 @@ export function Header() {
     window.addEventListener('storage', handleStorage)
 
     return () => {
+      canceled = true
       clearInterval(interval)
       window.removeEventListener('storage', handleStorage)
     }
@@ -307,7 +324,7 @@ export function Header() {
         centered
       >
         <Text size="xs" c="dimmed" mb="sm">
-          Merge date: {CHANGELOG_FULL.date}
+          Merge date: {releaseDate}
         </Text>
         <ScrollArea h={420} offsetScrollbars>
           <div className="space-y-4">

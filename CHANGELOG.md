@@ -95,6 +95,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Normalize selected card set filters to match fused set labels.
 - Detect fused decks by id/flags when resolving card sets for filters.
 - Always resolve fused card sets from halves even when fused cards are present.
+- Derive the header changelog merge date from git merge commits via a release API.
 
 ### Fixed
 - Populate fused deck card set values from source halves to keep card-set filtering reliable.
