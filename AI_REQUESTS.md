@@ -254,3 +254,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: be93cde
   Request: Fix fused deck filter returning zero results for S99 despite an existing fused deck.
   Date: 2026-01-29
+- Commit: a93a121
+  Request: Make social preview metadata render for fused decks too.
+  Date: 2026-01-29
