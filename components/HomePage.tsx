@@ -20,6 +20,7 @@ export default function Home() {
   const searchedNameRef = useRef<string>('')
   const autoSearchTriggeredRef = useRef(false)
   const autoSearchKeyRef = useRef<string>('')
+  const manualSearchRef = useRef<string>('')
   const {
     decks,
     fusedDecks,
@@ -245,6 +246,7 @@ export default function Home() {
     searchedNameRef.current = targetName
     lastSearchRef.current = targetName
     setLastSearchedName(targetName)
+    manualSearchRef.current = targetName
     // Keep input in sync with triggered search
     if (playerName !== targetName) {
       setPlayerName(targetName)
@@ -378,6 +380,11 @@ export default function Home() {
     const trimmed = usernameParam.trim()
     if (!trimmed) return
     if (isTyping) return
+    if (manualSearchRef.current) {
+      if (manualSearchRef.current.trim().toLowerCase() !== trimmed.toLowerCase()) return
+      manualSearchRef.current = ''
+      return
+    }
     const currentInput = playerName?.trim()
     if (currentInput && currentInput.toLowerCase() !== trimmed.toLowerCase()) return
 

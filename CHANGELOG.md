@@ -89,5 +89,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Remove Supabase deck storage/loading endpoints and delete Supabase deck helpers.
 - Avoid repeated creature tag updates that caused fused deck modal hangs.
 - Persist fused view selection in the URL using an isFused query parameter.
+- Prevent URL auto-search from overriding a just-submitted manual player search.
 
 ### Fixed
