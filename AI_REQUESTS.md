@@ -203,3 +203,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 078be22
   Request: Reset deck search state when clicking the header logo to return to a clean home page.
   Date: 2026-01-29
+- Commit: 8acc624
+  Request: Add retries for 5xx fused deck fetches, keep progress moving on fused errors, and keep build dependency updates.
+  Date: 2026-01-29
