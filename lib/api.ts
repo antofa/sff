@@ -866,6 +866,33 @@ export async function fetchFusedDecksFromAPI(
       })
     }
 
+    const extractCardSetInfo = (deckObj: any): { cardSetNo?: any; cardSetId?: any } | null => {
+      if (!deckObj || typeof deckObj !== 'object') return null
+      const cardSetNo = deckObj.cardSetNo ?? deckObj.card_set_no
+      const cardSetId = deckObj.cardSetId ?? deckObj.card_set_id
+      if (cardSetNo !== undefined && cardSetNo !== null) return { cardSetNo, cardSetId }
+      if (cardSetId !== undefined && cardSetId !== null) return { cardSetNo, cardSetId }
+      return null
+    }
+
+    const resolveFusedCardSet = (fusedDeck: any): { cardSetNo?: any; cardSetId?: any } | null => {
+      if (!fusedDeck) return null
+      if (Array.isArray(fusedDeck.myDecks)) {
+        for (const source of fusedDeck.myDecks) {
+          const info = extractCardSetInfo(source)
+          if (info) return info
+        }
+      }
+      if (Array.isArray(fusedDeck.fusedDeckIds)) {
+        for (const id of fusedDeck.fusedDeckIds) {
+          const cached = cachedRegularById.get(String(id))
+          const info = extractCardSetInfo(cached)
+          if (info) return info
+        }
+      }
+      return null
+    }
+
     for (const fusedDeck of fusedDecks) {
       const allCards: any[] = []
       const enrichedMyDecks: any[] = Array.isArray(fusedDeck.myDecks) ? [] : []
@@ -953,6 +980,16 @@ export async function fetchFusedDecksFromAPI(
           await fusedLog(
             `[API] Fused fallback progress: fetched ${fallbackFetched} of ${decksNeedingFetch} (failed ${fallbackFailed}), time ${fallbackDurationMs}ms`
           )
+        }
+      }
+
+      const fusedSetInfo = resolveFusedCardSet(fusedDeck)
+      if (fusedSetInfo) {
+        if (fusedSetInfo.cardSetNo !== undefined && fusedSetInfo.cardSetNo !== null) {
+          fusedDeck.cardSetNo = fusedSetInfo.cardSetNo
+        }
+        if (fusedSetInfo.cardSetId !== undefined && fusedSetInfo.cardSetId !== null) {
+          fusedDeck.cardSetId = fusedSetInfo.cardSetId
         }
       }
       

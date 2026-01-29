@@ -97,3 +97,4 @@ Dates use UTC and roll over at 00:00 UTC.
 - Always resolve fused card sets from halves even when fused cards are present.
 
 ### Fixed
+- Populate fused deck card set values from source halves to keep card-set filtering reliable.
