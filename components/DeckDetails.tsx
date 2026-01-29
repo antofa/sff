@@ -1611,13 +1611,16 @@ const originalCardMeta = useMemo(() => {
     if (!opened || fusedHalfIds.length === 0) return
     const store = useDeckStore.getState()
     fusedHalfIds.forEach((id) => {
+      if (!id) return
+      const existing = deckCreatureTypesMap?.[id]
+      if (existing && Object.keys(existing).length > 0) return
       fetchCreatureTypesForDeckId(id).then((creatureType) => {
         if (creatureType && Object.keys(creatureType).length > 0) {
           store.setDeckCreatureType(id, creatureType)
         }
       })
     })
-  }, [opened, fusedHalfIds])
+  }, [opened, fusedHalfIds, deckCreatureTypesMap])
 
   // Helper function to load images in parallel with a concurrency limit
   const loadImagesInParallel = async (

@@ -81,5 +81,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Retry fused deck fetches on 5xx responses.
 - Resolve fused creature tags from half deck ids/names and compute locally when cache is missing.
 - Fetch half-deck details on demand to correct fused creature tags in list and modal views.
+- Preserve detailed deck cards when enriching from player listings.
+- Retry fused half tag fetches when cached creature tags are missing.
 
 ### Fixed

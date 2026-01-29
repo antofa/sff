@@ -1345,15 +1345,20 @@ const FusedDeckCard = memo(function FusedDeckCard({
     if (halfDeckIds.length === 0) return
     const store = useDeckStore.getState()
     halfDeckIds.forEach((id) => {
-      if (!id || creatureTypeOverrideRequested.has(id)) return
+      if (!id) return
+      const existing = deckCreatureTypesMap?.[id]
+      if (existing && Object.keys(existing).length > 0) return
+      if (creatureTypeOverrideRequested.has(id)) return
       creatureTypeOverrideRequested.add(id)
       fetchCreatureTypesForDeckId(id).then((creatureType) => {
         if (creatureType && Object.keys(creatureType).length > 0) {
           store.setDeckCreatureType(id, creatureType)
+        } else {
+          creatureTypeOverrideRequested.delete(id)
         }
       })
     })
-  }, [halfDeckIds])
+  }, [halfDeckIds, deckCreatureTypesMap])
 
   const fusedSetLabels = useMemo(() => {
     const setLabels = new Set<string>()

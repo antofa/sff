@@ -49,10 +49,14 @@ const mergeFromPlayerDecks = async (deck: any) => {
       deck.pExpiry ??
       undefined
 
+    const deckCards = Array.isArray(deck?.cards) ? deck.cards : []
+    const matchedCards = Array.isArray(matched?.cards) ? matched.cards : []
+    const useMatchedCards = deckCards.length === 0 && matchedCards.length > 0
+
     const merged = {
       ...deck,
       ...matched,
-      cards: Array.isArray(matched.cards) && matched.cards.length > 0 ? matched.cards : deck.cards,
+      cards: useMatchedCards ? matchedCards : deck.cards,
       tags: matched.tags ?? deck.tags,
       expireAt: pickExpire,
     }
