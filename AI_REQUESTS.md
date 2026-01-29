@@ -236,3 +236,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 4637a6e
   Request: Stop auto-search from restarting a previous player after a manual search.
   Date: 2026-01-29
+- Commit: d5dfea5
+  Request: Fix card set filtering for fused decks in the list view.
+  Date: 2026-01-29
