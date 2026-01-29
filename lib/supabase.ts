@@ -6,13 +6,17 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database, PlayerDeckInsert, PlayerDeckUpdate, PlayerDeck } from '@/types/database'
 import type { Deck } from '@/store/deckStore'
 
+const SUPABASE_DISABLED = true
+
 // Environment variables for Supabase connection
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey
 
 // Create Supabase client only if URL and key are provided
-export const supabase = supabaseUrl && supabaseAnonKey ? createClient<Database>(supabaseUrl, supabaseAnonKey) : null as any
+export const supabase = SUPABASE_DISABLED ? null : (supabaseUrl && supabaseAnonKey ? createClient<Database>(supabaseUrl, supabaseAnonKey) : null as any)
+
+const supabaseDisabledError = () => new Error('Supabase is disabled')
 
 const normalizeDiscord = (value?: string | null) => {
   if (!value) return null
@@ -76,6 +80,9 @@ export async function saveDeck(
     userId?: number
   }
 ): Promise<{ data: PlayerDeck | null; error: Error | null }> {
+  if (SUPABASE_DISABLED || !supabase) {
+    return { data: null, error: supabaseDisabledError() }
+  }
   const insertData = deckToInsert(deck, playerName, options)
   
   const { data, error } = await supabase
@@ -109,6 +116,9 @@ export async function saveDecks(
     userId?: number
   }
 ): Promise<{ data: PlayerDeck[]; errors: Error[] }> {
+  if (SUPABASE_DISABLED || !supabase) {
+    return { data: [], errors: [supabaseDisabledError()] }
+  }
   const results: PlayerDeck[] = []
   const errors: Error[] = []
   
@@ -144,6 +154,9 @@ export async function getPlayerDecks(playerName: string): Promise<{
   data: PlayerDeck[]
   error: Error | null
 }> {
+  if (SUPABASE_DISABLED || !supabase) {
+    return { data: [], error: supabaseDisabledError() }
+  }
   const { data, error } = await supabase
     .from('player_decks')
     .select('*')
@@ -166,6 +179,9 @@ export async function getDeck(
   deckId: string,
   playerName: string
 ): Promise<{ data: PlayerDeck | null; error: Error | null }> {
+  if (SUPABASE_DISABLED || !supabase) {
+    return { data: null, error: supabaseDisabledError() }
+  }
   const { data, error } = await supabase
     .from('player_decks')
     .select('*')
@@ -197,6 +213,9 @@ export async function getDecksForSale(options?: {
   limit?: number
   offset?: number
 }): Promise<{ data: PlayerDeck[]; error: Error | null; count: number }> {
+  if (SUPABASE_DISABLED || !supabase) {
+    return { data: [], error: supabaseDisabledError(), count: 0 }
+  }
   let query = supabase
     .from('player_decks')
     .select('*', { count: 'exact' })
@@ -246,6 +265,9 @@ export async function updateDeck(
   id: string,
   updates: PlayerDeckUpdate
 ): Promise<{ data: PlayerDeck | null; error: Error | null }> {
+  if (SUPABASE_DISABLED || !supabase) {
+    return { data: null, error: supabaseDisabledError() }
+  }
   const { data, error } = await supabase
     .from('player_decks')
     .update(updates)
@@ -274,6 +296,9 @@ export async function updateDeckMarketplace(
     discordUsername?: string
   }
 ): Promise<{ data: PlayerDeck | null; error: Error | null }> {
+  if (SUPABASE_DISABLED || !supabase) {
+    return { data: null, error: supabaseDisabledError() }
+  }
   const updates: PlayerDeckUpdate = {}
   
   if (settings.isNft !== undefined) updates.is_nft = settings.isNft
@@ -304,6 +329,9 @@ export async function deleteDeck(
   deckId: string,
   playerName: string
 ): Promise<{ error: Error | null }> {
+  if (SUPABASE_DISABLED || !supabase) {
+    return { error: supabaseDisabledError() }
+  }
   const { error } = await supabase
     .from('player_decks')
     .delete()
@@ -332,6 +360,9 @@ export async function searchDecks(criteria: {
   limit?: number
   offset?: number
 }): Promise<{ data: PlayerDeck[]; error: Error | null; count: number }> {
+  if (SUPABASE_DISABLED || !supabase) {
+    return { data: [], error: supabaseDisabledError(), count: 0 }
+  }
   let query = supabase
     .from('player_decks')
     .select('*', { count: 'exact' })

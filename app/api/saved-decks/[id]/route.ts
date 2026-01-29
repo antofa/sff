@@ -5,6 +5,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDeck, updateDeckMarketplace, deleteDeck } from '@/lib/supabase'
 
+const SUPABASE_DISABLED = true
+
 interface RouteParams {
   params: Promise<{
     id: string
@@ -23,6 +25,9 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
+    if (SUPABASE_DISABLED) {
+      return NextResponse.json({ error: 'Supabase is disabled' }, { status: 503 })
+    }
     const { id: deckId } = await params
     const playerName = request.nextUrl.searchParams.get('player')
     
@@ -77,6 +82,9 @@ export async function PATCH(
   { params }: RouteParams
 ) {
   try {
+    if (SUPABASE_DISABLED) {
+      return NextResponse.json({ error: 'Supabase is disabled' }, { status: 503 })
+    }
     const { id: deckId } = await params
     const body = await request.json()
     
@@ -144,6 +152,9 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
+    if (SUPABASE_DISABLED) {
+      return NextResponse.json({ error: 'Supabase is disabled' }, { status: 503 })
+    }
     const { id: deckId } = await params
     const playerName = request.nextUrl.searchParams.get('player')
     
@@ -172,4 +183,3 @@ export async function DELETE(
     )
   }
 }
-

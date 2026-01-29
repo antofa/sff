@@ -3,7 +3,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { 
   saveDecks, 
   getPlayerDecks, 
@@ -11,12 +10,8 @@ import {
   searchDecks 
 } from '@/lib/supabase'
 import type { Deck } from '@/store/deckStore'
-import type { Database } from '@/types/database'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const supabaseServer =
-  supabaseUrl && supabaseServiceKey ? createClient<Database>(supabaseUrl, supabaseServiceKey) : null
+const SUPABASE_DISABLED = true
 
 /**
  * GET /api/saved-decks
@@ -34,11 +29,8 @@ const supabaseServer =
  */
 export async function GET(request: NextRequest) {
   try {
-    if (!supabaseServer) {
-      return NextResponse.json(
-        { decks: [], count: 0, warning: 'Supabase is not configured' },
-        { status: 200 }
-      )
+    if (SUPABASE_DISABLED) {
+      return NextResponse.json({ error: 'Supabase is disabled' }, { status: 503 })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -129,11 +121,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    if (!supabaseServer) {
-      return NextResponse.json(
-        { error: 'Supabase is not configured' },
-        { status: 503 }
-      )
+    if (SUPABASE_DISABLED) {
+      return NextResponse.json({ error: 'Supabase is disabled' }, { status: 503 })
     }
 
     const body = await request.json()
@@ -172,59 +161,11 @@ export async function POST(request: NextRequest) {
       ? discordUsername.trim()
       : undefined
 
-    // Ensure user profile exists for this playerName
-    const normalizedPlayer = playerName.trim()
-    let userId: number | null = null
-    try {
-      // Try to find existing profile by player_name (case-insensitive)
-      const { data: existingProfiles, error: profileLookupError } = await supabaseServer
-        .from('player_profiles')
-        .select('user_id, player_name')
-        .ilike('player_name', normalizedPlayer)
-        .limit(1)
-
-      if (profileLookupError) {
-        console.error('[API] /api/saved-decks profile lookup error:', profileLookupError)
-      }
-
-      if (existingProfiles && existingProfiles.length > 0) {
-        userId = existingProfiles[0].user_id
-      } else {
-        // Create new profile
-        const { data: inserted, error: insertError } = await supabaseServer
-          .from('player_profiles')
-          .insert({
-            discord_id: '',
-            player_name: normalizedPlayer,
-            display_name: normalizedPlayer,
-            discord_name: normalizedDiscord ?? null,
-          })
-          .select('user_id')
-          .single()
-
-        if (insertError) {
-          console.error('[API] /api/saved-decks profile insert error:', insertError)
-        } else {
-          userId = inserted?.user_id ?? null
-        }
-      }
-    } catch (profileError) {
-      console.error('[API] /api/saved-decks profile ensure error:', profileError)
-    }
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Failed to ensure user profile for this player' },
-        { status: 500 }
-      )
-    }
-    
     const { data, errors } = await saveDecks(decks, playerName, {
       discordUsername: normalizedDiscord,
       isNft,
       price,
       isForSale,
-      userId,
     })
     
     if (errors.length > 0) {

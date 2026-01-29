@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { fetchDeckDetails, normalizeDeck, getPlayerDecks } from '@/lib/api'
-import type { Database, PlayerDeckRow } from '@/types/database'
+import type { PlayerDeckRow } from '@/types/database'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const supabase =
-  supabaseUrl && supabaseServiceKey
-    ? createClient<Database>(supabaseUrl, supabaseServiceKey)
-    : null
+const supabase = null as any
 
 const mergeFromPlayerDecks = async (deck: any) => {
   const owner =

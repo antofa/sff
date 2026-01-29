@@ -85,5 +85,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Retry fused half tag fetches when cached creature tags are missing.
 - Prefer subtype-rich half deck data over cached tags when summing fused creature tags.
 - Cache corrected half-deck creature tags separately and prefer them for fused tags.
+- Disable Supabase-backed routes and clients when Supabase is turned off.
 
 ### Fixed
