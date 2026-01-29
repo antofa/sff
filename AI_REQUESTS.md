@@ -272,3 +272,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 23d5142
   Request: Fix missing set icons in OG previews.
   Date: 2026-01-29
+- Commit: c044bdc
+  Request: Fix OG preview crash and restore set icon rendering.
+  Date: 2026-01-29
