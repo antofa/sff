@@ -286,7 +286,7 @@ export function Header() {
             gap="md"
           >
             <Group gap="sm" align="center" wrap="nowrap">
-              <Link href="/" aria-label="Go to home" className="flex items-center no-underline">
+              <Link href="/?reset=1" aria-label="Go to home" className="flex items-center no-underline">
                 {!logoError ? (
                   <Image
                     src={logoSrc}

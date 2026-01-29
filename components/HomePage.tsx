@@ -338,6 +338,23 @@ export default function Home() {
     }
   }, [])
 
+  useEffect(() => {
+    const resetParam = searchParams.get('reset') || searchParams.get('clear')
+    if (!resetParam) return
+
+    useDeckStore.getState().clearDecks()
+    setPlayerName('')
+    setForceRefresh(false)
+    setHasSearched(false)
+    setIsTyping(false)
+    setLastSearchedName('')
+    searchedNameRef.current = ''
+    lastSearchRef.current = ''
+    autoSearchTriggeredRef.current = false
+    autoSearchKeyRef.current = ''
+    router.replace('/')
+  }, [router, searchParams])
+
   // Do not restart searches on visibility changes to avoid resetting progress mid-search.
 
   // Auto-run search when opened with params (?username=...&forceRefresh=true)

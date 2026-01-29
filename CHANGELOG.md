@@ -76,5 +76,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Use fused deck cards to compute creature tags in list view.
 - Fetch fused deck details when subtype data is missing to keep creature tags accurate.
 - Compute fused creature tags by summing cached tags from the two source decks.
+- Reset deck search state when navigating home from the header logo.
 
 ### Fixed
