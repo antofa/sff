@@ -296,3 +296,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: b8fc019
   Request: Make the site changelog more understandable to non-technical users (avoid jargon like OG and describe social sharing in plain language).
   Date: 2026-01-30
+- Commit: 8ca5eee
+  Request: Add guidance in AGENTS.md for writing the site changelog in user-friendly language.
+  Date: 2026-01-30
