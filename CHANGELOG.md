@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
-## [Unreleased] - 2026-01-29
+## [Unreleased] - 2026-01-30
 
 ### Added
 - `AGENTS.md` with project notes and contribution rules.
@@ -17,6 +17,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Switched `AI_REQUESTS.md` request entries to English and added an English-only rule in `AGENTS.md`.
 - Added a UTC date requirement for `CHANGELOG.md` entries.
 - Require committing every change without prompting.
+- Rewrote the header changelog highlights in plain, user-friendly wording.
 - Prefer forgeborn image URLs with spaces, falling back to dash variants (resized path).
 - Skip forgeborn rotation when using `/resized/` images.
 - Added a safe fallback auth provider when Discord credentials are missing.

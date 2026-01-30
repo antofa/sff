@@ -39,21 +39,21 @@ const CHANGELOG_FULL = {
   version: CHANGELOG_SUMMARY.version,
   date: CHANGELOG_SUMMARY.date,
   added: [
-    'Project governance files (AGENTS/CHANGELOG/AI_REQUESTS) and env template.',
-    'Rarity icon set expansions (B1 + S1–S4 Darkforge).',
-    'Header changelog modal with version/date.',
+    'Header now includes a quick "What\'s new" window with recent highlights.',
+    'New rarity icons for Darkforge sets (B1, S1–S4).',
+    'Deck links now generate a shareable preview image for social media.',
   ],
   changed: [
-    'OG preview layout and forgeborn image handling refined (rotation/scale/metadata).',
-    'Deck list UX refinements: pagination, filters, modal responsiveness, scroll behavior.',
-    'Fused deck tag/creature-type computation improved with smarter fallback paths.',
-    'Search flow hardened (cache, force refresh, URL param behavior).',
-    'Supabase integrations disabled safely when env vars are missing.',
+    'Deck link preview images are cleaner and better centered, so shared links look polished.',
+    'Browsing decks feels smoother with clearer pagination, filters, and a more responsive details window.',
+    'Fused deck tags and creature types are now calculated more consistently.',
+    'Search is steadier with smarter refresh and caching behavior.',
+    "Features that need Supabase now stay quietly off when it isn't configured.",
   ],
   fixed: [
-    'Fused deck filtering and card-set detection are now reliable.',
-    'Fused OG previews now resolve metadata/forgeborn art correctly.',
-    'OG renderer failures from unsupported CSS and icon fallbacks fixed.',
+    'Fused deck filtering and set detection now behave reliably.',
+    'Shared preview images for fused decks now show the correct art.',
+    'Share preview rendering no longer breaks on unsupported styles or missing icons.',
   ],
 }
 
