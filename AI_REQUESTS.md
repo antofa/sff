@@ -293,3 +293,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 127547e
   Request: Use the dev→master merge commit date for the changelog version.
   Date: 2026-01-29
+- Commit: b8fc019
+  Request: Make the site changelog more understandable to non-technical users (avoid jargon like OG and describe social sharing in plain language).
+  Date: 2026-01-30
