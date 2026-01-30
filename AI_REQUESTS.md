@@ -299,3 +299,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 8ca5eee
   Request: Add guidance in AGENTS.md for writing the site changelog in user-friendly language.
   Date: 2026-01-30
+- Commit: 977e2e5
+  Request: Merge the dev branch into master and ensure the site changelog date reflects today.
+  Date: 2026-01-30
