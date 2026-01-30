@@ -1,204 +1,197 @@
-'use client'
+import type { Metadata } from 'next'
+import { headers } from 'next/headers'
+import DeckPageClient from './DeckPageClient'
+import { fetchDeckDetails, normalizeDeck } from '@/lib/api'
 
-import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { Container, Loader, Paper, Stack, Text, Title, Button, Group } from '@mantine/core'
-import { IconArrowLeft, IconHash } from '@tabler/icons-react'
-import { BackgroundElements } from '@/components/BackgroundElements'
-import { Header } from '@/components/Header'
-import { DeckDetails } from '@/components/DeckDetails'
-import type { Deck } from '@/store/deckStore'
-import { addComputedFields } from '@/store/deckStore'
+export const dynamic = 'force-dynamic'
 
-export default function DeckPage() {
-  const params = useParams<{ id: string }>()
-  const router = useRouter()
-  const deckId = Array.isArray(params?.id) ? params.id[0] : params?.id
-  const [deck, setDeck] = useState<Deck | null>(null)
-  const [allDecks, setAllDecks] = useState<Deck[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const sourcesLoadedRef = useRef<string | null>(null)
+const buildCandidates = (rawId: string) => {
+  const stripDeckPrefixes = (value: string) =>
+    value
+      .toString()
+      .replace(/^deck[_-]?fused[_-]?/i, '')
+      .replace(/^deck[_-]?/i, '')
+      .replace(/^fused[_-]?/i, '')
 
-  useEffect(() => {
-    if (!deckId) return
+  const baseId = stripDeckPrefixes(rawId)
+  return Array.from(
+    new Set(
+      [
+        rawId,
+        baseId,
+        `Deck_${baseId}`,
+        `Deck-${baseId}`,
+        `Deck_Fused_${baseId}`,
+        `Deck-Fused-${baseId}`,
+        `Fused_${baseId}`,
+        `Fused-${baseId}`,
+      ].filter(Boolean)
+    )
+  )
+}
 
-    const load = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch(`/api/deck/${deckId}`)
-        const json = await res.json()
-        if (!res.ok) {
-          throw new Error(json.error || 'Failed to load deck')
-        }
-        const rawDeck = json.deck as Deck
-        const enriched = addComputedFields(rawDeck)
+const resolveBaseUrl = async () => {
+  const headersList = await headers()
+  const host = headersList.get('host')
+  if (!host) return null
+  const proto = headersList.get('x-forwarded-proto') || 'http'
+  return `${proto}://${host}`
+}
 
-        // If fused deck includes source halves, enrich them too for full context
-        const enrichedSources =
-          Array.isArray((rawDeck as any)?.myDecks) && (rawDeck as any).myDecks.length > 0
-            ? (rawDeck as any).myDecks
-                .filter((d: any): d is Deck => !!d && typeof d === 'object')
-                .map((d: Deck) => addComputedFields(d))
-            : []
+const listDeckCards = (deck: any) => {
+  const cards = Array.isArray(deck?.cards) ? deck.cards : []
+  const solbindCards = Array.isArray(deck?.solbinds) ? deck.solbinds : []
+  const allCards = cards.concat(solbindCards)
+  const forgebornId = deck?.forgeborn?.id || deck?.forgebornId
 
-        setDeck(
-          enrichedSources.length > 0
-            ? { ...enriched, myDecks: enrichedSources }
-            : enriched
-        )
-
-        setAllDecks([enriched, ...enrichedSources])
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load deck')
-      } finally {
-        setLoading(false)
-      }
+  const isForgebornCard = (card: any) => {
+    const id = typeof card === 'string' ? card : card?.id
+    if (id && forgebornId && String(id).toLowerCase() === String(forgebornId).toLowerCase()) {
+      return true
     }
-
-    load()
-  }, [deckId])
-
-  // Enrich fused source halves by fetching missing data (when opened directly by link)
-  useEffect(() => {
-    // Reset guard when deckId changes
-    sourcesLoadedRef.current = null
-  }, [deckId])
-
-  useEffect(() => {
-    const run = async () => {
-      if (!deck) return
-      const isFused = String((deck as any).format || '').toLowerCase() === 'fused'
-      if (!isFused) {
-        setAllDecks([deck])
-        return
-      }
-      // Prevent repeated fetch loops for same deck
-      if (sourcesLoadedRef.current === deck.id) {
-        return
-      }
-      sourcesLoadedRef.current = deck.id
-
-      const collected: Deck[] = []
-      const ids = new Set<string>()
-
-      const addDeck = (d: Deck | null | undefined) => {
-        if (!d || !d.id || ids.has(d.id)) return
-        const enriched = d.computed ? d : addComputedFields(d)
-        ids.add(enriched.id)
-        collected.push(enriched)
-      }
-
-      if (Array.isArray((deck as any).myDecks)) {
-        (deck as any).myDecks.forEach((d: Deck) => addDeck(d))
-      }
-
-      const fusedIds: string[] =
-        (Array.isArray((deck as any).fusedDeckIds) && (deck as any).fusedDeckIds.filter(Boolean)) || []
-
-      await Promise.all(
-        fusedIds.map(async (id) => {
-          if (!id || ids.has(id)) return
-          try {
-            const res = await fetch(`/api/deck/${id}`)
-            const json = await res.json()
-            if (!res.ok || !json?.deck) return
-            addDeck(json.deck as Deck)
-          } catch {
-            // ignore fetch errors; we still show whatever data we have
-          }
-        })
-      )
-
-      setAllDecks([deck, ...collected])
-      if (collected.length > 0) {
-        setDeck((prev) => (prev ? { ...prev, myDecks: collected } : prev))
-      }
-    }
-
-    void run()
-  }, [deck])
-
-  const handleClose = () => {
-    if (typeof window === 'undefined') {
-      router.push('/all-decks')
-      return
-    }
-
-    const referrer = document.referrer || ''
-    const sameOriginReferrer = referrer.startsWith(window.location.origin)
-
-    if (sameOriginReferrer) {
-      router.back()
-      return
-    }
-
-    router.push('/all-decks')
+    const typeValue = typeof card === 'string' ? '' : card?.type || card?.cardType || ''
+    const rarityValue = typeof card === 'string' ? '' : card?.rarity || ''
+    const typeLower = String(typeValue).toLowerCase()
+    const rarityLower = String(rarityValue).toLowerCase()
+    return typeLower.includes('forgeborn') || rarityLower.includes('forgeborn')
   }
 
-  return (
-    <main className="min-h-screen relative overflow-hidden">
-      <BackgroundElements />
-      <Header />
-      <Container size="lg" className="relative z-10 py-8">
-        <Stack gap="md">
-          <Group justify="space-between">
-            <Title order={3} className="text-white flex items-center gap-2">
-              <IconHash size={24} />
-              Deck {deckId}
-            </Title>
-            <Button
-              variant="light"
-              leftSection={<IconArrowLeft size={16} />}
-              onClick={handleClose}
-            >
-              Back
-            </Button>
-          </Group>
+  const unique = new Set<string>()
+  const creatures: string[] = []
+  const spells: string[] = []
+  const solbind: string[] = []
 
-          {loading && (
-            <Group justify="center" py="xl">
-              <Loader size="lg" />
-            </Group>
-          )}
+  const addName = (name?: string | null) => {
+    const trimmed = (name || '').trim()
+    if (!trimmed) return
+    return trimmed
+  }
 
-          {error && (
-            <Paper
-              p="md"
-              className="bg-slate-800/60 backdrop-blur-md border border-red-500/40 rounded-lg"
-            >
-              <Stack gap="xs">
-                <Text className="text-red-300">Failed to load deck: {error}</Text>
-                <Group gap="sm">
-                  <Button size="sm" onClick={() => router.refresh()}>
-                    Retry
-                  </Button>
-                  <Button size="sm" variant="light" onClick={handleClose}>
-                    Back
-                  </Button>
-                </Group>
-              </Stack>
-            </Paper>
-          )}
-        </Stack>
-      </Container>
+  const forgebornName = forgebornId ? addName(deck?.forgeborn?.name || forgebornId) : null
+  if (forgebornName) {
+    unique.add(forgebornName)
+  }
 
-      {deck && (
-        <DeckDetails
-          deck={deck}
-          opened={true}
-          onClose={handleClose}
-          onDeckClick={(d, parent) => {
-            if (d?.id && d.id !== deckId) {
-              router.push(`/deck/${d.id}`)
-            } else if (parent?.id && parent.id !== deckId) {
-              router.push(`/deck/${parent.id}`)
-            }
-          }}
-          allDecks={allDecks.length > 0 ? allDecks : [deck]}
-        />
-      )}
-    </main>
-  )
+  const pushUnique = (bucket: string[], name?: string | null) => {
+    const trimmed = addName(name)
+    if (!trimmed) return
+    if (unique.has(trimmed)) return
+    unique.add(trimmed)
+    bucket.push(trimmed)
+  }
+
+  allCards.forEach((card: any) => {
+    if (isForgebornCard(card)) return
+
+    if (typeof card === 'string') {
+      pushUnique(creatures, card)
+      return
+    }
+
+    const name = card?.name || card?.title || card?.cardTitle || card?.cardName || card?.id || card?.cardId
+    const typeValue = card?.type || card?.cardType || ''
+    const rarityValue = card?.rarity || ''
+    const typeLower = String(typeValue).toLowerCase()
+    const rarityLower = String(rarityValue).toLowerCase()
+
+    if (rarityLower.includes('solbind') || typeLower.includes('solbind')) {
+      pushUnique(solbind, name)
+      return
+    }
+    if (typeLower.includes('spell')) {
+      pushUnique(spells, name)
+      return
+    }
+    pushUnique(creatures, name)
+  })
+
+  const names: string[] = []
+  if (forgebornName) {
+    names.push(forgebornName)
+  }
+  names.push(...creatures, ...spells, ...solbind)
+  return names
+}
+
+export async function generateMetadata(
+  { params }: { params: Promise<{ id: string }> }
+): Promise<Metadata> {
+  const deckId = (await params).id
+  const titleFallback = `Deck ${deckId}`
+
+  try {
+    const candidates = buildCandidates(deckId)
+    let rawDeck: any = null
+    const baseUrl = await resolveBaseUrl()
+
+    for (const candidate of candidates) {
+      const raw = await fetchDeckDetails(candidate)
+      if (raw) {
+        const rawId = raw?.id || raw?.deckId || raw?.deck_id
+        if (!rawId) {
+          continue
+        }
+        rawDeck = raw
+        break
+      }
+    }
+
+    if (!rawDeck && baseUrl) {
+      try {
+        const res = await fetch(`${baseUrl}/api/deck/${encodeURIComponent(deckId)}?skipOwnerMerge=1`, {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        })
+        if (res.ok) {
+          const json = await res.json()
+          rawDeck = json?.deck || null
+        }
+      } catch {
+        rawDeck = null
+      }
+    }
+
+    if (!rawDeck) {
+      return { title: titleFallback, description: 'SolForge Fusion deck overview.' }
+    }
+
+    const deck = normalizeDeck(rawDeck)
+    const forgebornName = rawDeck?.forgeborn?.name || deck?.forgeborn?.name || deck?.forgebornId
+    const cardNames = listDeckCards(deck)
+    const description = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
+    const title = deck?.name || titleFallback
+    const ogImageUrl = baseUrl ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}` : undefined
+
+    return {
+      title,
+      description,
+      openGraph: {
+        title,
+        description,
+        type: 'website',
+        images: ogImageUrl
+          ? [
+              {
+                url: ogImageUrl,
+                width: 1200,
+                height: 630,
+                alt: forgebornName ? `Forgeborn ${forgebornName}` : 'Forgeborn card',
+              },
+            ]
+          : undefined,
+      },
+      twitter: {
+        card: ogImageUrl ? 'summary_large_image' : 'summary',
+        title,
+        description,
+        images: ogImageUrl ? [ogImageUrl] : undefined,
+      },
+    }
+  } catch {
+    return { title: titleFallback, description: 'SolForge Fusion deck overview.' }
+  }
+}
+
+export default function DeckPage() {
+  return <DeckPageClient />
 }

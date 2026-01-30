@@ -20,6 +20,7 @@ export default function Home() {
   const searchedNameRef = useRef<string>('')
   const autoSearchTriggeredRef = useRef(false)
   const autoSearchKeyRef = useRef<string>('')
+  const manualSearchRef = useRef<string>('')
   const {
     decks,
     fusedDecks,
@@ -32,8 +33,8 @@ export default function Home() {
     forgebornNameIndex,
     deckTags,
     deckCreatureTypes,
+    deckCreatureTypeOverrides,
     currentPlayer,
-    restartFetchIfLoading,
   } = useDeckStore()
   const lastSearchRef = useRef<string>('')
   const [elapsedMs, setElapsedMs] = useState(0)
@@ -245,6 +246,7 @@ export default function Home() {
     searchedNameRef.current = targetName
     lastSearchRef.current = targetName
     setLastSearchedName(targetName)
+    manualSearchRef.current = targetName
     // Keep input in sync with triggered search
     if (playerName !== targetName) {
       setPlayerName(targetName)
@@ -339,24 +341,24 @@ export default function Home() {
     }
   }, [])
 
-  // If tab was hidden and we return while loading, restart fetch to avoid stalled SSE
   useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        restartFetchIfLoading()
-      }
-    }
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', handleVisibility)
-      window.addEventListener('focus', handleVisibility)
-    }
-    return () => {
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', handleVisibility)
-        window.removeEventListener('focus', handleVisibility)
-      }
-    }
-  }, [restartFetchIfLoading])
+    const resetParam = searchParams.get('reset') || searchParams.get('clear')
+    if (!resetParam) return
+
+    useDeckStore.getState().clearDecks()
+    setPlayerName('')
+    setForceRefresh(false)
+    setHasSearched(false)
+    setIsTyping(false)
+    setLastSearchedName('')
+    searchedNameRef.current = ''
+    lastSearchRef.current = ''
+    autoSearchTriggeredRef.current = false
+    autoSearchKeyRef.current = ''
+    router.replace('/')
+  }, [router, searchParams])
+
+  // Do not restart searches on visibility changes to avoid resetting progress mid-search.
 
   // Auto-run search when opened with params (?username=...&forceRefresh=true)
   useEffect(() => {
@@ -377,6 +379,14 @@ export default function Home() {
 
     const trimmed = usernameParam.trim()
     if (!trimmed) return
+    if (isTyping) return
+    if (manualSearchRef.current) {
+      if (manualSearchRef.current.trim().toLowerCase() !== trimmed.toLowerCase()) return
+      manualSearchRef.current = ''
+      return
+    }
+    const currentInput = playerName?.trim()
+    if (currentInput && currentInput.toLowerCase() !== trimmed.toLowerCase()) return
 
     const autoKey = `${trimmed.toLowerCase()}|${forceValue ? '1' : '0'}`
     if (autoSearchKeyRef.current === autoKey) return
@@ -409,7 +419,7 @@ export default function Home() {
     // Автозапуск поиска по параметрам: допускаем вызов setState внутри эффекта
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void handleSearch(trimmed, forceValue)
-  }, [handleSearch, searchParams, currentPlayer, decks.length, fusedDecks.length, progress.status, loading])
+  }, [handleSearch, searchParams, currentPlayer, decks.length, fusedDecks.length, progress.status, loading, isTyping, playerName])
 
   return (
     <main className="min-h-screen relative overflow-hidden">
@@ -474,7 +484,7 @@ export default function Home() {
                   className="bg-gradient-to-r from-sf-primary to-sf-secondary hover:from-sf-primary/90 hover:to-sf-secondary/90 transition-all shadow-lg hover:shadow-xl"
                   style={{ minWidth: 270, height: 60 }}
                 >
-                  Search Decks
+                  Load Decks
                 </Button>
                 <div className="flex-1 flex justify-end">
                   <Checkbox
@@ -634,6 +644,7 @@ export default function Home() {
               precomputedForgebornNames={forgebornNameIndex}
               deckTagsMap={deckTags}
               deckCreatureTypesMap={deckCreatureTypes}
+              deckCreatureTypeOverrides={deckCreatureTypeOverrides}
             />
           )}
           

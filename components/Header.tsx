@@ -1,7 +1,7 @@
 'use client'
 
-import { Container, Group, Button, Text, Avatar, Menu, Loader, Tooltip, Paper } from '@mantine/core'
-import { IconMail, IconBrandDiscord, IconLogout, IconUser, IconArrowUpRight, IconArrowDownRight } from '@tabler/icons-react'
+import { Container, Group, Button, Text, Avatar, Menu, Loader, Tooltip, Paper, Divider, Modal, ScrollArea } from '@mantine/core'
+import { IconMail, IconBrandDiscord, IconLogout, IconUser, IconArrowUpRight, IconArrowDownRight, IconNotes } from '@tabler/icons-react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -29,6 +29,33 @@ const TOKENS: TokenInfo[] = [
   { id: 'ethereum', symbol: 'ETH', label: 'ETH' },
   { id: 'solforge-fusion', symbol: 'SFG', label: 'SFG' },
 ]
+
+const CHANGELOG_SUMMARY = {
+  version: '0.0.1',
+  date: '—',
+}
+
+const CHANGELOG_FULL = {
+  version: CHANGELOG_SUMMARY.version,
+  date: CHANGELOG_SUMMARY.date,
+  added: [
+    'Header now includes a quick "What\'s new" window with recent highlights.',
+    'New rarity icons for Darkforge sets (B1, S1–S4).',
+    'Deck links now generate a shareable preview image for social media.',
+  ],
+  changed: [
+    'Deck link preview images are cleaner and better centered, so shared links look polished.',
+    'Browsing decks feels smoother with clearer pagination, filters, and a more responsive details window.',
+    'Fused deck tags and creature types are now calculated more consistently.',
+    'Search is steadier with smarter refresh and caching behavior.',
+    "Features that need Supabase now stay quietly off when it isn't configured.",
+  ],
+  fixed: [
+    'Fused deck filtering and set detection now behave reliably.',
+    'Shared preview images for fused decks now show the correct art.',
+    'Share preview rendering no longer breaks on unsupported styles or missing icons.',
+  ],
+}
 
 const formatPrice = (value?: number | null) => {
   if (value === undefined || value === null || Number.isNaN(value)) return '—'
@@ -136,6 +163,8 @@ export function Header() {
   const [prices, setPrices] = useState<Record<string, TokenPrice>>({})
   const [loadingPrices, setLoadingPrices] = useState(false)
   const [errorPrices, setErrorPrices] = useState<string | null>(null)
+  const [releaseDate, setReleaseDate] = useState<string>(CHANGELOG_SUMMARY.date)
+  const [changelogOpened, setChangelogOpened] = useState(false)
   const logoSrc = '/images/solforge-logo.png'
 
   const handleDiscordLogin = () => {
@@ -147,6 +176,21 @@ export function Header() {
   }
 
   useEffect(() => {
+    let canceled = false
+    const fetchReleaseDate = async () => {
+      try {
+        const res = await fetch('/api/release', { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json()
+        if (!canceled && data?.mergeDate) {
+          setReleaseDate(String(data.mergeDate))
+        }
+      } catch {
+        // ignore
+      }
+    }
+    fetchReleaseDate()
+
     const readPriceCache = () => {
       if (typeof window === 'undefined') return null
       try {
@@ -218,6 +262,7 @@ export function Header() {
     window.addEventListener('storage', handleStorage)
 
     return () => {
+      canceled = true
       clearInterval(interval)
       window.removeEventListener('storage', handleStorage)
     }
@@ -270,23 +315,78 @@ export function Header() {
   }
 
   return (
-    <header className="w-full py-4 px-6 bg-slate-800/60 backdrop-blur-md border-b border-sf-primary/20">
-      <Container size="xl">
-        <div
-          style={{
-            width: '100%',
-            maxWidth: '42rem', // align with search panel width
-            margin: '0 auto',
-          }}
-        >
-          <Group
-            justify="space-between"
-            align="center"
-            wrap="wrap"
-            gap="md"
+    <>
+      <Modal
+        opened={changelogOpened}
+        onClose={() => setChangelogOpened(false)}
+        title={`Changelog ${CHANGELOG_FULL.version}`}
+        size="lg"
+        centered
+      >
+        <Text size="xs" c="dimmed" mb="sm">
+          Merge date: {releaseDate}
+        </Text>
+        <ScrollArea h={420} offsetScrollbars>
+          <div className="space-y-4">
+            <div>
+              <Text size="xs" fw={700} c="teal.3" tt="uppercase">
+                Added
+              </Text>
+              <div className="mt-2 space-y-1">
+                {CHANGELOG_FULL.added.map((item) => (
+                  <Text key={`added-${item}`} size="xs" c="gray.1">
+                    • {item}
+                  </Text>
+                ))}
+              </div>
+            </div>
+            <Divider />
+            <div>
+              <Text size="xs" fw={700} c="yellow.3" tt="uppercase">
+                Changed
+              </Text>
+              <div className="mt-2 space-y-1">
+                {CHANGELOG_FULL.changed.map((item) => (
+                  <Text key={`changed-${item}`} size="xs" c="gray.1">
+                    • {item}
+                  </Text>
+                ))}
+              </div>
+            </div>
+            <Divider />
+            <div>
+              <Text size="xs" fw={700} c="blue.3" tt="uppercase">
+                Fixed
+              </Text>
+              <div className="mt-2 space-y-1">
+                {CHANGELOG_FULL.fixed.map((item) => (
+                  <Text key={`fixed-${item}`} size="xs" c="gray.1">
+                    • {item}
+                  </Text>
+                ))}
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+      </Modal>
+
+      <header className="w-full py-4 px-6 bg-slate-800/60 backdrop-blur-md border-b border-sf-primary/20">
+        <Container size="xl">
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '42rem', // align with search panel width
+              margin: '0 auto',
+            }}
           >
+            <Group
+              justify="space-between"
+              align="center"
+              wrap="wrap"
+              gap="md"
+            >
             <Group gap="sm" align="center" wrap="nowrap">
-              <Link href="/" aria-label="Go to home" className="flex items-center no-underline">
+              <Link href="/?reset=1" aria-label="Go to home" className="flex items-center no-underline">
                 {!logoError ? (
                   <Image
                     src={logoSrc}
@@ -376,22 +476,34 @@ export function Header() {
             */}
           </Group>
 
-          <Group gap="xs" wrap="nowrap">
-            <Tooltip label="Leave Feedback" position="bottom" withArrow>
+            <Group gap="xs" wrap="nowrap">
+            <div className="flex flex-col items-center gap-1">
+              <Tooltip label="Leave Feedback" position="bottom" withArrow>
+                <Button
+                  component="a"
+                  href="https://j5e8zoao.forms.app/sffd-feedback"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  className="text-white hover:bg-sf-primary/20 transition-colors"
+                  aria-label="Leave Feedback form"
+                >
+                  <IconMail size={18} />
+                </Button>
+              </Tooltip>
               <Button
-                component="a"
-                href="https://j5e8zoao.forms.app/sffd-feedback"
-                target="_blank"
-                rel="noopener noreferrer"
                 variant="subtle"
                 color="gray"
                 size="sm"
                 className="text-white hover:bg-sf-primary/20 transition-colors"
-                aria-label="Leave Feedback form"
+                aria-label="Changelog"
+                onClick={() => setChangelogOpened(true)}
               >
-                <IconMail size={18} />
+                <IconNotes size={18} />
               </Button>
-            </Tooltip>
+            </div>
 
             {status === 'loading' ? (
               <Loader size="sm" color="blue" />
@@ -452,8 +564,9 @@ export function Header() {
             )}
           </Group>
           </Group>
-        </div>
-      </Container>
-    </header>
+          </div>
+        </Container>
+      </header>
+    </>
   )
 }

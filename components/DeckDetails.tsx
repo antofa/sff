@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
-import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, ScrollArea, Divider, Image, Loader } from '@mantine/core'
+import { Modal, Stack, Paper, Title, Text, Group, Badge, Button, Divider, Image, Loader } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
+import { useMediaQuery } from '@mantine/hooks'
 import { IconCalendar, IconCopy, IconExternalLink, IconWorld } from '@tabler/icons-react'
 import NextImage from 'next/image'
 import type { Deck } from '@/store/deckStore'
@@ -11,10 +12,14 @@ import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForg
 import { logWithTimestamp } from '@/lib/logger'
 import { pluralize } from '@/lib/pluralize'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
+import { fetchCreatureTypesForDeckId } from '@/lib/creatureTypeOverrides'
+import { useDeckStore } from '@/store/deckStore'
 
 type CreatureTypeMap = Record<string, number>
 
 const KNOWN_FORGEBORN_NAMES = ['cercee', 'ironbeard', 'xerxes', 'kitaru', 'nova']
+
+const isFusedDeckLike = (deck: any) => String(deck?.format || '').toLowerCase() === 'fused'
 
 const buildCreatureTypeEntries = (
   deckLike: any,
@@ -44,6 +49,120 @@ const buildCreatureTypeEntries = (
   if (!creatureMap || typeof creatureMap !== 'object') return []
 
   return Object.entries(creatureMap)
+    .filter(([, count]) => Number(count) > 0)
+    .sort((a, b) => {
+      const diff = Number(b[1]) - Number(a[1])
+      if (diff !== 0) return diff
+      return a[0].localeCompare(b[0])
+    })
+}
+
+const buildFusedCreatureTypeEntries = (
+  deck: Deck,
+  options: {
+    deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+    deckCreatureTypeOverrides?: Record<string, CreatureTypeMap>
+    allDecks?: Deck[]
+  } = {}
+) => {
+  if (!isFusedDeckLike(deck)) return []
+  const deckCreatureTypesMap = options.deckCreatureTypesMap || {}
+  const deckCreatureTypeOverrides = options.deckCreatureTypeOverrides || {}
+  const allDecks = options.allDecks || []
+  const regularByName = new Map<string, Deck>()
+  allDecks.forEach((d) => {
+    if (!d?.name) return
+    if (isFusedDeckLike(d)) return
+    regularByName.set(d.name.trim().toLowerCase(), d)
+  })
+  const regularById = new Map<string, Deck>()
+  allDecks.forEach((d) => {
+    if (!d?.id) return
+    if (isFusedDeckLike(d)) return
+    regularById.set(String(d.id).trim().toLowerCase(), d)
+  })
+
+  const normalizeName = (value?: string | null) => (value ? value.trim().toLowerCase() : '')
+  const normalizeId = (value?: string | null) => {
+    if (!value) return ''
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/^deck[_-]?/i, '')
+      .replace(/^fused[_-]?/i, '')
+  }
+  const resolveCreatureMap = (d?: Deck | null) => {
+    if (!d) return undefined
+    const override =
+      (d.id && deckCreatureTypeOverrides[d.id]) ||
+      (d.id && deckCreatureTypeOverrides[String(d.id).trim().toLowerCase()]) ||
+      undefined
+    if (override && Object.keys(override).length > 0) return override
+    if (d.computed?.creatureType && Object.keys(d.computed.creatureType).length > 0) {
+      return d.computed.creatureType as CreatureTypeMap
+    }
+    const mapFromStore = d.id ? deckCreatureTypesMap[d.id] : undefined
+    if (mapFromStore && Object.keys(mapFromStore).length > 0) return mapFromStore
+    return undefined
+  }
+
+  const sourceCandidates: Array<{ id?: string; name?: string }> = []
+  const deckAny = deck as any
+  if (Array.isArray(deckAny.myDecks)) {
+    deckAny.myDecks.forEach((d: any) => {
+      if (d?.id || d?.name || d?.deckId || d?.deckName) {
+        sourceCandidates.push({ id: d.id || d.deckId, name: d.name || d.deckName })
+      }
+    })
+  } else if (Array.isArray(deckAny.fusedDeckIds)) {
+    deckAny.fusedDeckIds.forEach((id: string) => sourceCandidates.push({ id }))
+  }
+
+  const seenIds = new Set<string>()
+  const seenNames = new Set<string>()
+  const combined: CreatureTypeMap = {}
+
+  const addMap = (map?: CreatureTypeMap) => {
+    if (!map) return
+    Object.entries(map).forEach(([type, count]) => {
+      if (typeof count !== 'number') return
+      combined[type] = (combined[type] || 0) + count
+    })
+  }
+
+  sourceCandidates.forEach(({ id, name }) => {
+    if (id) {
+      const normalizedId = normalizeId(String(id))
+      if (normalizedId && !seenIds.has(normalizedId)) {
+        seenIds.add(normalizedId)
+        const byStore = deckCreatureTypesMap[id] || deckCreatureTypesMap[normalizedId]
+        if (byStore) {
+          addMap(byStore)
+          return
+        }
+        const match = regularById.get(normalizedId)
+        const resolved = resolveCreatureMap(match)
+        if (resolved) {
+          addMap(resolved)
+          return
+        }
+      }
+    }
+    if (name) {
+      const normalized = normalizeName(String(name))
+      if (!normalized || seenNames.has(normalized)) return
+      seenNames.add(normalized)
+      const match = regularByName.get(normalized)
+      if (match?.id) {
+        const resolved = resolveCreatureMap(match)
+        if (resolved) addMap(resolved)
+      }
+    }
+  })
+
+  if (Object.keys(combined).length === 0) return []
+
+  return Object.entries(combined)
     .filter(([, count]) => Number(count) > 0)
     .sort((a, b) => {
       const diff = Number(b[1]) - Number(a[1])
@@ -260,7 +379,12 @@ async function loadSingleImage(cardId: string, level: number, isForgeborn: boole
     }
   }
 
-  addCandidate(imageUrl)
+  if (isForgeborn) {
+    addCandidate(getForgebornAlternativeUrl(cardId))
+    addCandidate(imageUrl)
+  } else {
+    addCandidate(imageUrl)
+  }
 
   if (isSet99 && !isForgeborn) {
     const baseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
@@ -273,9 +397,7 @@ async function loadSingleImage(cardId: string, level: number, isForgeborn: boole
     }
   }
 
-  if (isForgeborn && cardId.includes('-')) {
-    addCandidate(getForgebornAlternativeUrl(cardId))
-  }
+  // Forgeborn candidates are handled above to prefer the space variant first.
 
   for (const candidate of candidates) {
     const loadedUrl = await loadImageUrlWithCache(candidate, timeoutMs)
@@ -295,6 +417,7 @@ interface CardListItemProps {
   factionIconPath: string | null
   rarityIconPath: string | null
   factionColor: string
+  inlineFrame?: React.ReactNode
   onClick: () => void
 }
 
@@ -304,18 +427,24 @@ const CardListItem = memo(function CardListItem({
   factionIconPath, 
   rarityIconPath, 
   factionColor,
+  inlineFrame,
   onClick 
 }: CardListItemProps) {
   return (
-    <div style={{ 
-      // CSS containment for better performance - browser can skip rendering off-screen items
-      contentVisibility: 'auto',
-      containIntrinsicSize: '0 40px', // Approximate height for layout
-    }}>
+    <div
+      data-card-id={card.id}
+      style={{
+        // CSS containment for better performance - browser can skip rendering off-screen items
+        contentVisibility: 'auto',
+        containIntrinsicSize: '0 40px', // Approximate height for layout
+        scrollMarginTop: '160px',
+      }}
+    >
       <Button
         variant={isSelected ? 'filled' : 'subtle'}
         onClick={onClick}
         className="w-full h-auto"
+        data-card-scroll={card.id}
         styles={{
           root: {
             backgroundColor: isSelected 
@@ -379,6 +508,7 @@ const CardListItem = memo(function CardListItem({
           </Text>
         </Group>
       </Button>
+      {inlineFrame}
     </div>
   )
 })
@@ -390,9 +520,11 @@ interface DeckDetailsProps {
   onDeckClick: (deck: Deck, parentDeck?: Deck | null) => void
   allDecks?: Deck[]
   parentFusedDeck?: Deck | null
+  deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+  deckCreatureTypeOverrides?: Record<string, CreatureTypeMap>
 }
 
-export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [], parentFusedDeck }: DeckDetailsProps) {
+export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [], parentFusedDeck, deckCreatureTypesMap, deckCreatureTypeOverrides }: DeckDetailsProps) {
   const [selectedCard, setSelectedCard] = useState<CardInfo | null>(null)
   const [selectedLevel, setSelectedLevel] = useState<number>(1) // Current card level (1, 2, or 3)
   const [cardImages, setCardImages] = useState<Record<string, Record<number, string>>>({}) // cardId -> level -> imageUrl
@@ -411,10 +543,46 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const imageRequestCacheRef = useRef<Map<string, Promise<string | null>>>(new Map())
   const fusedSourceDecksRef = useRef<string>('') // Track last merged source IDs to avoid re-setting state
   const fusedCardsMergedRef = useRef<boolean>(false) // Prevent repeated card merging for fused decks
-
+  const isSmUp = useMediaQuery('(min-width: 48em)')
+  const isMdUp = useMediaQuery('(min-width: 62em)')
+  const modalWidth = isMdUp
+    ? 'min(1500px, calc(100vw - 64px))'
+    : isSmUp
+      ? 'min(1100px, calc(100vw - 48px))'
+      : 'calc(100vw - 24px)'
+  const modalMinWidth = isMdUp ? 'min(1100px, calc(100vw - 64px))' : 'auto'
+  const detailPaneStyle: React.CSSProperties = isMdUp
+    ? { position: 'sticky', top: '1.5rem', alignSelf: 'flex-start', maxHeight: 'calc(80vh - 1.5rem)' }
+    : { position: 'static', alignSelf: 'stretch', maxHeight: 'none' }
+  const detailPanelWidth = isMdUp ? 'min(60vw, 900px)' : '100%'
+  const detailPanelMinWidth = isMdUp ? '520px' : '0'
   useEffect(() => {
     cardImagesRef.current = cardImages
   }, [cardImages])
+
+  useEffect(() => {
+    if (!opened) return
+    const htmlOverflow = document.documentElement.style.overflow
+    const bodyOverflow = document.body.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.documentElement.style.overflow = htmlOverflow
+      document.body.style.overflow = bodyOverflow
+    }
+  }, [opened])
+
+  useEffect(() => {
+    if (!selectedCard || isMdUp) return
+    const id = selectedCard.id
+    if (!id) return
+    const target = document.querySelector(`[data-card-id="${id}"]`)
+    if (target && 'scrollIntoView' in target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const offset = 96
+      window.scrollBy({ top: -offset, behavior: 'smooth' })
+    }
+  }, [selectedCard, isMdUp])
 
   // Всегда работаем с обогащенной декой (computed поля) для сетов/expiry/тегов
   const deckForDisplay = useMemo(() => {
@@ -1412,10 +1580,47 @@ const originalCardMeta = useMemo(() => {
     return Array.from(tagSet)
   }, [deck, fullDeckData, uniqueNormalizedCards])
 
-  const creatureTypeEntries = useMemo(
-    () => buildCreatureTypeEntries(fullDeckData || deck, { fallbackCards: uniqueNormalizedCards }),
-    [fullDeckData, deck, uniqueNormalizedCards]
-  )
+  const creatureTypeEntries = useMemo(() => {
+    const deckLike = fullDeckData || deck
+    if (!deckLike) return []
+    if (isFusedDeckLike(deckLike)) {
+      const fusedEntries = buildFusedCreatureTypeEntries(deckLike, { deckCreatureTypesMap, deckCreatureTypeOverrides, allDecks })
+      if (fusedEntries.length > 0) return fusedEntries
+      return []
+    }
+    return buildCreatureTypeEntries(deckLike, { fallbackCards: uniqueNormalizedCards })
+  }, [fullDeckData, deck, uniqueNormalizedCards, deckCreatureTypesMap, deckCreatureTypeOverrides, allDecks])
+
+  const fusedHalfIds = useMemo(() => {
+    const ids = new Set<string>()
+    const addId = (value?: string | null) => {
+      const trimmed = (value || '').trim()
+      if (trimmed) ids.add(trimmed)
+    }
+    const deckAny = (fullDeckData || deck) as any
+    if (Array.isArray(deckAny?.myDecks)) {
+      deckAny.myDecks.forEach((d: any) => addId(d?.id || d?.deckId || d?.deck_id))
+    }
+    if (Array.isArray(deckAny?.fusedDeckIds)) {
+      deckAny.fusedDeckIds.forEach((id: string) => addId(id))
+    }
+    getFusedDeckSourceDecks.forEach((d) => addId((d as any)?.id || (d as any)?.deckId || (d as any)?.deck_id))
+    fusedSourceDecks.forEach((d) => addId((d as any)?.id || (d as any)?.deckId || (d as any)?.deck_id))
+    return Array.from(ids)
+  }, [fullDeckData, deck, getFusedDeckSourceDecks, fusedSourceDecks])
+
+  useEffect(() => {
+    if (!opened || fusedHalfIds.length === 0) return
+    const store = useDeckStore.getState()
+    fusedHalfIds.forEach((id) => {
+      if (!id) return
+      fetchCreatureTypesForDeckId(id).then((creatureType) => {
+        if (creatureType && Object.keys(creatureType).length > 0) {
+          store.setDeckCreatureType(id, creatureType)
+        }
+      })
+    })
+  }, [opened, fusedHalfIds])
 
   // Helper function to load images in parallel with a concurrency limit
   const loadImagesInParallel = async (
@@ -3068,6 +3273,204 @@ const originalCardMeta = useMemo(() => {
     // Optional: could reset to level 1 when mouse leaves, but keeping current level for now
   }, [])
 
+  const renderSelectedCardFrame = useCallback((compact: boolean) => {
+    if (!selectedCard) return null
+    const cardImageData = cardImages[selectedCard.id]
+    const currentImageUrl = cardImageData?.[selectedLevel]
+
+    const levelErrorKey = `${selectedCard.id}-${selectedLevel}`
+    const hasError = imageErrors.has(levelErrorKey)
+
+    const selectedIdLower = selectedCard.id?.toLowerCase() || ''
+    const deckForgebornIdLower = deck?.forgebornId?.toLowerCase() || ''
+    const currentForgebornIdLower = (deck as any)?.currentForgebornId?.toLowerCase() || ''
+    const deckForgebornObjectIdLower = (deck as any)?.forgeborn?.id?.toLowerCase() || ''
+    const cardTypeLower = selectedCard.type?.toLowerCase() || ''
+    const cardTypeAltLower = (selectedCard as any).cardType?.toLowerCase() || ''
+
+    const isForgeborn =
+      (!!selectedIdLower && !!deckForgebornIdLower && (selectedIdLower === deckForgebornIdLower || selectedIdLower.includes(deckForgebornIdLower) || deckForgebornIdLower.includes(selectedIdLower))) ||
+      (!!selectedIdLower && !!currentForgebornIdLower && (selectedIdLower === currentForgebornIdLower || selectedIdLower.includes(currentForgebornIdLower) || currentForgebornIdLower.includes(selectedIdLower))) ||
+      (!!selectedIdLower && !!deckForgebornObjectIdLower && (selectedIdLower === deckForgebornObjectIdLower || selectedIdLower.includes(deckForgebornObjectIdLower) || deckForgebornObjectIdLower.includes(selectedIdLower))) ||
+      cardTypeLower.includes('forgeborn') ||
+      cardTypeAltLower.includes('forgeborn')
+
+    const selectedCardData = selectedCard as any
+    const isSolbind = solbindCardIdsSet.has(selectedCard.id) ||
+                     selectedCardData.rarity === 'Solbind' || selectedCardData.rarity === 'solbind' ||
+                     selectedCard.type?.toLowerCase() === 'solbind' ||
+                     selectedCardData.cardType?.toLowerCase() === 'solbind'
+
+    const effectiveLevel = selectedLevel
+    const effectiveImageUrl = currentImageUrl
+
+    const availableLevels = cardImageData ? Object.keys(cardImageData).map(Number).sort() : []
+    const hasAllLevels = availableLevels.length === 3 && availableLevels.includes(1) && availableLevels.includes(2) && availableLevels.includes(3)
+    const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
+
+    const baseFrameWidthPx = compact ? 240 : 288
+    const baseFrameHeightPx = compact ? 380 : 480
+    const frameWidthPx = baseFrameWidthPx
+    const frameHeightPx = baseFrameHeightPx
+    const isResizedForgeborn = isForgeborn && !!effectiveImageUrl && effectiveImageUrl.includes('/resized/')
+    const shouldRotateForgeborn = isForgeborn && !isResizedForgeborn
+    const forgebornScale = isForgeborn
+      ? shouldRotateForgeborn
+        ? (isMdUp ? 1.44 : 1.15)
+        : (isMdUp ? 2.2 : 1.5)
+      : 1
+    const forgebornPositionStyle = isForgeborn ? { top: '50%', left: '50%' } : {}
+    const forgebornTransform = isForgeborn
+      ? `${shouldRotateForgeborn ? 'rotate(-90deg) ' : ''}translate(-50%, -48%) scale(${forgebornScale})`
+      : 'none'
+
+    const imageKey = effectiveImageUrl ? `${selectedCard.id}-${effectiveLevel}-${effectiveImageUrl}` : ''
+    const isImageReady = !!(imageKey && imageLoadStatus[imageKey])
+
+    return (
+      <Paper
+        p={compact ? 'xs' : 'xl'}
+        className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
+        style={{
+          backgroundColor: 'rgba(30, 41, 59, 0.6)',
+          minHeight: compact ? 'auto' : '42vh',
+          maxHeight: compact ? 'none' : '52vh',
+          width: compact ? '100%' : detailPanelWidth,
+          minWidth: compact ? '0' : detailPanelMinWidth,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxSizing: 'border-box',
+          overflow: compact ? 'visible' : 'hidden',
+        }}
+      >
+        <div className="text-center w-full">
+          {!hasError ? (
+            <div
+              className="relative w-full flex flex-col items-center justify-center"
+              style={{ gap: '0.15rem', marginTop: compact ? 0 : '-1.5rem' }}
+            >
+              <div
+                className="relative w-full flex items-center justify-center"
+                style={{
+                  width: `min(${frameWidthPx}px, ${compact ? '88vw' : '70vw'})`,
+                  height: compact ? `${frameHeightPx}px` : `min(${frameHeightPx}px, 70vh)`,
+                }}
+              >
+                {effectiveImageUrl && (
+                  <NextImage
+                    key={imageKey || selectedCard.id}
+                    src={effectiveImageUrl}
+                    alt={isForgeborn ? selectedCard.name : isSolbind ? selectedCard.name : `${selectedCard.name} Level ${effectiveLevel}`}
+                    fill
+                    unoptimized
+                    className="object-contain"
+                    sizes={compact ? '(max-width: 62em) 88vw, 420px' : '(max-width: 1024px) 80vw, 420px'}
+                    style={{
+                      ...forgebornPositionStyle,
+                      transform: forgebornTransform,
+                      transformOrigin: 'center center',
+                      opacity: isImageReady ? 1 : 0,
+                      transition: 'opacity 120ms ease',
+                    }}
+                    onMouseMove={shouldEnableMouseScroll ? handleMouseMove : undefined}
+                    onMouseLeave={shouldEnableMouseScroll ? handleMouseLeave : undefined}
+                    onLoad={() => {
+                      if (imageKey) {
+                        setImageLoadStatus(prev => ({ ...prev, [imageKey]: true }))
+                      }
+                    }}
+                    onError={() => {
+                      setImageErrors(prev => new Set(prev).add(`${selectedCard.id}-${effectiveLevel}`))
+                      if (imageKey) {
+                        setImageLoadStatus(prev => ({ ...prev, [imageKey]: false }))
+                      }
+                    }}
+                  />
+                )}
+
+                {(!effectiveImageUrl || !isImageReady) && (
+                  <div
+                    className="absolute inset-0 rounded-lg border-2 flex flex-col items-center justify-center gap-2"
+                    style={{
+                      backgroundColor: 'rgba(74, 144, 226, 0.1)',
+                      borderColor: getFactionBadgeColor(selectedCard.faction || deck?.faction),
+                    }}
+                  >
+                    <Loader size="md" color="rgba(74, 144, 226, 0.8)" />
+                    <Text size="sm" className="text-white text-center px-4">
+                      Loading {selectedCard.name} Level {effectiveLevel}...
+                    </Text>
+                  </div>
+                )}
+              </div>
+
+              {!isForgeborn && (
+                <Group gap="xs" justify="center" style={{ marginTop: compact ? '0.1rem' : '-1.5rem' }}>
+                  {([1, 2, 3] as const)
+                    .filter(level => {
+                      if (!isSolbind) return true
+                      const hasImage = !!cardImages[selectedCard.id]?.[level]
+                      return hasImage
+                    })
+                    .map(level => {
+                      const hasImage = cardImages[selectedCard.id]?.[level]
+                      const levelErrorKey = `${selectedCard.id}-${level}`
+                      const isLoading = !hasImage && !imageErrors.has(levelErrorKey) && loadingLevels[selectedCard.id]?.[level] !== false
+
+                      return (
+                        <Button
+                          key={level}
+                          size="sm"
+                          variant={selectedLevel === level ? 'filled' : 'outline'}
+                          onClick={() => handleLevelChange(level)}
+                          className={
+                            selectedLevel === level
+                              ? 'bg-sf-primary hover:bg-sf-primary/90'
+                              : 'border-sf-primary/50 text-sf-primary hover:bg-sf-primary/20'
+                          }
+                        >
+                          Level {level}
+                          {isLoading && ' (loading...)'}
+                        </Button>
+                      )
+                    })}
+                </Group>
+              )}
+            </div>
+          ) : (
+            <div
+              className="w-64 h-96 mx-auto rounded-lg border-2 flex items-center justify-center"
+              style={{
+                backgroundColor: 'rgba(74, 144, 226, 0.1)',
+                borderColor: getFactionBadgeColor(selectedCard.faction || deck?.faction),
+              }}
+            >
+              <Text size="lg" className="text-white text-center px-4">
+                {selectedCard.name}
+              </Text>
+            </div>
+          )}
+        </div>
+      </Paper>
+    )
+  }, [
+    selectedCard,
+    cardImages,
+    selectedLevel,
+    imageErrors,
+    deck,
+    solbindCardIdsSet,
+    imageLoadStatus,
+    isMdUp,
+    detailPanelWidth,
+    detailPanelMinWidth,
+    handleMouseMove,
+    handleMouseLeave,
+    handleLevelChange,
+    loadingLevels,
+  ])
+
   const spellCards: CardInfo[] = useMemo(() => {
     if (!deck) return []
     return uniqueNormalizedCards.filter(card => {
@@ -3128,56 +3531,61 @@ const originalCardMeta = useMemo(() => {
   // getFactionBadgeColor moved outside component for better performance
 
   // Get rarity icon path based on card set and rarity
-  // Helper function to check if a card is from B1 set
-  const isB1Card = useCallback((card: CardInfo | any): boolean => {
-    if (!card) return false
-    
+  // Helper function to check if a card is from B1/B2/B3 set
+  const getBSetFromCard = useCallback((card: CardInfo | any): 'B1' | 'B2' | 'B3' | null => {
+    if (!card) return null
+
     const cardData = card as any
     const cardSetId = cardData.cardSetId || cardData.CardSetId || cardData.SK || cardData.sk
     const cardId = card.id || cardData.id || cardData.cardId || cardData.name
-    
-    // Check cardSetId/SK for B1
-    if (cardSetId && String(cardSetId).toLowerCase() === 'b1') {
-      return true
-    }
-    
-    // Check cardId for b1_ prefix
-    if (cardId && /^b1_/i.test(cardId)) {
-      return true
-    }
-    
-    return false
+    const setLower = cardSetId ? String(cardSetId).toLowerCase() : ''
+
+    if (setLower === 'b3') return 'B3'
+    if (setLower === 'b2') return 'B2'
+    if (setLower === 'b1') return 'B1'
+    if (cardId && /^b3_/i.test(cardId)) return 'B3'
+    if (cardId && /^b2_/i.test(cardId)) return 'B2'
+    if (cardId && /^b1_/i.test(cardId)) return 'B1'
+
+    return null
   }, [])
 
-  // Helper function to determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
+  const getBSetFromCards = useCallback((cards: any[]): 'B1' | 'B2' | 'B3' | null => {
+    let found: 'B1' | 'B2' | 'B3' | null = null
+    cards.forEach((card) => {
+      const bSet = getBSetFromCard(card)
+      if (bSet === 'B3') {
+        found = 'B3'
+      } else if (bSet === 'B2') {
+        found = 'B2'
+      } else if (bSet === 'B1' && found !== 'B2') {
+        found = 'B1'
+      }
+    })
+    return found
+  }, [getBSetFromCard])
+
+  // Helper function to determine deck set: if any card is from B1/B2/B3, return that set, otherwise use deck.cardSetNo
   const getDeckSet = useCallback((deck: Deck | null, normalizedCards: CardInfo[]): string | null => {
     if (!deck) return null
     
     const deckAny = deck as any
+    const deckSetId = deckAny.cardSetId || deckAny.card_set_id
+    if (deckSetId) {
+      const lower = String(deckSetId).toLowerCase()
+      if (lower === 'b3') return 'B3'
+      if (lower === 'b2') return 'B2'
+      if (lower === 'b1') return 'B1'
+    }
     
     // For fused decks, check cards from source decks (myDecks) if normalizedCards is empty
     if (deckAny.format === 'Fused' && normalizedCards.length === 0) {
-      // Check source decks (myDecks) for B1 cards
+      // Check source decks (myDecks) for B1/B2 cards
       if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
         for (const sourceDeck of deckAny.myDecks) {
           if (sourceDeck && sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
-            const hasB1Card = sourceDeck.cards.some((card: any) => {
-              // Handle string cards
-              if (typeof card === 'string') {
-                return /^b1_/i.test(card)
-              }
-              // Handle object cards
-              if (typeof card === 'object' && card !== null) {
-                const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
-                const cardId = card.id || card.cardId || card.name
-                if (cardSetId && String(cardSetId).toLowerCase() === 'b1') return true
-                if (cardId && /^b1_/i.test(cardId)) return true
-              }
-              return false
-            })
-            if (hasB1Card) {
-              return 'B1'
-            }
+            const bSet = getBSetFromCards(sourceDeck.cards)
+            if (bSet) return bSet
           }
         }
       }
@@ -3186,16 +3594,13 @@ const originalCardMeta = useMemo(() => {
       return null
     }
     
-    // Check if any card in normalizedCards is from B1 set
-    const hasB1Card = normalizedCards.some(card => isB1Card(card))
-    
-    if (hasB1Card) {
-      return 'B1'
-    }
+    // Check if any card in normalizedCards is from B1/B2 set
+    const bSet = getBSetFromCards(normalizedCards)
+    if (bSet) return bSet
     
     // Otherwise use deck.cardSetNo
     return deck.cardSetNo || null
-  }, [isB1Card])
+  }, [getBSetFromCards])
 
   const getDeckSetForDeck = useCallback((deckToCheck: Deck | null): string | null => {
     if (!deckToCheck) return null
@@ -3213,15 +3618,21 @@ const originalCardMeta = useMemo(() => {
     return getDeckSet(deckToCheck, normalizedForSet)
   }, [getDeckSet])
   
-  // Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", etc.
+  // Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", "B2" -> "B2", "B3" -> "B3", etc.
   const formatSetName = useCallback((setNo: string | number | null | undefined): string | null => {
     if (!setNo) return null
     
     const setStr = String(setNo).trim()
     
-    // If it's already B1 or b1, return as B1
+    // If it's already B1/B2/B3, return uppercase
     if (setStr.toUpperCase() === 'B1' || setStr.toLowerCase() === 'b1') {
       return 'B1'
+    }
+    if (setStr.toUpperCase() === 'B2' || setStr.toLowerCase() === 'b2') {
+      return 'B2'
+    }
+    if (setStr.toUpperCase() === 'B3' || setStr.toLowerCase() === 'b3') {
+      return 'B3'
     }
     
     // For numeric sets, format as S1, S2, S3, etc.
@@ -3288,7 +3699,7 @@ const originalCardMeta = useMemo(() => {
     // Try to get cardSetId or SK from cardData (most reliable - per-card set information)
     if (cardData) {
       cardSet = cardData.cardSetId || cardData.CardSetId || cardData.SK || cardData.sk
-      // SK might be in format like "b1" or "s3", normalize it
+      // SK might be in format like "b1", "b2", or "s3", normalize it
       if (cardSet) {
         cardSet = String(cardSet).toLowerCase().trim()
       }
@@ -3301,8 +3712,12 @@ const originalCardMeta = useMemo(() => {
     
     // Fallback: try to extract from cardId
     if (!cardSet && cardId) {
-      // Check for b1_ prefix first
-      if (/^b1_/i.test(cardId)) {
+      // Check for b3_/b2_/b1_ prefix first
+      if (/^b3_/i.test(cardId)) {
+        cardSet = 'b3'
+      } else if (/^b2_/i.test(cardId)) {
+        cardSet = 'b2'
+      } else if (/^b1_/i.test(cardId)) {
         cardSet = 'b1'
       } else {
         // Extract set number from cardId (e.g., "s3nn1arrogant-butcher" -> "3")
@@ -3313,14 +3728,24 @@ const originalCardMeta = useMemo(() => {
       }
     }
     
-    // Check if this is B1 set (Betrayer set)
-    // B1 can be identified by cardSet being "B1" or "b1", or by cardId starting with "b1_"
-    const isB1Set = 
+    // Check if this is B1/B2/B3 set (Betrayer sets)
+    const isB3Set =
+      (cardSet && (cardSet.toUpperCase() === 'B3' || cardSet === 'b3')) ||
+      (cardId && /^b3_/i.test(cardId))
+    const isB2Set =
+      (cardSet && (cardSet.toUpperCase() === 'B2' || cardSet === 'b2')) ||
+      (cardId && /^b2_/i.test(cardId))
+    const isB1Set =
       (cardSet && (cardSet.toUpperCase() === 'B1' || cardSet === 'b1')) ||
       (cardId && /^b1_/i.test(cardId))
     
+    if (isB3Set) {
+      return `/images/icons/rarity/B3_${normalizedRarity}.png`
+    }
+    if (isB2Set) {
+      return `/images/icons/rarity/B2_${normalizedRarity}.png`
+    }
     if (isB1Set) {
-      // Return B1 rarity icons (b1_*.png -> B1_*.png)
       return `/images/icons/rarity/B1_${normalizedRarity}.png`
     }
     
@@ -3499,8 +3924,8 @@ const originalCardMeta = useMemo(() => {
       closeOnEscape={true}
       keepMounted={false}
       title={
-        <Group justify="space-between" className="w-full" wrap="nowrap">
-          <Group gap="md" wrap="nowrap" className="flex-1 min-w-0">
+        <Group justify="space-between" className="w-full" wrap="wrap">
+          <Group gap="md" wrap="wrap" className="flex-1 min-w-0">
             {parentFusedDeck && (
               <Button
                 variant="subtle"
@@ -3516,7 +3941,7 @@ const originalCardMeta = useMemo(() => {
                 ← Back to Fused
               </Button>
             )}
-            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+            <Group gap="xs" wrap="wrap">
               <button
                 type="button"
                 onClick={(e) => {
@@ -3551,14 +3976,19 @@ const originalCardMeta = useMemo(() => {
                 <Title
                   order={3}
                   className="text-white"
-                  style={{ flexShrink: 0, margin: 0, textDecoration: copied ? 'underline' : 'none' }}
+                  style={{
+                    margin: 0,
+                    textDecoration: copied ? 'underline' : 'none',
+                    whiteSpace: 'normal',
+                    lineHeight: 1.2,
+                  }}
                 >
                   {(deckForDisplay || deck)?.name || 'Untitled Deck'}
                 </Title>
               </button>
               {/* Don't show faction/set badges for fused decks */}
               {formattedDeckSet && (deckForDisplay as any)?.format !== 'Fused' && (
-                <Group gap={4} wrap="nowrap">
+                <Group gap={4} wrap="wrap">
                   {derivedFaction && (
                     <Image
                       src={`/images/icons/${derivedFaction.toLowerCase()}.png`}
@@ -3631,7 +4061,7 @@ const originalCardMeta = useMemo(() => {
                 )
               })()}
             </Group>
-            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+            <Group gap="xs" wrap="wrap">
               {(() => {
                 const rank = (deckForDisplay as any)?.deckRank ?? (deck as any)?.deckRank
                 if (!rank) return null
@@ -3667,7 +4097,7 @@ const originalCardMeta = useMemo(() => {
                   : `https://solforgefusion.com/decks/${deck.id}`
                 
                 return (
-                  <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                  <Group gap="xs" wrap="wrap">
                     {isFused ? (
                       <Button
                         component="a"
@@ -3717,7 +4147,7 @@ const originalCardMeta = useMemo(() => {
                 )
               })()
             )}
-            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+            <Group gap="xs" wrap="wrap">
               {(() => {
                 const score = (deckForDisplay as any)?.deckScore ?? (deck as any)?.deckScore
                 if (score === undefined || score === null) return null
@@ -3754,7 +4184,7 @@ const originalCardMeta = useMemo(() => {
               
               if (sourceDeck1 || sourceDeck2) {
                 return (
-                  <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                  <Group gap="xs" wrap="wrap">
                     {sourceDeck1 && (
                       <Stack gap={4} style={{ flexShrink: 0 }}>
                         {(() => {
@@ -3776,7 +4206,7 @@ const originalCardMeta = useMemo(() => {
                               {(sourceDeck1Set || meta) && (
                                 <Group gap={6} wrap="wrap">
                                   {sourceDeck1Set && (
-                                    <Group gap={6} wrap="nowrap">
+                                    <Group gap={6} wrap="wrap">
                                       {sourceDeck1.faction && (
                                         <Image
                                           src={`/images/icons/${sourceDeck1.faction.toLowerCase()}.png`}
@@ -3833,7 +4263,7 @@ const originalCardMeta = useMemo(() => {
                               {(sourceDeck2Set || meta) && (
                                 <Group gap={6} wrap="wrap">
                                   {sourceDeck2Set && (
-                                    <Group gap={6} wrap="nowrap">
+                                    <Group gap={6} wrap="wrap">
                                       {sourceDeck2.faction && (
                                         <Image
                                           src={`/images/icons/${sourceDeck2.faction.toLowerCase()}.png`}
@@ -3879,9 +4309,9 @@ const originalCardMeta = useMemo(() => {
           backgroundColor: 'rgba(30, 41, 59, 0.98)',
           border: '1px solid rgba(74, 144, 226, 0.3)',
           maxWidth: '1500px',
-          width: 'min(1500px, calc(100vw - 64px))',
-          minWidth: 'min(1100px, calc(100vw - 64px))',
-          minHeight: 'calc(80vh + 50px)',
+          width: modalWidth,
+          minWidth: modalMinWidth,
+          minHeight: isMdUp ? 'calc(80vh + 50px)' : 'calc(85vh - 24px)',
           transition: 'transform 300ms ease-in-out, opacity 300ms ease-in-out',
         },
         header: {
@@ -3890,9 +4320,9 @@ const originalCardMeta = useMemo(() => {
         },
         body: {
           padding: '1.5rem',
-          maxHeight: 'calc(80vh + 50px)',
-          minHeight: 'calc(70vh + 50px)',
-          overflowY: 'auto',
+          maxHeight: isMdUp ? 'calc(80vh + 50px)' : 'calc(85vh - 24px)',
+          minHeight: isMdUp ? 'calc(70vh + 50px)' : 'auto',
+          overflowY: isMdUp ? 'hidden' : undefined,
         },
         overlay: {
           transition: 'opacity 300ms ease-in-out, backdrop-filter 300ms ease-in-out',
@@ -3901,8 +4331,14 @@ const originalCardMeta = useMemo(() => {
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ alignItems: 'flex-start' }}>
         {/* Left column - card lists */}
-        <div className="lg:col-span-1 flex flex-col h-full">
-          <ScrollArea className="flex-1" style={{ padding: 0, maxHeight: 'calc(70vh + 50px)' }}>
+        <div
+          className="lg:col-span-1 flex flex-col h-full"
+          style={{
+            maxHeight: isMdUp ? 'calc(80vh + 50px)' : 'none',
+            overflowY: isMdUp ? 'auto' : 'visible',
+          }}
+        >
+          <div className="flex-1" style={{ padding: 0 }}>
             <Stack gap="md" align="flex-start" style={{ padding: 0, margin: 0 }}>
               {/* Forgeborn */}
               {forgebornCards.length > 0 && (
@@ -3913,6 +4349,7 @@ const originalCardMeta = useMemo(() => {
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {forgebornCards.map((card, index) => {
                       const props = getCardListItemProps(card)
+                      const isInline = !isMdUp && selectedCard?.id === card.id
                       return (
                         <CardListItem
                           key={`forgeborn-${card.id}-${index}`}
@@ -3921,6 +4358,7 @@ const originalCardMeta = useMemo(() => {
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
+                          inlineFrame={isInline ? renderSelectedCardFrame(true) : null}
                           onClick={() => handleSelectCard(card)}
                         />
                       )
@@ -3938,6 +4376,7 @@ const originalCardMeta = useMemo(() => {
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {creatureCards.map((card, index) => {
                       const props = getCardListItemProps(card)
+                      const isInline = !isMdUp && selectedCard?.id === card.id
                       return (
                         <CardListItem
                           key={`creature-${card.id}-${index}`}
@@ -3946,6 +4385,7 @@ const originalCardMeta = useMemo(() => {
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
+                          inlineFrame={isInline ? renderSelectedCardFrame(true) : null}
                           onClick={() => handleSelectCard(card)}
                         />
                       )
@@ -3963,6 +4403,7 @@ const originalCardMeta = useMemo(() => {
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {spellCards.map((card, index) => {
                       const props = getCardListItemProps(card)
+                      const isInline = !isMdUp && selectedCard?.id === card.id
                       return (
                         <CardListItem
                           key={`spell-${card.id}-${index}`}
@@ -3971,6 +4412,7 @@ const originalCardMeta = useMemo(() => {
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
+                          inlineFrame={isInline ? renderSelectedCardFrame(true) : null}
                           onClick={() => handleSelectCard(card)}
                         />
                       )
@@ -3988,6 +4430,7 @@ const originalCardMeta = useMemo(() => {
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {solbindCards.map((card, index) => {
                       const props = getCardListItemProps(card)
+                      const isInline = !isMdUp && selectedCard?.id === card.id
                       return (
                         <CardListItem
                           key={`solbind-${card.id}-${index}`}
@@ -3996,6 +4439,7 @@ const originalCardMeta = useMemo(() => {
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
+                          inlineFrame={isInline ? renderSelectedCardFrame(true) : null}
                           onClick={() => handleSelectCard(card)}
                         />
                       )
@@ -4013,6 +4457,7 @@ const originalCardMeta = useMemo(() => {
                   <Stack gap="xs" style={{ padding: 0, margin: 0 }}>
                     {normalizedCards.map((card, index) => {
                       const props = getCardListItemProps(card)
+                      const isInline = !isMdUp && selectedCard?.id === card.id
                       return (
                         <CardListItem
                           key={`card-${card.id}-${index}`}
@@ -4021,6 +4466,7 @@ const originalCardMeta = useMemo(() => {
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
                           factionColor={props.factionColor}
+                          inlineFrame={isInline ? renderSelectedCardFrame(true) : null}
                           onClick={() => handleSelectCard(card)}
                         />
                       )
@@ -4028,275 +4474,189 @@ const originalCardMeta = useMemo(() => {
                   </Stack>
                 </div>
               )}
-            </Stack>
-          </ScrollArea>
-        </div>
 
-        {/* Right column - detailed card information */}
-        <div
-          className="lg:col-span-2 flex flex-col h-full"
-          style={{ position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: 'calc(70vh + 50px)' }}
-        >
-          {selectedCard ? (
-            <Stack gap="lg">
-              {/* Card image */}
-              <Paper
-                p="xl"
-                className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
-                style={{ 
-                  backgroundColor: 'rgba(30, 41, 59, 0.6)',
-                  minHeight: '42vh',
-                  maxHeight: '52vh',
-                  width: 'min(60vw, 900px)',
-                  minWidth: '520px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxSizing: 'border-box',
-                  overflow: 'hidden',
-                }}
-              >
-                <div className="text-center w-full">
-                  {(() => {
-                    const cardImageData = cardImages[selectedCard.id]
-                    const currentImageUrl = cardImageData?.[selectedLevel]
-
-                    const levelErrorKey = `${selectedCard.id}-${selectedLevel}`
-                    const hasError = imageErrors.has(levelErrorKey)
-
-                    const selectedIdLower = selectedCard.id?.toLowerCase() || ''
-                    const deckForgebornIdLower = deck?.forgebornId?.toLowerCase() || ''
-                    const currentForgebornIdLower = (deck as any)?.currentForgebornId?.toLowerCase() || ''
-                    const deckForgebornObjectIdLower = (deck as any)?.forgeborn?.id?.toLowerCase() || ''
-                    const cardTypeLower = selectedCard.type?.toLowerCase() || ''
-                    const cardTypeAltLower = (selectedCard as any).cardType?.toLowerCase() || ''
-                    
-                    const isForgeborn =
-                      (!!selectedIdLower && !!deckForgebornIdLower && (selectedIdLower === deckForgebornIdLower || selectedIdLower.includes(deckForgebornIdLower) || deckForgebornIdLower.includes(selectedIdLower))) ||
-                      (!!selectedIdLower && !!currentForgebornIdLower && (selectedIdLower === currentForgebornIdLower || selectedIdLower.includes(currentForgebornIdLower) || currentForgebornIdLower.includes(selectedIdLower))) ||
-                      (!!selectedIdLower && !!deckForgebornObjectIdLower && (selectedIdLower === deckForgebornObjectIdLower || selectedIdLower.includes(deckForgebornObjectIdLower) || deckForgebornObjectIdLower.includes(selectedIdLower))) ||
-                      cardTypeLower.includes('forgeborn') ||
-                      cardTypeAltLower.includes('forgeborn')
-                    
-                    const selectedCardData = selectedCard as any
-                    const isSolbind = solbindCardIdsSet.has(selectedCard.id) ||
-                                     selectedCardData.rarity === 'Solbind' || selectedCardData.rarity === 'solbind' ||
-                                     selectedCard.type?.toLowerCase() === 'solbind' ||
-                                     selectedCardData.cardType?.toLowerCase() === 'solbind'
-                    
-                    const effectiveLevel = selectedLevel
-                    const effectiveImageUrl = currentImageUrl
-                    
-                    const availableLevels = cardImageData ? Object.keys(cardImageData).map(Number).sort() : []
-                    const hasAllLevels = availableLevels.length === 3 && availableLevels.includes(1) && availableLevels.includes(2) && availableLevels.includes(3)
-                    const shouldEnableMouseScroll = !isForgeborn && hasAllLevels
-                    
-                    const baseFrameWidthPx = 288
-                    const baseFrameHeightPx = 480
-                    const frameWidthPx = baseFrameWidthPx
-                    const frameHeightPx = baseFrameHeightPx
-                    const forgebornScale = isForgeborn ? 1.44 : 1
-
-                    const imageKey = effectiveImageUrl ? `${selectedCard.id}-${effectiveLevel}-${effectiveImageUrl}` : ''
-                    const isImageReady = !!(imageKey && imageLoadStatus[imageKey])
-
-                    return !hasError ? (
-                      <div
-                        className="relative w-full flex flex-col items-center justify-center"
-                        style={{ gap: '0.15rem', marginTop: '-1.5rem' }}
-                      >
-                        <div
-                        className="relative w-full flex items-center justify-center"
-                        style={{
-                          width: `min(${frameWidthPx}px, 70vw)`,
-                          height: `min(${frameHeightPx}px, 70vh)`,
-                        }}
-                        >
-                          {effectiveImageUrl && (
-                            <NextImage
-                              key={imageKey || selectedCard.id}
-                              src={effectiveImageUrl}
-                              alt={isForgeborn ? selectedCard.name : isSolbind ? selectedCard.name : `${selectedCard.name} Level ${effectiveLevel}`}
-                              fill
-                              unoptimized
-                              className="object-contain"
-                              sizes="(max-width: 1024px) 80vw, 420px"
-                              style={{
-                                transform: isForgeborn ? `rotate(-90deg) scale(${forgebornScale})` : 'none',
-                                transformOrigin: 'center center',
-                                opacity: isImageReady ? 1 : 0,
-                                transition: 'opacity 120ms ease',
-                              }}
-                              onMouseMove={shouldEnableMouseScroll ? handleMouseMove : undefined}
-                              onMouseLeave={shouldEnableMouseScroll ? handleMouseLeave : undefined}
-                              onLoad={() => {
-                                if (imageKey) {
-                                  setImageLoadStatus(prev => ({ ...prev, [imageKey]: true }))
-                                }
-                              }}
-                              onError={() => {
-                                setImageErrors(prev => new Set(prev).add(`${selectedCard.id}-${effectiveLevel}`))
-                                if (imageKey) {
-                                  setImageLoadStatus(prev => ({ ...prev, [imageKey]: false }))
-                                }
-                              }}
-                            />
-                          )}
-
-                          {(!effectiveImageUrl || !isImageReady) && (
-                            <div
-                              className="absolute inset-0 rounded-lg border-2 flex flex-col items-center justify-center gap-2"
-                              style={{
-                                backgroundColor: 'rgba(74, 144, 226, 0.1)',
-                                borderColor: getFactionBadgeColor(selectedCard.faction || deck.faction),
-                              }}
-                            >
-                              <Loader size="md" color="rgba(74, 144, 226, 0.8)" />
-                              <Text size="sm" className="text-white text-center px-4">
-                                Loading {selectedCard.name} Level {effectiveLevel}...
-                              </Text>
-                            </div>
-                          )}
-                        </div>
-
-                        {!isForgeborn && (
-                          <Group gap="xs" justify="center" style={{ marginTop: '-1.5rem' }}>
-                            {([1, 2, 3] as const)
-                              .filter(level => {
-                                if (!isSolbind) return true
-                                const hasImage = !!cardImages[selectedCard.id]?.[level]
-                                return hasImage
-                              })
-                              .map(level => {
-                                const hasImage = cardImages[selectedCard.id]?.[level]
-                                const levelErrorKey = `${selectedCard.id}-${level}`
-                                const isLoading = !hasImage && !imageErrors.has(levelErrorKey) && loadingLevels[selectedCard.id]?.[level] !== false
-                                
-                                return (
-                                  <Button
-                                    key={level}
-                                    size="sm"
-                                    variant={selectedLevel === level ? 'filled' : 'outline'}
-                                    onClick={() => handleLevelChange(level)}
-                                    className={
-                                      selectedLevel === level
-                                        ? 'bg-sf-primary hover:bg-sf-primary/90'
-                                        : 'border-sf-primary/50 text-sf-primary hover:bg-sf-primary/20'
-                                    }
-                                  >
-                                    Level {level}
-                                    {isLoading && ' (loading...)'}
-                                  </Button>
-                                )
-                              })}
-                          </Group>
-                        )}
-                      </div>
-                    ) : (
-                      <div
-                        className="w-64 h-96 mx-auto rounded-lg border-2 flex items-center justify-center"
-                        style={{
-                          backgroundColor: 'rgba(74, 144, 226, 0.1)',
-                          borderColor: getFactionBadgeColor(selectedCard.faction || deck.faction),
-                        }}
-                      >
-                        <Text size="lg" className="text-white text-center px-4">
-                          {selectedCard.name}
-                        </Text>
-                      </div>
-                    )
-                  })()}
-                  </div>
-              </Paper>
-
-              <Paper
-                p="md"
-                className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
-                style={{
-                  backgroundColor: 'rgba(30, 41, 59, 0.6)',
-                  width: 'min(60vw, 900px)',
-                  minWidth: '520px',
-                  boxSizing: 'border-box',
-                }}
-              >
-                <Stack gap="xs">
-                  <Group gap="xs" wrap="wrap">
-                    {deckCounts.creatures ? (
-                      <Badge color="green" variant="light" size="sm">
-                        {pluralize(deckCounts.creatures, 'Creature')}
-                      </Badge>
-                    ) : null}
-                    {deckCounts.spells ? (
-                      <Badge color="pink" variant="light" size="sm">
-                        {pluralize(deckCounts.spells, 'Spell')}
-                      </Badge>
-                    ) : null}
-                    {deckCounts.solbind ? (
-                      <Badge color="orange" variant="light" size="sm">
-                        {pluralize(deckCounts.solbind, 'Solbind')}
-                      </Badge>
-                    ) : null}
-                    {Array.from(raritySummary.entries())
-                      .sort(([a], [b]) => {
-        const order: Record<string, number> = {
-          Solbind: 0,
-          Common: 1,
-          'Common Common': 2,
-          'Common Rare': 3,
-          Rare: 4,
-          'Rare Common': 5,
-          'Rare Rare': 6,
-          'Darkforge Rare': 7,
-          Darkforge: 8,
-          LS: 9,
-        }
-                        return (order[a] ?? 99) - (order[b] ?? 99)
-                      })
-                      .map(([rarity, count]) => (
-                        <Badge
-                          key={`rarity-${rarity}`}
-                          variant="light"
-                          size="sm"
-                          style={{ backgroundColor: getRarityBadgeColor(rarity), color: 'white', border: 'none' }}
-                        >
-                          {pluralize(count, rarity)}
+              {!isMdUp && (deckTags.length > 0 || creatureTypeEntries.length > 0 || raritySummary.size > 0 || deckCounts.total > 0) && (
+                <Paper
+                  p="md"
+                  className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
+                  style={{
+                    backgroundColor: 'rgba(30, 41, 59, 0.6)',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <Stack gap="xs">
+                    <Group gap="xs" wrap="wrap">
+                      {deckCounts.creatures ? (
+                        <Badge color="green" variant="light" size="sm">
+                          {pluralize(deckCounts.creatures, 'Creature')}
                         </Badge>
-                      ))}
-                  </Group>
-
-                  {deckTags.length > 0 && (
-                    <Group gap="xs" className="flex-wrap">
-                      {deckTags.map((tag) => (
-                        <Badge key={`tag-${tag}`} color="violet" variant="light" size="sm">
-                          {tag.toString().toUpperCase()}
+                      ) : null}
+                      {deckCounts.spells ? (
+                        <Badge color="pink" variant="light" size="sm">
+                          {pluralize(deckCounts.spells, 'Spell')}
                         </Badge>
-                      ))}
-                    </Group>
-                  )}
-
-                  {creatureTypeEntries.length > 0 && (
-                    <Group gap="xs" className="flex-wrap">
-                      {creatureTypeEntries.map(([type, count]) => {
-                        const pretty = type.charAt(0).toUpperCase() + type.slice(1)
-                        return (
-                          <Badge key={`ctype-${type}`} color="grape" variant="outline" size="sm">
-                            {`${pretty} ${count}`}
+                      ) : null}
+                      {deckCounts.solbind ? (
+                        <Badge color="orange" variant="light" size="sm">
+                          {pluralize(deckCounts.solbind, 'Solbind')}
+                        </Badge>
+                      ) : null}
+                      {Array.from(raritySummary.entries())
+                        .sort(([a], [b]) => {
+                          const order: Record<string, number> = {
+                            Solbind: 0,
+                            Common: 1,
+                            'Common Common': 2,
+                            'Common Rare': 3,
+                            Rare: 4,
+                            'Rare Common': 5,
+                            'Rare Rare': 6,
+                            'Darkforge Rare': 7,
+                            Darkforge: 8,
+                            LS: 9,
+                          }
+                          return (order[a] ?? 99) - (order[b] ?? 99)
+                        })
+                        .map(([rarity, count]) => (
+                          <Badge
+                            key={`rarity-${rarity}`}
+                            variant="light"
+                            size="sm"
+                            style={{ backgroundColor: getRarityBadgeColor(rarity), color: 'white', border: 'none' }}
+                          >
+                            {pluralize(count, rarity)}
                           </Badge>
-                        )
-                      })}
+                        ))}
                     </Group>
-                  )}
-                </Stack>
-              </Paper>
+
+                    {deckTags.length > 0 && (
+                      <Group gap="xs" className="flex-wrap">
+                        {deckTags.map((tag) => (
+                          <Badge key={`tag-${tag}`} color="violet" variant="light" size="sm">
+                            {tag.toString().toUpperCase()}
+                          </Badge>
+                        ))}
+                      </Group>
+                    )}
+
+                    {creatureTypeEntries.length > 0 && (
+                      <Group gap="xs" className="flex-wrap">
+                        {creatureTypeEntries.map(([type, count]) => {
+                          const pretty = type.charAt(0).toUpperCase() + type.slice(1)
+                          return (
+                            <Badge key={`ctype-${type}`} color="grape" variant="outline" size="sm">
+                              {`${pretty} ${count}`}
+                            </Badge>
+                          )
+                        })}
+                      </Group>
+                    )}
+                  </Stack>
+                </Paper>
+              )}
             </Stack>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <Text size="lg" className="text-gray-400">
-                Select a card to view details
-              </Text>
-            </div>
-          )}
+          </div>
         </div>
+
+        {isMdUp ? (
+          <div
+            className="lg:col-span-2 flex flex-col h-full"
+            style={detailPaneStyle}
+          >
+            {selectedCard ? (
+              <Stack gap="lg">
+                {renderSelectedCardFrame(false)}
+
+                <Paper
+                  p="md"
+                  className="backdrop-blur-md border border-sf-primary/30 rounded-lg"
+                  style={{
+                    backgroundColor: 'rgba(30, 41, 59, 0.6)',
+                    width: detailPanelWidth,
+                    minWidth: detailPanelMinWidth,
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <Stack gap="xs">
+                    <Group gap="xs" wrap="wrap">
+                      {deckCounts.creatures ? (
+                        <Badge color="green" variant="light" size="sm">
+                          {pluralize(deckCounts.creatures, 'Creature')}
+                        </Badge>
+                      ) : null}
+                      {deckCounts.spells ? (
+                        <Badge color="pink" variant="light" size="sm">
+                          {pluralize(deckCounts.spells, 'Spell')}
+                        </Badge>
+                      ) : null}
+                      {deckCounts.solbind ? (
+                        <Badge color="orange" variant="light" size="sm">
+                          {pluralize(deckCounts.solbind, 'Solbind')}
+                        </Badge>
+                      ) : null}
+                      {Array.from(raritySummary.entries())
+                        .sort(([a], [b]) => {
+          const order: Record<string, number> = {
+            Solbind: 0,
+            Common: 1,
+            'Common Common': 2,
+            'Common Rare': 3,
+            Rare: 4,
+            'Rare Common': 5,
+            'Rare Rare': 6,
+            'Darkforge Rare': 7,
+            Darkforge: 8,
+            LS: 9,
+          }
+                          return (order[a] ?? 99) - (order[b] ?? 99)
+                        })
+                        .map(([rarity, count]) => (
+                          <Badge
+                            key={`rarity-${rarity}`}
+                            variant="light"
+                            size="sm"
+                            style={{ backgroundColor: getRarityBadgeColor(rarity), color: 'white', border: 'none' }}
+                          >
+                            {pluralize(count, rarity)}
+                          </Badge>
+                        ))}
+                    </Group>
+
+                    {deckTags.length > 0 && (
+                      <Group gap="xs" className="flex-wrap">
+                        {deckTags.map((tag) => (
+                          <Badge key={`tag-${tag}`} color="violet" variant="light" size="sm">
+                            {tag.toString().toUpperCase()}
+                          </Badge>
+                        ))}
+                      </Group>
+                    )}
+
+                    {creatureTypeEntries.length > 0 && (
+                      <Group gap="xs" className="flex-wrap">
+                        {creatureTypeEntries.map(([type, count]) => {
+                          const pretty = type.charAt(0).toUpperCase() + type.slice(1)
+                          return (
+                            <Badge key={`ctype-${type}`} color="grape" variant="outline" size="sm">
+                              {`${pretty} ${count}`}
+                            </Badge>
+                          )
+                        })}
+                      </Group>
+                    )}
+                  </Stack>
+                </Paper>
+              </Stack>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <Text size="lg" className="text-gray-400">
+                  Select a card to view details
+                </Text>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
     </Modal>
   )

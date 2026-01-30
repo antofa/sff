@@ -235,7 +235,9 @@ async function fetchDecksFromAPI(
   }
 ): Promise<DeckFetchResult> {
   const encodedName = encodeURIComponent(playerName.toLowerCase())
-  const url = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true`
+  const force = options?.force ?? false
+  const cacheBust = force ? `&_=${Date.now()}` : ''
+  const url = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true${cacheBust}`
   
   logWithTimestamp(`[API] Requesting decks for player: ${playerName}`)
   logWithTimestamp(`[API] URL: ${url}`)
@@ -256,7 +258,6 @@ async function fetchDecksFromAPI(
     // First request
     let response: Response
     try {
-      const force = options?.force ?? false
       const fetchOptions: RequestInit = {
         method: 'GET',
         headers: {
@@ -330,20 +331,26 @@ async function fetchDecksFromAPI(
       pageCount < maxPages
     ) {
       lastPK = pageData.LastEvaluatedKey.PK
-      const nextUrl = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true&exclusiveStartKeyPK=${encodeURIComponent(pageData.LastEvaluatedKey.PK)}&exclusiveStartKeySK=${encodeURIComponent(pageData.LastEvaluatedKey.SK)}`
+      const nextUrl = `${API_BASE_URL}/deck/app?inclPve=true&username=${encodedName}&inclCards=true&exclusiveStartKeyPK=${encodeURIComponent(pageData.LastEvaluatedKey.PK)}&exclusiveStartKeySK=${encodeURIComponent(pageData.LastEvaluatedKey.SK)}${cacheBust}`
       
       logWithTimestamp(`[API] Requesting next page: ${pageCount + 2}`)
       
       try {
-        response = await fetch(nextUrl, {
+        const fetchOptions: RequestInit = {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
             'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
           },
-          next: { revalidate: 3600 }, // Cache for 1 hour
-      signal: AbortSignal.timeout(60000),
-        })
+          signal: AbortSignal.timeout(60000),
+        }
+        if (force) {
+          fetchOptions.cache = 'no-store'
+          ;(fetchOptions as any).next = { revalidate: 0 }
+        } else {
+          ;(fetchOptions as any).next = { revalidate: 3600 }
+        }
+        response = await fetch(nextUrl, fetchOptions)
       } catch (fetchError) {
         console.error(`[API] Fetch error for page ${pageCount + 2}:`, fetchError)
         break
@@ -491,12 +498,12 @@ export function formatCardName(cardId: string): string {
 export function getCardImageUrl(cardId: string, level: number = 1, isForgeborn: boolean = false): string {
   if (!cardId) return ''
   
-  // Forgeborn cards use format: {cardId}.jpg from /public/cards/ (NOT resized)
+  // Forgeborn cards use format: {cardId}.jpg from /public/cards/resized/
   // The cardId should preserve spaces and be URL-encoded (e.g., "s1aa1steel rosetta134" -> "s1aa1steel%20rosetta134")
-  // Note: For forgeborn, we try the original ID first (with dash if present), then fall back to space replacement
-  // This is handled in loadSingleImage function in DeckDetails.tsx
+  // Note: for forgeborn we prefer the space variant, then fall back to the dash variant.
+  // This is handled in loadSingleImage function in DeckDetails.tsx.
   if (isForgeborn) {
-    const forgebornBaseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
+    const forgebornBaseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards/resized'
     // URL encode the cardId as-is (preserve original format, whether it has dash or space)
     const encodedCardId = encodeURIComponent(cardId)
     return `${forgebornBaseUrl}/${encodedCardId}.jpg`
@@ -529,12 +536,12 @@ export function getCardImageUrl(cardId: string, level: number = 1, isForgeborn: 
 }
 
 /**
- * Generate alternative URL for forgeborn card by replacing dash with space
- * Used as fallback if the original URL doesn't work
+ * Generate a forgeborn URL with spaces instead of dashes (resized).
+ * Used as the preferred candidate before the dash variant.
  */
 export function getForgebornAlternativeUrl(cardId: string): string {
   if (!cardId) return ''
-  const forgebornBaseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards'
+  const forgebornBaseUrl = 'https://sfwmedia11453-main.s3.amazonaws.com/public/cards/resized'
   // Replace dash with space if it appears before a number (common pattern: "steel-rosetta134" -> "steel rosetta134")
   let processedCardId = cardId
   // Pattern: look for dash followed by lowercase letters and then numbers (e.g., "steel-rosetta134")
@@ -684,7 +691,8 @@ export async function fetchFusedDecksFromAPI(
 
   const encodedName = encodeURIComponent(playerName.toLowerCase())
   const pageSize = 200
-  const url = `${API_BASE_URL}/fuseddeck/app?pageSize=${pageSize}&username=${encodedName}`
+  const cacheBust = force ? `&_=${Date.now()}` : ''
+  const url = `${API_BASE_URL}/fuseddeck/app?pageSize=${pageSize}&username=${encodedName}${cacheBust}`
   
   await fusedLog(`[API] Requesting fused decks for player: ${playerName}`)
   await fusedLog(`[API] URL: ${url}`)
@@ -705,7 +713,32 @@ export async function fetchFusedDecksFromAPI(
       ;(fetchOptions as any).next = { revalidate: 3600 }
     }
 
-    const response = await fetch(url, fetchOptions)
+    const maxAttempts = 3
+    let response: Response | null = null
+    let lastError: unknown = null
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        response = await fetch(url, fetchOptions)
+        if (response.ok) break
+        if (response.status >= 500 && attempt < maxAttempts) {
+          await fusedLog(`[API] Fused decks retry ${attempt}/${maxAttempts} after HTTP ${response.status}`)
+          await new Promise((resolve) => setTimeout(resolve, 500 * attempt))
+          continue
+        }
+        break
+      } catch (err) {
+        lastError = err
+        if (attempt < maxAttempts) {
+          await fusedLog(`[API] Fused decks retry ${attempt}/${maxAttempts} after network error`)
+          await new Promise((resolve) => setTimeout(resolve, 500 * attempt))
+          continue
+        }
+      }
+    }
+
+    if (!response) {
+      throw lastError instanceof Error ? lastError : new Error('Failed to fetch fused decks')
+    }
 
     if (!response.ok) {
       if (response.status === 404) {
@@ -819,6 +852,47 @@ export async function fetchFusedDecksFromAPI(
       return cached.cards
     }
 
+    const hasSubtypeData = (cards: any[]): boolean => {
+      if (!Array.isArray(cards) || cards.length === 0) return false
+      return cards.some((card) => {
+        if (!card || typeof card !== 'object') return false
+        return Boolean(
+          card.cardSubType ||
+            card.CardSubType ||
+            card.SubType ||
+            card.subType ||
+            card.SUBTYPE
+        )
+      })
+    }
+
+    const extractCardSetInfo = (deckObj: any): { cardSetNo?: any; cardSetId?: any } | null => {
+      if (!deckObj || typeof deckObj !== 'object') return null
+      const cardSetNo = deckObj.cardSetNo ?? deckObj.card_set_no
+      const cardSetId = deckObj.cardSetId ?? deckObj.card_set_id
+      if (cardSetNo !== undefined && cardSetNo !== null) return { cardSetNo, cardSetId }
+      if (cardSetId !== undefined && cardSetId !== null) return { cardSetNo, cardSetId }
+      return null
+    }
+
+    const resolveFusedCardSet = (fusedDeck: any): { cardSetNo?: any; cardSetId?: any } | null => {
+      if (!fusedDeck) return null
+      if (Array.isArray(fusedDeck.myDecks)) {
+        for (const source of fusedDeck.myDecks) {
+          const info = extractCardSetInfo(source)
+          if (info) return info
+        }
+      }
+      if (Array.isArray(fusedDeck.fusedDeckIds)) {
+        for (const id of fusedDeck.fusedDeckIds) {
+          const cached = cachedRegularById.get(String(id))
+          const info = extractCardSetInfo(cached)
+          if (info) return info
+        }
+      }
+      return null
+    }
+
     for (const fusedDeck of fusedDecks) {
       const allCards: any[] = []
       const enrichedMyDecks: any[] = Array.isArray(fusedDeck.myDecks) ? [] : []
@@ -873,8 +947,10 @@ export async function fetchFusedDecksFromAPI(
         }
       }
 
-      // If still no cards, fetch fused deck details from API as fallback (even when fusedDeckIds are absent)
-      if (allCards.length === 0) {
+      const needsSubtypeFetch = allCards.length > 0 && !hasSubtypeData(allCards)
+
+      // If still no cards or subtype data is missing, fetch fused deck details from API as fallback
+      if (allCards.length === 0 || needsSubtypeFetch) {
         decksNeedingFetch++
         const fetchStarted = Date.now()
         const details = await fetchDeckDetails(String(fusedDeck.id))
@@ -883,6 +959,7 @@ export async function fetchFusedDecksFromAPI(
           fallbackFetched++
           const detailedCards = collectCards(details)
           if (detailedCards.length > 0) {
+            allCards.length = 0
             allCards.push(...detailedCards)
           }
           // Enrich fused deck with extra fields from detail response
@@ -903,6 +980,16 @@ export async function fetchFusedDecksFromAPI(
           await fusedLog(
             `[API] Fused fallback progress: fetched ${fallbackFetched} of ${decksNeedingFetch} (failed ${fallbackFailed}), time ${fallbackDurationMs}ms`
           )
+        }
+      }
+
+      const fusedSetInfo = resolveFusedCardSet(fusedDeck)
+      if (fusedSetInfo) {
+        if (fusedSetInfo.cardSetNo !== undefined && fusedSetInfo.cardSetNo !== null) {
+          fusedDeck.cardSetNo = fusedSetInfo.cardSetNo
+        }
+        if (fusedSetInfo.cardSetId !== undefined && fusedSetInfo.cardSetId !== null) {
+          fusedDeck.cardSetId = fusedSetInfo.cardSetId
         }
       }
       

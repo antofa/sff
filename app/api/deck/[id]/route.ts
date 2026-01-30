@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { fetchDeckDetails, normalizeDeck, getPlayerDecks } from '@/lib/api'
-import type { Database, PlayerDeckRow } from '@/types/database'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey)
 
 const mergeFromPlayerDecks = async (deck: any) => {
   const owner =
@@ -46,10 +40,14 @@ const mergeFromPlayerDecks = async (deck: any) => {
       deck.pExpiry ??
       undefined
 
+    const deckCards = Array.isArray(deck?.cards) ? deck.cards : []
+    const matchedCards = Array.isArray(matched?.cards) ? matched.cards : []
+    const useMatchedCards = deckCards.length === 0 && matchedCards.length > 0
+
     const merged = {
       ...deck,
       ...matched,
-      cards: Array.isArray(matched.cards) && matched.cards.length > 0 ? matched.cards : deck.cards,
+      cards: useMatchedCards ? matchedCards : deck.cards,
       tags: matched.tags ?? deck.tags,
       expireAt: pickExpire,
     }
@@ -60,36 +58,13 @@ const mergeFromPlayerDecks = async (deck: any) => {
   }
 }
 
-const mapSupabaseRowToDeck = (row: PlayerDeckRow, profile?: { player_name?: string | null; display_name?: string | null; discord_name?: string | null }) => {
-  const ownerDisplay = profile?.display_name || profile?.player_name || undefined
-  return {
-    id: row.deck_id,
-    name: row.deck_name,
-    format: row.format ?? (row.is_fused ? 'Fused' : undefined),
-    faction: row.faction ?? undefined,
-    forgebornId: row.forgeborn_id ?? undefined,
-    created: row.deck_created_at ?? row.updated_at ?? row.created_at ?? undefined,
-    deckRank: row.deck_rank ?? undefined,
-    digital: row.digital ?? undefined,
-    cardSetNo: row.card_set_no ?? undefined,
-    cardSetId: row.card_set_id ?? undefined,
-    fusedDeckIds: row.fused_deck_ids ?? undefined,
-    deckScore: row.deck_score ?? undefined,
-    elo: row.elo ?? undefined,
-    is_fused: row.is_fused ?? undefined,
-    is_for_sale: row.is_for_sale ?? undefined,
-    is_nft: row.is_nft ?? undefined,
-    price: row.price ?? undefined,
-    playerName: ownerDisplay || row.player_name || undefined,
-  }
-}
-
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id?: string }> }
 ) {
   const { id } = await context.params
   const deckId = id
+  const skipOwnerMerge = request.nextUrl.searchParams.get('skipOwnerMerge') === '1'
 
   if (!deckId) {
     return NextResponse.json({ error: 'Deck id is required' }, { status: 400 })
@@ -134,83 +109,7 @@ export async function GET(
       )
     )
 
-    // 1) Try Supabase (player_decks) for each candidate
-    for (const candidate of candidates) {
-      const { data, error } = await supabase
-        .from('player_decks')
-        .select('*')
-        .eq('deck_id', candidate)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-
-      if (error) {
-        console.error('[API] /api/deck supabase error:', error)
-        continue
-      }
-
-      if (data && data.length > 0) {
-        const row = data[0] as PlayerDeckRow
-        let profile: { player_name?: string | null; display_name?: string | null; discord_name?: string | null } | undefined
-        if (row.user_id) {
-          try {
-            const { data: profileRow, error: profileError } = await supabase
-              .from('player_profiles')
-              .select('player_name, display_name, discord_name')
-              .eq('user_id', row.user_id)
-              .single()
-            if (!profileError && profileRow) {
-              profile = profileRow as any
-            }
-          } catch (profileErr) {
-            console.warn('[API] /api/deck profile lookup failed:', profileErr)
-          }
-        }
-
-        const supabaseDeck = mapSupabaseRowToDeck(row, profile)
-        const needsHydration = true // We no longer store cards/tags/forgeborn in DB; always hydrate from external API
-
-        if (needsHydration) {
-          try {
-            const raw = await fetchDeckDetails(stripDeckPrefixes(candidate))
-            if (raw) {
-              const normalized = normalizeDeck(raw)
-              const owner =
-                supabaseDeck.playerName ||
-                raw.playerName ||
-                raw.player_name ||
-                raw.username ||
-                raw.userName ||
-                raw.owner ||
-                raw?.myUser?.username ||
-                raw?.users?.[0]?.username ||
-                raw?.users?.[0]?.user?.username ||
-                raw?.Users?.[0]?.UserName ||
-                undefined
-              const username = raw?.myUser?.username || raw?.username || raw?.userName || owner
-
-              const hydratedDeck = {
-                ...supabaseDeck,
-                ...normalized,
-                playerName: owner || supabaseDeck.playerName,
-                username: username || supabaseDeck.playerName,
-                is_for_sale: supabaseDeck.is_for_sale,
-                is_nft: supabaseDeck.is_nft,
-                price: supabaseDeck.price,
-              }
-
-              const enriched = await mergeFromPlayerDecks(hydratedDeck)
-              return NextResponse.json({ deck: enriched })
-            }
-          } catch (err) {
-            console.warn('[API] Hydration from external API failed, using Supabase deck:', err)
-          }
-        }
-
-        return NextResponse.json({ deck: supabaseDeck })
-      }
-    }
-
-    // 2) Try as regular deck for each candidate via external API
+    // 1) Try as regular deck for each candidate via external API
     for (const candidate of candidates) {
       const raw = await fetchDeckDetails(stripDeckPrefixes(candidate))
       if (raw) {
@@ -238,7 +137,7 @@ export async function GET(
           if (username && !(deck as any).username) {
             ;(deck as any).username = username
           }
-          const enriched = await mergeFromPlayerDecks(deck)
+          const enriched = skipOwnerMerge ? deck : await mergeFromPlayerDecks(deck)
           return NextResponse.json({ deck: enriched })
         } catch (e) {
           console.warn('[API] normalizeDeck failed, will try fused fallback:', e)
@@ -246,7 +145,7 @@ export async function GET(
       }
     }
 
-    // 3) Fallback for fused decks
+    // 2) Fallback for fused decks
     const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
     for (const candidate of candidates) {
       const fusedCandidate = toFusedApiId(candidate)
@@ -405,44 +304,21 @@ export async function GET(
         }
       })
 
-      // Try to hydrate meta (deckRank/score/elo/set) from Supabase if present
-      let deckRankFromDb: string | null | undefined = fusedRaw.deckRank || fusedRaw.rank || null
-      let deckScoreFromDb: number | null | undefined = fusedRaw.deckScore ?? null
-      let eloFromDb: number | null | undefined = fusedRaw.elo ?? null
-      let cardSetNoFromDb: string | null | undefined = fusedRaw.cardSetNo ?? null
-      let cardSetIdFromDb: string | null | undefined = fusedRaw.cardSetId ?? null
-
-      try {
-        const altIds = Array.from(
-          new Set(
-            [
-              candidate,
-              candidate.toLowerCase(),
-              candidate.replace(/^Fused[_-]?/i, ''),
-              candidate.replace(/^Fused[_-]?/i, '').toLowerCase(),
-            ].filter(Boolean)
-          )
-        )
-
-        const { data: metaRows, error: metaError } = await supabase
-          .from('player_decks')
-          .select('deck_rank, deck_score, elo, card_set_no, card_set_id')
-          .in('deck_id', altIds)
-          .limit(1)
-
-        if (!metaError && metaRows && metaRows.length > 0) {
-          const meta = metaRows[0]
-          deckRankFromDb = deckRankFromDb ?? meta.deck_rank ?? null
-          deckScoreFromDb = deckScoreFromDb ?? (meta.deck_score as any as number | null) ?? null
-          eloFromDb = eloFromDb ?? (meta.elo as any as number | null) ?? null
-          cardSetNoFromDb = cardSetNoFromDb ?? (meta.card_set_no as any as string | null) ?? null
-          cardSetIdFromDb = cardSetIdFromDb ?? (meta.card_set_id as any as string | null) ?? null
+      const resolveFusedForgeborn = (sources: any[]) => {
+        for (const src of sources) {
+          if (!src) continue
+          const forgeborn = (src as any)?.forgeborn || null
+          const forgebornId = (src as any)?.forgebornId || (forgeborn && (forgeborn as any)?.id) || null
+          if (forgeborn || forgebornId) {
+            return { forgeborn, forgebornId }
+          }
         }
-      } catch (err) {
-        console.warn('[API] Failed to load fused deck meta from Supabase:', err)
+        return { forgeborn: null, forgebornId: null }
       }
 
-      const deckRankResolved: string | null | undefined = deckRankFromDb ?? deckRankFromListing ?? null
+      const sourceForgeborn = resolveFusedForgeborn(sourcesWithMeta)
+
+      const deckRankResolved: string | null | undefined = deckRankFromListing ?? null
 
       const fusedDeck = {
         id: fusedRaw.id || candidate,
@@ -453,15 +329,15 @@ export async function GET(
         fusedDeckIds: sourceDecks.map((d: any) => d?.id || d?.deckId || d?.deck_id).filter(Boolean),
         created: fusedRaw.created || fusedRaw.CreatedAt || fusedRaw.createdAt || null,
         updatedAt: fusedRaw.updated || fusedRaw.UpdatedAt || fusedRaw.updatedAt || null,
-        forgeborn: fusedRaw.forgeborn || null,
-        forgebornId: fusedRaw.forgeborn?.id || fusedRaw.forgebornId || null,
+        forgeborn: fusedRaw.forgeborn || sourceForgeborn.forgeborn || null,
+        forgebornId: fusedRaw.forgeborn?.id || fusedRaw.forgebornId || sourceForgeborn.forgebornId || null,
         deckRank: deckRankResolved ?? null,
-        cardSetNo: cardSetNoFromDb ?? null,
-        cardSetId: cardSetIdFromDb ?? null,
+        cardSetNo: fusedRaw.cardSetNo ?? null,
+        cardSetId: fusedRaw.cardSetId ?? null,
         faction: fusedRaw.faction || null,
         tags: fusedRaw.tags || null,
-        deckScore: deckScoreFromDb ?? null,
-        elo: eloFromDb ?? null,
+        deckScore: fusedRaw.deckScore ?? null,
+        elo: fusedRaw.elo ?? null,
         digital: fusedRaw.digital ?? null,
         playerName: owner,
         username: username,

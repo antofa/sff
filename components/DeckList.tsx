@@ -5,11 +5,13 @@ import { pluralize } from '@/lib/pluralize'
 import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image, ActionIcon } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useDebouncedValue, useResizeObserver } from '@mantine/hooks'
+import { useDebouncedValue, useMediaQuery } from '@mantine/hooks'
 import type { Deck } from '@/store/deckStore'
+import { useDeckStore } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
+import { fetchCreatureTypesForDeckId } from '@/lib/creatureTypeOverrides'
 
 type CreatureTypeMap = Record<string, number>
 
@@ -17,9 +19,10 @@ const buildCreatureTypeEntries = (
   deck: Deck,
   options: { deckCreatureTypesMap?: Record<string, CreatureTypeMap>; fallbackCards?: any[] } = {}
 ) => {
+  const deckAny = deck as any
   let creatureMap: CreatureTypeMap | undefined =
     (deck.computed?.creatureType as CreatureTypeMap | undefined) ||
-    ((deck as any).creatureType as CreatureTypeMap | undefined)
+    (deckAny.creatureType as CreatureTypeMap | undefined)
 
   if (!creatureMap && options.deckCreatureTypesMap && deck.id) {
     creatureMap = options.deckCreatureTypesMap[deck.id]
@@ -52,21 +55,154 @@ const buildCreatureTypeEntries = (
     })
 }
 
+const isFusedDeckLike = (deck: any) => String(deck?.format || '').toLowerCase() === 'fused'
+const creatureTypeOverrideRequested = new Set<string>()
+
+const buildFusedCreatureTypeEntries = (
+  deck: Deck,
+  options: {
+    deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+    deckCreatureTypeOverrides?: Record<string, CreatureTypeMap>
+    allDecks?: Deck[]
+    sourceDecks?: Deck[]
+  } = {}
+) => {
+  if (!isFusedDeckLike(deck)) return []
+  const deckCreatureTypesMap = options.deckCreatureTypesMap || {}
+  const deckCreatureTypeOverrides = options.deckCreatureTypeOverrides || {}
+  const allDecks = options.allDecks || []
+  const regularByName = new Map<string, Deck>()
+  allDecks.forEach((d) => {
+    if (!d?.name) return
+    if (isFusedDeckLike(d)) return
+    regularByName.set(d.name.trim().toLowerCase(), d)
+  })
+  const regularById = new Map<string, Deck>()
+  allDecks.forEach((d) => {
+    if (!d?.id) return
+    if (isFusedDeckLike(d)) return
+    regularById.set(String(d.id).trim().toLowerCase(), d)
+  })
+
+  const normalizeName = (value?: string | null) => (value ? value.trim().toLowerCase() : '')
+  const normalizeId = (value?: string | null) => {
+    if (!value) return ''
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/^deck[_-]?/i, '')
+      .replace(/^fused[_-]?/i, '')
+  }
+  const resolveCreatureMap = (d?: Deck | null) => {
+    if (!d) return undefined
+    const override =
+      (d.id && deckCreatureTypeOverrides[d.id]) ||
+      (d.id && deckCreatureTypeOverrides[String(d.id).trim().toLowerCase()]) ||
+      undefined
+    if (override && Object.keys(override).length > 0) return override
+    if (d.computed?.creatureType && Object.keys(d.computed.creatureType).length > 0) {
+      return d.computed.creatureType as CreatureTypeMap
+    }
+    const mapFromStore = d.id ? deckCreatureTypesMap[d.id] : undefined
+    if (mapFromStore && Object.keys(mapFromStore).length > 0) return mapFromStore
+    return undefined
+  }
+
+  const sourceCandidates: Array<{ id?: string; name?: string }> = []
+  const deckAny = deck as any
+  if (Array.isArray(options.sourceDecks) && options.sourceDecks.length > 0) {
+    options.sourceDecks.forEach((d) => {
+      if (d?.id || d?.name || (d as any)?.deckId || (d as any)?.deckName) {
+        sourceCandidates.push({
+          id: (d as any).id || (d as any).deckId,
+          name: (d as any).name || (d as any).deckName,
+        })
+      }
+    })
+  } else if (Array.isArray(deckAny.myDecks)) {
+    deckAny.myDecks.forEach((d: any) => {
+      if (d?.id || d?.name || d?.deckId || d?.deckName) {
+        sourceCandidates.push({ id: d.id || d.deckId, name: d.name || d.deckName })
+      }
+    })
+  } else if (Array.isArray(deckAny.fusedDeckIds)) {
+    deckAny.fusedDeckIds.forEach((id: string) => sourceCandidates.push({ id }))
+  }
+
+  const seenIds = new Set<string>()
+  const seenNames = new Set<string>()
+  const combined: CreatureTypeMap = {}
+
+  const addMap = (map?: CreatureTypeMap) => {
+    if (!map) return
+    Object.entries(map).forEach(([type, count]) => {
+      if (typeof count !== 'number') return
+      combined[type] = (combined[type] || 0) + count
+    })
+  }
+
+  sourceCandidates.forEach(({ id, name }) => {
+    if (id) {
+      const normalizedId = normalizeId(String(id))
+      if (normalizedId && !seenIds.has(normalizedId)) {
+        seenIds.add(normalizedId)
+        const byStore = deckCreatureTypesMap[id] || deckCreatureTypesMap[normalizedId]
+        if (byStore) {
+          addMap(byStore)
+          return
+        }
+        const match = regularById.get(normalizedId)
+        const resolved = resolveCreatureMap(match)
+        if (resolved) {
+          addMap(resolved)
+          return
+        }
+      }
+    }
+    if (name) {
+      const normalized = normalizeName(String(name))
+      if (!normalized || seenNames.has(normalized)) return
+      seenNames.add(normalized)
+      const match = regularByName.get(normalized)
+      if (match?.id) {
+        const resolved = resolveCreatureMap(match)
+        if (resolved) addMap(resolved)
+      }
+    }
+  })
+
+  if (Object.keys(combined).length === 0) return []
+
+  return Object.entries(combined)
+    .filter(([, count]) => Number(count) > 0)
+    .sort((a, b) => {
+      const diff = Number(b[1]) - Number(a[1])
+      if (diff !== 0) return diff
+      return a[0].localeCompare(b[0])
+    })
+}
+
 const applyMode = (match: boolean, mode: 'include' | 'exclude') => (mode === 'include' ? match : !match)
 const MODE_OPTIONS = [
   { label: 'Include', value: 'include' },
   { label: 'Exclude', value: 'exclude' },
 ]
 
-// Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", etc.
+// Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", "B2" -> "B2", "B3" -> "B3", etc.
 function formatSetName(setNo: string | number | null | undefined): string | null {
   if (!setNo) return null
 
   const setStr = String(setNo).trim()
   
-  // If it's already B1 or b1, return as B1
+  // If it's already B1/B2/B3, return uppercase
   if (setStr.toUpperCase() === 'B1' || setStr.toLowerCase() === 'b1') {
     return 'B1'
+  }
+  if (setStr.toUpperCase() === 'B2' || setStr.toLowerCase() === 'b2') {
+    return 'B2'
+  }
+  if (setStr.toUpperCase() === 'B3' || setStr.toLowerCase() === 'b3') {
+    return 'B3'
   }
   
   // For numeric sets, format as S1, S2, S3, etc.
@@ -84,32 +220,41 @@ function formatSetName(setNo: string | number | null | undefined): string | null
   return setStr
 }
 
-// Helper function to check if a card is from B1 set
-function isB1Card(card: any): boolean {
-  if (!card) return false
-  
-  // Handle string cards
+// Helper function to detect B-set cards (B1/B2/B3)
+function getBSetFromCard(card: any): 'B1' | 'B2' | 'B3' | null {
+  if (!card) return null
   if (typeof card === 'string') {
-    return /^b1_/i.test(card)
+    if (/^b3_/i.test(card)) return 'B3'
+    if (/^b2_/i.test(card)) return 'B2'
+    if (/^b1_/i.test(card)) return 'B1'
+    return null
   }
-  
-  // Handle object cards
   if (typeof card === 'object' && card !== null) {
     const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
     const cardId = card.id || card.cardId || card.name
-    
-    // Check cardSetId/SK for B1
-    if (cardSetId && String(cardSetId).toLowerCase() === 'b1') {
-      return true
-    }
-    
-    // Check cardId for b1_ prefix
-    if (cardId && /^b1_/i.test(cardId)) {
-      return true
-    }
+    const setLower = cardSetId ? String(cardSetId).toLowerCase() : ''
+    if (setLower === 'b3') return 'B3'
+    if (setLower === 'b2') return 'B2'
+    if (setLower === 'b1') return 'B1'
+    if (cardId && /^b3_/i.test(cardId)) return 'B3'
+    if (cardId && /^b2_/i.test(cardId)) return 'B2'
+    if (cardId && /^b1_/i.test(cardId)) return 'B1'
   }
-  
-  return false
+  return null
+}
+
+function getBSetFromCards(cards: any[]): 'B1' | 'B2' | 'B3' | null {
+  let found: 'B1' | 'B2' | 'B3' | null = null
+  for (const card of cards) {
+    const bSet = getBSetFromCard(card)
+    if (bSet === 'B3') return 'B3'
+    if (bSet === 'B2') {
+      found = 'B2'
+      continue
+    }
+    if (bSet === 'B1' && found !== 'B2') found = 'B1'
+  }
+  return found
 }
 
 // Helper to resolve expiry timestamp (ms) for a deck: expireAt/expire_date/created fallback
@@ -148,42 +293,91 @@ function getBorderColors(deck: Deck, now: number) {
   return { borderColor, hoverBorderColor }
 }
 
-// Helper function to determine deck set: if any card is from B1, return "B1", otherwise use deck.cardSetNo
-function getDeckSet(deck: Deck): string | null {
-  if ((deck as any)?.computed && (deck as any).computed.deckSet !== undefined) {
-    return (deck as any).computed.deckSet as string | null
-  }
+// Helper function to determine deck set: if any card is from B1/B2/B3, return that set, otherwise use deck.cardSetNo
+const normalizeSetLabel = (value?: string | number | null): string | null => {
+  if (value === undefined || value === null) return null
+  const text = String(value).trim()
+  if (!text) return null
+  const lower = text.toLowerCase()
+  if (lower === 'b3') return 'B3'
+  if (lower === 'b2') return 'B2'
+  if (lower === 'b1') return 'B1'
+  if (lower === 'd0') return 'S99'
+  const sMatch = lower.match(/^s?(\d+)$/)
+  if (sMatch) return `S${sMatch[1]}`
+  return text
+}
+
+function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null {
   if (!deck) return null
-  
+  const allDecks = options?.allDecks || []
   const deckAny = deck as any
+  const isFused =
+    String(deckAny?.format || '').toLowerCase().includes('fused') ||
+    Boolean(deckAny?.is_fused) ||
+    String(deckAny?.id || '').toLowerCase().startsWith('fused_') ||
+    String(deckAny?.id || '').toLowerCase().startsWith('deck_fused_')
+
+  const explicitSet = normalizeSetLabel(deckAny.cardSetId ?? deckAny.card_set_id ?? deckAny.cardSetNo ?? deckAny.card_set_no)
+  if (explicitSet) return explicitSet
+  if (deckAny?.computed && deckAny.computed.deckSet !== undefined) {
+    return normalizeSetLabel(deckAny.computed.deckSet as string | null)
+  }
 
   const deriveSetFromId = (id?: string | null): string | null => {
     if (!id || typeof id !== 'string') return null
     const lower = id.toLowerCase()
+    if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
+    if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
+    if (lower.startsWith('b3-') || lower.startsWith('b3_')) return 'B3'
     if (lower.startsWith('s1-')) return 'S1'
     if (lower.startsWith('s2-')) return 'S2'
     if (lower.startsWith('s3-')) return 'S3'
     if (lower.startsWith('s4-')) return 'S4'
     return null
   }
+  const resolveSetFromSource = (sourceDeck?: Deck | null): string | null => {
+    if (!sourceDeck) return null
+    const sourceAny = sourceDeck as any
+    const explicitSet = normalizeSetLabel(
+      sourceAny.cardSetNo ?? sourceAny.cardSetId ?? sourceAny.card_set_id ?? sourceAny.card_set_no
+    )
+    if (explicitSet) return explicitSet
+    const derived = deriveSetFromId(sourceAny.id)
+    if (derived) return normalizeSetLabel(derived)
+    if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
+      const bSet = getBSetFromCards(sourceDeck.cards)
+      if (bSet) return bSet
+    }
+    return null
+  }
   
-  // For fused decks, check cards from source decks (myDecks) if cards array is empty
-  if (deckAny.format === 'Fused' && (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0)) {
-    // Check source decks (myDecks) for explicit set first, then B1 cards
+  // For fused decks, always prefer source halves (myDecks/fusedDeckIds) for set resolution
+  if (isFused) {
+    // Check source decks (myDecks) for explicit set first, then B1/B2 cards
     if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
       for (const sourceDeck of deckAny.myDecks) {
         if (!sourceDeck) continue
-        const explicitSet = sourceDeck.cardSetNo || sourceDeck.cardSetId || deriveSetFromId(sourceDeck.id)
-        if (explicitSet) {
-          return explicitSet
-        }
-        if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
-          const hasB1Card = sourceDeck.cards.some((card: any) => isB1Card(card))
-          if (hasB1Card) return 'B1'
-        }
+        const resolved = resolveSetFromSource(sourceDeck)
+        if (resolved) return resolved
       }
     }
-    
+
+    if (deckAny.fusedDeckIds && Array.isArray(deckAny.fusedDeckIds) && allDecks.length > 0) {
+      for (const id of deckAny.fusedDeckIds) {
+        if (!id) continue
+        const match = allDecks.find((d) => d?.id === id)
+        const resolved = resolveSetFromSource(match)
+        if (resolved) return resolved
+      }
+    }
+
+    // If halves don't resolve, try fused deck cards
+    if (deck.cards && Array.isArray(deck.cards) && deck.cards.length > 0) {
+      const bSet = getBSetFromCards(deck.cards)
+      if (bSet) return bSet
+    }
+
     // Fallback: check fused deck itself for set
     const derivedParentSet = deckAny.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id)
     if (derivedParentSet) {
@@ -195,18 +389,17 @@ function getDeckSet(deck: Deck): string | null {
   
   // For regular decks or fused decks with cards
   if (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0) {
-    return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
+    return deck.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id) || null
   }
   
-  // Check if any card is from B1 set
-  const hasB1Card = deck.cards.some((card: any) => isB1Card(card))
-  
-  if (hasB1Card) {
-    return 'B1'
+  // Check if any card is from B1/B2/B3 set
+  const bSet = getBSetFromCards(deck.cards)
+  if (bSet) {
+    return bSet
   }
   
   // Otherwise use deck.cardSetNo
-  return deck.cardSetNo || deriveSetFromId(deckAny.id) || null
+  return deck.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id) || null
 }
 
 // Helper function to count cards as sum of creatures + spells + solbind (excluding Forgeborn)
@@ -964,6 +1157,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
   allDecks,
   fusedExpiryResolver,
   deckCreatureTypesMap,
+  deckCreatureTypeOverrides,
 }: {
   deck: Deck
   sourceDecks?: [Deck | null, Deck | null]
@@ -978,6 +1172,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
     minExpiringDate: string | null
   }
   deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+  deckCreatureTypeOverrides?: Record<string, CreatureTypeMap>
 }) {
   const [renderNow] = useState(() => Date.now())
   const fusedDeckAny = deck as any
@@ -1034,6 +1229,9 @@ const FusedDeckCard = memo(function FusedDeckCard({
   const deriveSetFromId = useCallback((id?: string | null): string | null => {
     if (!id || typeof id !== 'string') return null
     const lower = id.toLowerCase()
+    if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
+    if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
+    if (lower.startsWith('b3-') || lower.startsWith('b3_')) return 'B3'
     if (lower.startsWith('s1-')) return 'S1'
     if (lower.startsWith('s2-')) return 'S2'
     if (lower.startsWith('s3-')) return 'S3'
@@ -1045,18 +1243,18 @@ const FusedDeckCard = memo(function FusedDeckCard({
     const list: Array<{ faction: string; setNo: string | number | null }> = []
     pickedSources.forEach((src) => {
       if (src?.faction) {
-        let setNo = getDeckSet(src) || deriveSetFromId((src as any).id)
+        let setNo = getDeckSet(src, { allDecks }) || deriveSetFromId((src as any).id)
         if (!setNo && src.id && allDecksMap.has(src.id)) {
           const mapped = allDecksMap.get(src.id)
           if (mapped) {
-            setNo = getDeckSet(mapped) || deriveSetFromId((mapped as any)?.id)
+            setNo = getDeckSet(mapped, { allDecks }) || deriveSetFromId((mapped as any)?.id)
           }
         }
         list.push({ faction: src.faction, setNo: setNo || null })
       }
     })
     if (list.length === 0 && deck.faction) {
-      const deckSet = getDeckSet(deck) || deriveSetFromId(deck.id)
+      const deckSet = getDeckSet(deck, { allDecks }) || deriveSetFromId(deck.id)
       list.push({ faction: deck.faction, setNo: deckSet || null })
     }
     return list
@@ -1153,9 +1351,48 @@ const FusedDeckCard = memo(function FusedDeckCard({
   // Memoize aggregated cards to avoid recomputation across derived calculations
   const aggregatedCards = useMemo(() => aggregateCards(), [aggregateCards])
   const creatureTypeEntries = useMemo(
-    () => buildCreatureTypeEntries(deck, { deckCreatureTypesMap, fallbackCards: aggregatedCards }),
-    [deck, deckCreatureTypesMap, aggregatedCards]
+    () =>
+      buildFusedCreatureTypeEntries(deck, {
+        deckCreatureTypesMap,
+        deckCreatureTypeOverrides,
+        allDecks,
+        sourceDecks: pickedSources,
+      }),
+    [deck, deckCreatureTypesMap, deckCreatureTypeOverrides, allDecks, pickedSources]
   )
+
+  const halfDeckIds = useMemo(() => {
+    const ids = new Set<string>()
+    const addId = (value?: string | null) => {
+      const trimmed = (value || '').trim()
+      if (trimmed) ids.add(trimmed)
+    }
+    if (Array.isArray(fusedDeckAny.myDecks)) {
+      fusedDeckAny.myDecks.forEach((d: any) => addId(d?.id || d?.deckId || d?.deck_id))
+    }
+    if (Array.isArray(fusedDeckAny.fusedDeckIds)) {
+      fusedDeckAny.fusedDeckIds.forEach((id: string) => addId(id))
+    }
+    pickedSources.forEach((d) => addId((d as any)?.id || (d as any)?.deckId || (d as any)?.deck_id))
+    return Array.from(ids)
+  }, [fusedDeckAny.myDecks, fusedDeckAny.fusedDeckIds, pickedSources])
+
+  useEffect(() => {
+    if (halfDeckIds.length === 0) return
+    const store = useDeckStore.getState()
+    halfDeckIds.forEach((id) => {
+      if (!id) return
+      if (creatureTypeOverrideRequested.has(id)) return
+      creatureTypeOverrideRequested.add(id)
+      fetchCreatureTypesForDeckId(id).then((creatureType) => {
+        if (creatureType && Object.keys(creatureType).length > 0) {
+          store.setDeckCreatureType(id, creatureType)
+        } else {
+          creatureTypeOverrideRequested.delete(id)
+        }
+      })
+    })
+  }, [halfDeckIds, deckCreatureTypesMap])
 
   const fusedSetLabels = useMemo(() => {
     const setLabels = new Set<string>()
@@ -1167,9 +1404,9 @@ const FusedDeckCard = memo(function FusedDeckCard({
     })
 
     if (setLabels.size === 0) {
-      const hasB1 = aggregatedCards.some(card => isB1Card(card as any))
-      if (hasB1) setLabels.add(formatSetName('B1') || 'B1')
-      const parentSet = getDeckSet(deck)
+      const bSet = getBSetFromCards(aggregatedCards as any[])
+      if (bSet) setLabels.add(formatSetName(bSet) || bSet)
+      const parentSet = getDeckSet(deck, { allDecks })
       if (parentSet) {
         const label = formatSetName(parentSet)
         if (label) setLabels.add(label)
@@ -1177,7 +1414,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
     }
 
     return Array.from(setLabels)
-  }, [factionSets, aggregatedCards, deck])
+  }, [factionSets, aggregatedCards, deck, allDecks])
 
   const counts = useMemo(() => {
     let derived: { total: number; creatures: number; spells: number; solbind: number } | null = null
@@ -1723,6 +1960,7 @@ interface DeckListProps {
   precomputedForgebornNames?: string[]
   deckTagsMap?: Record<string, string[]>
   deckCreatureTypesMap?: Record<string, CreatureTypeMap>
+  deckCreatureTypeOverrides?: Record<string, CreatureTypeMap>
 }
 
 interface FilterState {
@@ -2381,8 +2619,8 @@ const buildSearchParamsFromState = (
 
 type ViewMode = 'decks' | 'fused'
 
-export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {}, deckCreatureTypesMap = {} }: DeckListProps) {
-  const PAGE_SIZE = 300
+export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {}, deckCreatureTypesMap = {}, deckCreatureTypeOverrides = {} }: DeckListProps) {
+  const PAGE_SIZE = 100
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null)
   const [detailsOpened, setDetailsOpened] = useState(false)
   const [parentFusedDeck, setParentFusedDeck] = useState<Deck | null>(null)
@@ -2405,6 +2643,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   )
   const lastSyncedQueryRef = useRef<string>('')
   const isHydratedRef = useRef(false)
+  const isViewModeHydratedRef = useRef(false)
 
   // Debounced filters for text inputs (0.5 second delay)
   // Use Mantine's useDebouncedValue with trailing: true (default behavior)
@@ -2451,6 +2690,22 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   }, [searchParamsString])
 
   useEffect(() => {
+    if (isViewModeHydratedRef.current) return
+    const params =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams(searchParamsString)
+    const isFused = params.get('isFused')
+    if (isFused) {
+      const normalized = isFused.toLowerCase()
+      if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'fused') {
+        setViewMode('fused')
+      }
+    }
+    isViewModeHydratedRef.current = true
+  }, [searchParamsString])
+
+  useEffect(() => {
     if (!isHydratedRef.current) return
     const baseParams =
       typeof window !== 'undefined'
@@ -2463,11 +2718,16 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       debouncedInstanceFilters,
       baseParams
     )
+    if (viewMode === 'fused') {
+      params.set('isFused', '1')
+    } else {
+      params.delete('isFused')
+    }
     const nextString = params.toString()
     if (nextString === lastSyncedQueryRef.current) return
     lastSyncedQueryRef.current = nextString
     router.replace(`?${nextString}`, { scroll: false })
-  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, router, searchParamsString])
+  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, router, searchParamsString, viewMode])
   
   // Ref to store scroll position and first visible deck ID
   const scrollPositionRef = useRef<number>(0)
@@ -2719,24 +2979,35 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     
     allDecks.forEach(deck => {
       // Use getDeckSet to determine the actual set (B1 if any card is from B1, otherwise deck.cardSetNo)
-      const deckSet = getDeckSet(deck)
+      const deckSet = getDeckSet(deck, { allDecks: decks })
       if (deckSet) {
         cardSetNosSet.add(deckSet)
       }
     })
     
     return Array.from(cardSetNosSet).sort((a, b) => {
-      // Sort B1 first, then numerically for S sets
-      if (a.toUpperCase() === 'B1') return -1
-      if (b.toUpperCase() === 'B1') return 1
-      
-      // Sort numerically if both are numbers, otherwise alphabetically
-      const numA = Number(a.replace(/^s/i, ''))
-      const numB = Number(b.replace(/^s/i, ''))
-      if (!isNaN(numA) && !isNaN(numB)) {
-        return numA - numB
+      const normalize = (value: string) => {
+        const trimmed = value.trim()
+        const upper = trimmed.toUpperCase()
+        if (/^B\d+/.test(upper)) {
+          return { group: 0, num: Number(upper.slice(1)), key: upper }
+        }
+        if (/^S\d+/.test(upper)) {
+          return { group: 1, num: Number(upper.slice(1)), key: upper }
+        }
+        if (/^\d+$/.test(upper)) {
+          return { group: 1, num: Number(upper), key: `S${upper}` }
+        }
+        return { group: 2, num: Number.NaN, key: upper }
       }
-      return a.localeCompare(b)
+
+      const normA = normalize(a)
+      const normB = normalize(b)
+      if (normA.group !== normB.group) return normA.group - normB.group
+      if (Number.isFinite(normA.num) && Number.isFinite(normB.num) && normA.num !== normB.num) {
+        return normA.num - normB.num
+      }
+      return normA.key.localeCompare(normB.key)
     })
   }, [decks, fusedDecks])
   
@@ -3218,7 +3489,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
 
       const getDeckSetString = () => {
         if (deckSetCache !== undefined) return deckSetCache
-        const deckSet = getDeckSet(deck)
+        const deckSet = getDeckSet(deck, { allDecks: decks })
         deckSetCache = deckSet ? String(deckSet).trim() : null
         return deckSetCache
       }
@@ -4064,7 +4335,11 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               }
             if (cardSetState.cardSetNo.length > 0) {
               const deckSetStr = getDeckSetString()
-              const match = !!deckSetStr && cardSetState.cardSetNo.includes(deckSetStr)
+              const deckSetNormalized = normalizeSetLabel(deckSetStr)
+              const selectedSets = cardSetState.cardSetNo
+                .map((value) => normalizeSetLabel(value))
+                .filter((value): value is string => Boolean(value))
+              const match = !!deckSetNormalized && selectedSets.includes(deckSetNormalized)
               if (!applyMode(match, cardSetState.cardSetNoMode || 'include')) {
                 return false
               }
@@ -4300,20 +4575,18 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   )
 
   // Virtualization setup (after filtered decks are computed)
-  const [regularListRef, rect] = useResizeObserver()
-  const [fusedListRef, fusedRect] = useResizeObserver()
+  const isSmUp = useMediaQuery('(min-width: 48em)')
+  const isMdUp = useMediaQuery('(min-width: 62em)')
   const columnCount = useMemo(() => {
-    const width = rect.width || 1200
-    if (width < 640) return 1
-    if (width < 960) return 2
-    return 3
-  }, [rect.width])
+    if (isMdUp) return 3
+    if (isSmUp) return 2
+    return 1
+  }, [isMdUp, isSmUp])
   const fusedColumnCount = useMemo(() => {
-    const width = fusedRect.width || 1200
-    if (width < 640) return 1
-    if (width < 960) return 2
-    return 3
-  }, [fusedRect.width])
+    if (isMdUp) return 3
+    if (isSmUp) return 2
+    return 1
+  }, [isMdUp, isSmUp])
   // Fixed row height for smoother scroll without expensive measurements
   const regularRows = useMemo(() => {
     const rows: Deck[][] = []
@@ -4798,16 +5071,27 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Count"
-                              value={currentValue ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  creaturesValue: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <NumberInput
+                                placeholder="Count"
+                                value={currentValue ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    creaturesValue: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -4820,6 +5104,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -4835,11 +5123,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -4880,12 +5164,24 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Count"
-                              value={currentValue ?? undefined}
-                              onChange={(value) => update({ freeCreaturesValue: typeof value === 'number' ? value : null })}
-                              min={0}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                              <NumberInput
+                                placeholder="Count"
+                                value={currentValue ?? undefined}
+                                onChange={(value) => update({ freeCreaturesValue: typeof value === 'number' ? value : null })}
+                                min={0}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    fontSize: '14px',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -4898,6 +5194,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -4913,11 +5213,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1, minWidth: 0 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -4988,17 +5284,28 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 option: { color: 'white' },
                               }}
                             />
-                            <NumberInput
-                              placeholder="Count"
-                              value={currentCount ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  creatureTypeCount: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              disabled={!currentType}
-                              rightSection={currentCount !== null && currentCount !== undefined ? (
+                            <div style={{ position: 'relative', flex: '0 0 120px' }}>
+                              <NumberInput
+                                placeholder="Count"
+                                value={currentCount ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    creatureTypeCount: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                disabled={!currentType}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentCount !== null && currentCount !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5011,6 +5318,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5026,11 +5337,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: '0 0 120px' }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5071,16 +5378,27 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Count"
-                              value={currentValue ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  spellsValue: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <NumberInput
+                                placeholder="Count"
+                                value={currentValue ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    spellsValue: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5093,6 +5411,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5108,11 +5430,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5153,12 +5471,24 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Count"
-                              value={currentValue ?? undefined}
-                              onChange={(value) => update({ freeSpellsValue: typeof value === 'number' ? value : null })}
-                              min={0}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                              <NumberInput
+                                placeholder="Count"
+                                value={currentValue ?? undefined}
+                                onChange={(value) => update({ freeSpellsValue: typeof value === 'number' ? value : null })}
+                                min={0}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    fontSize: '14px',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5171,6 +5501,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5186,11 +5520,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1, minWidth: 0 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5238,16 +5568,28 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 option: { color: 'white' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Min count"
-                              value={currentCount ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  spellTypeCount: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              rightSection={currentCount !== null && currentCount !== undefined ? (
+                            <div style={{ position: 'relative', flex: '0 0 120px' }}>
+                              <NumberInput
+                                placeholder="Min count"
+                                value={currentCount ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    spellTypeCount: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                style={{ width: '100%' }}
+                                disabled={!currentType}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentCount !== null && currentCount !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5260,6 +5602,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5275,12 +5621,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: '0 0 120px' }}
-                              disabled={!currentType}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5385,14 +5726,25 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="ELO value"
-                              value={currentValue ?? ''}
-                              onChange={(value) => {
-                                update({ eloValue: typeof value === 'number' ? value : null })
-                              }}
-                              min={0}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <NumberInput
+                                placeholder="ELO value"
+                                value={currentValue ?? ''}
+                                onChange={(value) => {
+                                  update({ eloValue: typeof value === 'number' ? value : null })
+                                }}
+                                min={0}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5405,6 +5757,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5420,11 +5776,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5465,18 +5817,29 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Score value (0-100)"
-                              value={currentValue ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  scoreValue: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              max={100}
-                              step={1}
-                              rightSection={currentValue !== null && currentValue !== undefined ? (
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <NumberInput
+                                placeholder="Score value (0-100)"
+                                value={currentValue ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    scoreValue: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                max={100}
+                                step={1}
+                                style={{ width: '100%' }}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentValue !== null && currentValue !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5489,6 +5852,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5504,11 +5871,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: 1 }}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5563,16 +5926,28 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
-                            <NumberInput
-                              placeholder="Min count"
-                              value={currentCount ?? ''}
-                              onChange={(value) =>
-                                update({
-                                  rarityCount: typeof value === 'number' ? value : null,
-                                })
-                              }
-                              min={0}
-                              rightSection={currentCount !== null && currentCount !== undefined ? (
+                            <div style={{ position: 'relative', flex: '0 0 120px' }}>
+                              <NumberInput
+                                placeholder="Min count"
+                                value={currentCount ?? ''}
+                                onChange={(value) =>
+                                  update({
+                                    rarityCount: typeof value === 'number' ? value : null,
+                                  })
+                                }
+                                min={0}
+                                style={{ width: '100%' }}
+                                disabled={!currentType}
+                                styles={{
+                                  input: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    color: 'white',
+                                    borderColor: 'rgba(74, 144, 226, 0.3)',
+                                    paddingRight: '46px',
+                                  },
+                                }}
+                              />
+                              {currentCount !== null && currentCount !== undefined ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -5585,6 +5960,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                     e.stopPropagation()
                                   }}
                                   style={{
+                                    position: 'absolute',
+                                    right: 28,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none',
                                     border: 'none',
                                     padding: 0,
@@ -5600,12 +5979,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   />
                                 </button>
                               ) : null}
-                              style={{ flex: '0 0 120px' }}
-                              disabled={!currentType}
-                              styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
-                              }}
-                            />
+                            </div>
                           </Group>
                         </Stack>,
                         { header, actions: modeControl }
@@ -5737,7 +6111,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     </Group>
                     )}
                 </Group>
-                <div ref={regularListRef} style={{ position: 'relative' }}>
+                <div style={{ position: 'relative' }}>
                   {regularRows.map((rowDecks, idx) => (
                     <div key={`regular-row-${idx}`} style={{ paddingBottom: '16px' }}>
                       <Grid gutter="md" align="stretch">
@@ -5840,7 +6214,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     </Group>
                   )}
                 </Group>
-                <div ref={fusedListRef} style={{ position: 'relative' }}>
+                <div style={{ position: 'relative' }}>
                   {fusedRows.map((rowDecks, idx) => (
                     <div key={`fused-row-${idx}`} style={{ paddingBottom: '16px' }}>
                       <Grid gutter="md" align="stretch">
@@ -5856,6 +6230,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               allDecks={[...decks, ...fusedDecks]}
                               fusedExpiryResolver={getFusedDeckExpiryStatus}
                               deckCreatureTypesMap={deckCreatureTypesMap}
+                              deckCreatureTypeOverrides={deckCreatureTypeOverrides}
                             />
                           )
                         })}
@@ -5929,6 +6304,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         }}
         allDecks={[...decks, ...fusedDecks]}
         parentFusedDeck={parentFusedDeck}
+        deckCreatureTypesMap={deckCreatureTypesMap}
+        deckCreatureTypeOverrides={deckCreatureTypeOverrides}
       />
     </>
   )
