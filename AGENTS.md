@@ -42,6 +42,7 @@ Required when enabling auth or database features:
 - Include a UTC date on `CHANGELOG.md` entries; dates roll over at 00:00 UTC.
 - Add an entry to `AI_REQUESTS.md` with the resulting commit SHA and the user prompt.
   - Note: commit SHAs change if a commit is amended, so record the SHA in a follow-up commit that updates only `AI_REQUESTS.md`.
+- When updating the in-app/site changelog in `components/Header.tsx`, use plain, user-friendly wording (avoid jargon like "OG") and describe the user-facing benefit (e.g., sharing deck details on social media).
 - Write all code, comments, and text in all files in English.
 - Use App Router conventions; server actions and API routes live under `app/`.
 - When updating API behavior, check `lib/api.ts` and `app/api/*` for consistency.

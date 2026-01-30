@@ -18,6 +18,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Added a UTC date requirement for `CHANGELOG.md` entries.
 - Require committing every change without prompting.
 - Rewrote the header changelog highlights in plain, user-friendly wording.
+- Documented how to write the in-app changelog in user-friendly language.
 - Prefer forgeborn image URLs with spaces, falling back to dash variants (resized path).
 - Skip forgeborn rotation when using `/resized/` images.
 - Added a safe fallback auth provider when Discord credentials are missing.
