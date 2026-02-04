@@ -45,6 +45,7 @@ Dates use UTC and roll over at 00:00 UTC.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
+- Reject invalid `next-action` POST requests in proxy middleware to prevent repeated "Failed to find Server Action" runtime errors.
 
 ## [0.0.1] - 2026-01-30
 
