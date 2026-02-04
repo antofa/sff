@@ -389,6 +389,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 7ed4e7c
   Request: Keep card names on one line up to the middle of the image and remove stray "\" symbols from forgeborn ability text.
   Date: 2026-02-04
+- Commit: 71d0566
+  Request: Card names disappeared in OG; restore visible one-line card names.
+  Date: 2026-02-04
 - Commit: 3220e01
   Request: [2026-02-04T09:33:14.241Z] Error: Failed to find Server Action "x". This request might be from an older or newer deployment.
   Date: 2026-02-04
