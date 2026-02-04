@@ -32,7 +32,7 @@ const TOKENS: TokenInfo[] = [
 
 const CHANGELOG_SUMMARY = {
   version: '0.0.1',
-  date: '—',
+  date: '2026-01-30',
 }
 
 const CHANGELOG_FULL = {
@@ -70,6 +70,21 @@ const formatPrice = (value?: number | null) => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })}`
+}
+
+const formatChangelogDate = (value: string) => {
+  if (!value) return '—'
+  const parts = value.split('-').map((part) => Number(part))
+  if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return value
+  const [year, month, day] = parts
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
 }
 
 const renderChange = (value?: number | null) => {
@@ -163,7 +178,7 @@ export function Header() {
   const [prices, setPrices] = useState<Record<string, TokenPrice>>({})
   const [loadingPrices, setLoadingPrices] = useState(false)
   const [errorPrices, setErrorPrices] = useState<string | null>(null)
-  const [releaseDate, setReleaseDate] = useState<string>(CHANGELOG_SUMMARY.date)
+  const releaseDate = formatChangelogDate(CHANGELOG_SUMMARY.date)
   const [changelogOpened, setChangelogOpened] = useState(false)
   const logoSrc = '/images/solforge-logo.png'
 
@@ -176,21 +191,6 @@ export function Header() {
   }
 
   useEffect(() => {
-    let canceled = false
-    const fetchReleaseDate = async () => {
-      try {
-        const res = await fetch('/api/release', { cache: 'no-store' })
-        if (!res.ok) return
-        const data = await res.json()
-        if (!canceled && data?.mergeDate) {
-          setReleaseDate(String(data.mergeDate))
-        }
-      } catch {
-        // ignore
-      }
-    }
-    fetchReleaseDate()
-
     const readPriceCache = () => {
       if (typeof window === 'undefined') return null
       try {
@@ -262,7 +262,6 @@ export function Header() {
     window.addEventListener('storage', handleStorage)
 
     return () => {
-      canceled = true
       clearInterval(interval)
       window.removeEventListener('storage', handleStorage)
     }
@@ -324,7 +323,7 @@ export function Header() {
         centered
       >
         <Text size="xs" c="dimmed" mb="sm">
-          Merge date: {releaseDate}
+          Release date: {releaseDate}
         </Text>
         <ScrollArea h={420} offsetScrollbars>
           <div className="space-y-4">
