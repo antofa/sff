@@ -54,6 +54,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Use one shared medium font size for OG forgeborn ability text and card list entries.
 - Keep OG section labels and counts on one line and tighten the gap between abilities and the card list.
 - Replace fused OG column headers with faction icon + set + rounded score (x100) + rounded ELO.
+- Show fused deck name in parentheses next to the forgeborn name in OG previews.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

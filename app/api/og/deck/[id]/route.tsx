@@ -18,6 +18,7 @@ const OG_ICON_CACHE_MAX_ENTRIES = 500
 type OgPayload = {
   cardColumns: CardColumn[]
   forgebornName: string | null
+  deckName: string | null
   forgebornAbilities: AbilityEntry[]
 }
 
@@ -518,6 +519,7 @@ const buildCardColumns = (deck: any): CardColumn[] => {
 const buildOgPayload = (deck: any): OgPayload => ({
   cardColumns: buildCardColumns(deck),
   forgebornName: resolveForgebornName(deck),
+  deckName: typeof deck?.name === 'string' && deck.name.trim() ? deck.name.trim() : null,
   forgebornAbilities: collectForgebornAbilities(deck).slice(0, 3),
 })
 
@@ -536,7 +538,7 @@ const getOgPayload = async (deckId: string, options?: { forceRefresh?: boolean }
 
   const promise = (async () => {
     const deck = await getDeckFromUpstream(deckId)
-    const payload = deck ? buildOgPayload(deck) : { cardColumns: [], forgebornName: null, forgebornAbilities: [] }
+    const payload = deck ? buildOgPayload(deck) : { cardColumns: [], forgebornName: null, deckName: null, forgebornAbilities: [] }
     setCachedOgPayload(cacheKey, payload)
     return payload
   })().finally(() => {
@@ -946,6 +948,7 @@ export async function GET(
   const payload = await getOgPayload(deckId, { forceRefresh })
   const cardColumns = payload.cardColumns
   const forgebornName = payload.forgebornName
+  const deckName = payload.deckName
   const forgebornAbilities = payload.forgebornAbilities
 
   const resolveAssetUrl = (url: string | null) => {
@@ -1088,7 +1091,9 @@ export async function GET(
             fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
           }}
         >
-          <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1.1 }}>{forgebornName || 'Forgeborn'}</div>
+          <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1.1 }}>
+            {(forgebornName || 'Forgeborn') + (showFusedColumns && deckName ? ` (${deckName})` : '')}
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 20, lineHeight: 1.25, width: '100%' }}>
             {forgebornAbilities.length > 0 ? (
               forgebornAbilities.map((ability, idx) => {
