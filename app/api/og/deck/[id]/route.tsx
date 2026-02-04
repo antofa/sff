@@ -218,43 +218,75 @@ const collectForgebornAbilities = (deck: any) => {
 
   if (!forgeborn || typeof forgeborn !== 'object') return entries
 
-  const rawAbilities =
-    forgeborn?.abilities ||
-    forgeborn?.abilityCards ||
-    forgeborn?.ability_cards ||
-    forgeborn?.abilityList ||
-    forgeborn?.abilitiesList ||
-    null
-  if (Array.isArray(rawAbilities)) {
-    rawAbilities.forEach((ability, index) => pushAbility(ability, 2 + index))
-  } else if (rawAbilities) {
-    pushAbility(rawAbilities)
-  }
-
-  const abilityKeys: Array<[string, number | null]> = [
-    ['ability1', 2],
-    ['ability2', 3],
-    ['ability3', 4],
-    ['ability4', null],
-    ['ability5', null],
-  ]
-  abilityKeys.forEach(([key, level]) => {
-    if (forgeborn?.[key]) pushAbility(forgeborn[key], level)
-  })
-
-  if (entries.length === 0) {
-    const levelKeys: Array<[string, number]> = [
-      ['1text', 2],
-      ['2text', 3],
-      ['3text', 4],
-    ]
-    levelKeys.forEach(([key, level]) => {
-      if (forgeborn?.[key]) pushAbility(forgeborn[key], level)
+  const levelMap = forgeborn?.levels
+  if (levelMap && typeof levelMap === 'object') {
+    ;[2, 3, 4].forEach((level) => {
+      const levelEntry = (levelMap as any)?.[level] ?? (levelMap as any)?.[String(level)]
+      if (!levelEntry) return
+      const text = levelEntry?.text ?? levelEntry?.Text ?? levelEntry?.description ?? levelEntry?.desc ?? null
+      if (!text) return
+      const name = levelEntry?.name || levelEntry?.Name || levelEntry?.title || null
+      pushAbility(
+        {
+          name: name ? String(name) : null,
+          text,
+        },
+        level
+      )
     })
   }
 
-  if (entries.length === 0 && (forgeborn?.text || forgeborn?.Text)) {
-    pushAbility(forgeborn?.text || forgeborn?.Text)
+  if (entries.length === 0) {
+    const a2t = forgeborn?.a2t ?? forgeborn?.a2T ?? null
+    const a3t = forgeborn?.a3t ?? forgeborn?.a3T ?? null
+    const a4t = forgeborn?.a4t ?? forgeborn?.a4T ?? null
+    const a2n = forgeborn?.a2n ?? forgeborn?.a2N ?? null
+    const a3n = forgeborn?.a3n ?? forgeborn?.a3N ?? null
+    const a4n = forgeborn?.a4n ?? forgeborn?.a4N ?? null
+    if (a2t) pushAbility({ name: a2n ?? null, text: a2t }, 2)
+    if (a3t) pushAbility({ name: a3n ?? null, text: a3t }, 3)
+    if (a4t) pushAbility({ name: a4n ?? null, text: a4t }, 4)
+  }
+
+  if (entries.length === 0) {
+    const rawAbilities =
+      forgeborn?.abilities ||
+      forgeborn?.abilityCards ||
+      forgeborn?.ability_cards ||
+      forgeborn?.abilityList ||
+      forgeborn?.abilitiesList ||
+      null
+    if (Array.isArray(rawAbilities)) {
+      rawAbilities.forEach((ability, index) => pushAbility(ability, 2 + index))
+    } else if (rawAbilities) {
+      pushAbility(rawAbilities)
+    }
+
+    const abilityKeys: Array<[string, number | null]> = [
+      ['ability1', 2],
+      ['ability2', 3],
+      ['ability3', 4],
+      ['ability4', null],
+      ['ability5', null],
+    ]
+    abilityKeys.forEach(([key, level]) => {
+      if (forgeborn?.[key]) pushAbility(forgeborn[key], level)
+    })
+
+    if (entries.length === 0) {
+      const levelKeys: Array<[string, number]> = [
+        ['1text', 2],
+        ['2text', 3],
+        ['3text', 4],
+      ]
+      levelKeys.forEach(([key, level]) => {
+        if (forgeborn?.[key]) pushAbility(forgeborn[key], level)
+      })
+    }
+
+    if (entries.length === 0 && (forgeborn?.text || forgeborn?.Text)) {
+      pushAbility(forgeborn?.text || forgeborn?.Text)
+    }
   }
 
   return entries
