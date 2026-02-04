@@ -564,6 +564,7 @@ const stripMarkup = (value: string) => {
 
 const normalizeForgebornAbilityText = (value: string) =>
   value
+    .replace(/\[l[1-4]\]/gi, '')
     .replace(/([^\s])([+-])(?=\d)/g, '$1 $2')
     .replace(/([.!?])([A-Za-z])/g, '$1 $2')
     .replace(/\s+/g, ' ')
@@ -695,40 +696,29 @@ const getRarityIconPath = (
 const renderAbilityText = (
   text: string,
   statIconMap: Map<string, string | null>,
-  levelIconMap: Map<number, string | null>
+  _levelIconMap: Map<number, string | null>
 ) => {
   const normalizedText = normalizeForgebornAbilityText(String(text || ''))
   if (!normalizedText) return null
   const parts: Array<
     | { type: 'text'; value: string }
-    | { type: 'level'; src: string }
     | { type: 'stat'; src: string; number: string }
   > = []
-  const pattern = /(\[l([1-4])\])|([+-]?\d+)([ADH])/gi
+  const pattern = /([+-]?\d+)([ADH])/gi
   let lastIndex = 0
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(normalizedText)) !== null) {
-    const [full, levelToken, levelNumber, number, stat] = match
+    const [full, number, stat] = match
     const start = match.index
     if (start > lastIndex) {
       parts.push({ type: 'text', value: normalizedText.slice(lastIndex, start) })
     }
-    if (levelToken) {
-      const level = Number(levelNumber)
-      const iconSrc = Number.isFinite(level) ? levelIconMap.get(level) || null : null
-      if (!iconSrc) {
-        parts.push({ type: 'text', value: full })
-      } else {
-        parts.push({ type: 'level', src: iconSrc })
-      }
+    const iconSrc = statIconMap.get(stat) || null
+    if (!iconSrc) {
+      parts.push({ type: 'text', value: full })
     } else {
-      const iconSrc = statIconMap.get(stat) || null
-      if (!iconSrc) {
-        parts.push({ type: 'text', value: full })
-      } else {
-        parts.push({ type: 'stat', src: iconSrc, number })
-      }
+      parts.push({ type: 'stat', src: iconSrc, number })
     }
     lastIndex = start + full.length
   }
@@ -738,32 +728,13 @@ const renderAbilityText = (
   }
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', width: '100%', minWidth: 0, maxWidth: '100%' }}>
+    <span style={{ whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'break-word' }}>
       {parts.map((part, idx) => {
         if (part.type === 'text') {
-          return (
-            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'normal', overflowWrap: 'break-word' }}>
-              {part.value}
-            </span>
-          )
-        }
-        if (part.type === 'level') {
-          return (
-            <img
-              key={`level-${idx}`}
-              src={part.src}
-              style={{
-                width: '16px',
-                height: '16px',
-                objectFit: 'contain',
-                marginRight: '4px',
-                transform: 'translateY(1px)',
-              }}
-            />
-          )
+          return <span key={`text-${idx}`}>{part.value}</span>
         }
         return (
-          <div key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', marginRight: '4px' }}>
+          <span key={`stat-${idx}`} style={{ marginRight: '4px' }}>
             <span>{part.number}</span>
             <img
               src={part.src}
@@ -775,10 +746,10 @@ const renderAbilityText = (
                 transform: 'translateY(1px)',
               }}
             />
-          </div>
+          </span>
         )
       })}
-    </div>
+    </span>
   )
 }
 
