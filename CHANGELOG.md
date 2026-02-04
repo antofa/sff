@@ -71,6 +71,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Restore iconized forgeborn ability rendering in fused OG and constrain third-column text wrapping to prevent right-edge clipping.
 - Further tighten fused OG third-column typography and add right padding so forgeborn abilities fit without clipping.
 - Rebalance fused OG column widths to make the third (forgeborn) column narrower while preserving readable text and icon layout.
+- Set fused OG column ratios to 1.1 / 1.1 / 1.0 and smooth third-column wrapping with less aggressive word breaks.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

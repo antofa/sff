@@ -742,7 +742,7 @@ const renderAbilityText = (
       {parts.map((part, idx) => {
         if (part.type === 'text') {
           return (
-            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'normal', overflowWrap: 'break-word' }}>
               {part.value}
             </span>
           )
@@ -1278,10 +1278,10 @@ export async function GET(
               minHeight: 0,
             }}
           >
-            <div style={{ display: 'flex', flex: 1.2, minWidth: 0 }}>
+            <div style={{ display: 'flex', flex: 1.1, minWidth: 0 }}>
               {renderCardColumn(cardColumns[0], 0)}
             </div>
-            <div style={{ display: 'flex', flex: 1.2, minWidth: 0 }}>
+            <div style={{ display: 'flex', flex: 1.1, minWidth: 0 }}>
               {renderCardColumn(cardColumns[1], 1)}
             </div>
             <div
@@ -1289,7 +1289,7 @@ export async function GET(
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'stretch',
-                flex: 0.8,
+                flex: 1.0,
                 minWidth: 0,
               }}
             >
