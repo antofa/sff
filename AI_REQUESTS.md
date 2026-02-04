@@ -410,3 +410,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 652975c
   Request: In fused OG image, increase all typography by 20%.
   Date: 2026-02-04
+- Commit: f348c33
+  Request: Redesign fused OG into 3 equal columns: half 1 stats/cards, half 2 stats/cards, and forgeborn name/deck + abilities.
+  Date: 2026-02-04
