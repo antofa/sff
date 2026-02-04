@@ -157,38 +157,63 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
 const stripMarkup = (value: string) => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
 type AbilityEntry = { title: string | null; text: string | null; level?: number | null }
 
-const renderAbilityText = (text: string, iconMap: Map<string, string | null>) => {
+const renderAbilityText = (
+  text: string,
+  statIconMap: Map<string, string | null>,
+  levelIconMap: Map<number, string | null>
+) => {
   const parts: Array<string | ReactNode> = []
-  const pattern = /([+-]?\d+)([ADH])/g
+  const pattern = /(\[l([1-4])\])|([+-]?\d+)([ADH])/gi
   let lastIndex = 0
   let match: RegExpExecArray | null
   let keyIndex = 0
 
   while ((match = pattern.exec(text)) !== null) {
-    const [full, number, stat] = match
+    const [full, levelToken, levelNumber, number, stat] = match
     const start = match.index
     if (start > lastIndex) {
       parts.push(text.slice(lastIndex, start))
     }
-    const iconSrc = iconMap.get(stat) || null
-    if (!iconSrc) {
-      parts.push(full)
-    } else {
-      parts.push(
-        <span key={`stat-${keyIndex++}`}>
-          {number}
+    if (levelToken) {
+      const level = Number(levelNumber)
+      const iconSrc = Number.isFinite(level) ? levelIconMap.get(level) || null : null
+      if (!iconSrc) {
+        parts.push(full)
+      } else {
+        parts.push(
           <img
+            key={`level-${keyIndex++}`}
             src={iconSrc}
             style={{
               width: '16px',
               height: '16px',
               objectFit: 'contain',
-              marginLeft: '4px',
               verticalAlign: 'middle',
             }}
           />
-        </span>
-      )
+        )
+      }
+    } else {
+      const iconSrc = statIconMap.get(stat) || null
+      if (!iconSrc) {
+        parts.push(full)
+      } else {
+        parts.push(
+          <span key={`stat-${keyIndex++}`}>
+            {number}
+            <img
+              src={iconSrc}
+              style={{
+                width: '16px',
+                height: '16px',
+                objectFit: 'contain',
+                marginLeft: '4px',
+                verticalAlign: 'middle',
+              }}
+            />
+          </span>
+        )
+      }
     }
     lastIndex = start + full.length
   }
@@ -475,10 +500,20 @@ export async function GET(
   }
 
   const abilityLevels = new Set<number>()
+  const levelTokenPattern = /\[l([1-4])\]/gi
   forgebornAbilities.forEach((ability) => {
     const level = ability.level
-    if (level && level >= 2 && level <= 4) {
+    if (level && level >= 1 && level <= 4) {
       abilityLevels.add(level)
+    }
+    if (ability.text) {
+      let match: RegExpExecArray | null
+      while ((match = levelTokenPattern.exec(ability.text)) !== null) {
+        const tokenLevel = Number(match[1])
+        if (Number.isFinite(tokenLevel)) {
+          abilityLevels.add(tokenLevel)
+        }
+      }
     }
   })
   const levelIconEntries = Array.from(abilityLevels)
@@ -703,7 +738,9 @@ export async function GET(
                           style={{ width: '18px', height: '18px', objectFit: 'contain' }}
                         />
                       ) : null}
-                      {ability.text ? <span>{renderAbilityText(ability.text, statIconMap)}</span> : null}
+                      {ability.text ? (
+                        <span>{renderAbilityText(ability.text, statIconMap, levelIconMap)}</span>
+                      ) : null}
                     </div>
                   )
                 })
