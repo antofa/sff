@@ -449,3 +449,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a8007ad
   Request: Third fused OG column is clipped at the right edge and ability icons are missing; fix both.
   Date: 2026-02-04
+- Commit: 843ca64
+  Request: The fused OG third column still needs to be tightened so ability text does not clip on the right edge.
+  Date: 2026-02-04
