@@ -341,3 +341,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: fc78c56
   Request: Replace [l1]-[l4] tokens in forgeborn ability text with level icons in OG images.
   Date: 2026-02-04
+- Commit: 0819077
+  Request: Replace the OG left column stats with the non-forgeborn card list like the modal.
+  Date: 2026-02-04
