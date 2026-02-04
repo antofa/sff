@@ -1069,6 +1069,10 @@ export async function GET(
   const fusedFontScale = showFusedColumns ? 1.44 : 1
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * 10) / 10
   const cardNameLimit = showFusedColumns ? 24 : 38
+  const forgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
+  const forgebornAbilityFont = showFusedColumns ? scaleFont(14) : scaleFont(20)
+  const forgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
+  const forgebornLevelIconSize = showFusedColumns ? '18px' : '20px'
 
   const renderForgebornBlock = () => (
     <div
@@ -1081,14 +1085,14 @@ export async function GET(
         minWidth: 0,
       }}
     >
-      <div style={{ fontSize: scaleFont(40), fontWeight: 700, lineHeight: 1.1 }}>{forgebornName || 'Forgeborn'}</div>
+      <div style={{ fontSize: forgebornTitleFont, fontWeight: 700, lineHeight: 1.1 }}>{forgebornName || 'Forgeborn'}</div>
       <div
         style={{
           display: 'flex',
           flexDirection: 'column',
           gap: '8px',
-          fontSize: scaleFont(20),
-          lineHeight: 1.25,
+          fontSize: forgebornAbilityFont,
+          lineHeight: forgebornAbilityLineHeight,
           width: '100%',
         }}
       >
@@ -1101,8 +1105,8 @@ export async function GET(
                   <img
                     src={levelIconSrc}
                     style={{
-                      width: '20px',
-                      height: '20px',
+                      width: forgebornLevelIconSize,
+                      height: forgebornLevelIconSize,
                       objectFit: 'contain',
                       transform: 'translateY(3px)',
                     }}
