@@ -46,6 +46,8 @@ Dates use UTC and roll over at 00:00 UTC.
 - Sanitize forgeborn ability HTML text in OG previews and stabilize OG-safe rendering so iconized ability lines render without overlap.
 - Tighten OG forgeborn ability typography and enforce flex item width constraints so long ability text wraps within the right column.
 - Rework OG ability line rendering into flex-wrapped text/icon tokens so forgeborn ability text no longer overflows the right edge.
+- Redesign OG layout: move forgeborn abilities into a full-width top section and place the card list below it.
+- Render fused deck card lists in two columns (one half-deck per column) in OG previews.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

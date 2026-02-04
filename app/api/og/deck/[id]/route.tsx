@@ -15,7 +15,7 @@ const OG_PAYLOAD_CACHE_MAX_ENTRIES = 500
 const OG_ICON_CACHE_MAX_ENTRIES = 500
 
 type OgPayload = {
-  cardSections: CardSection[]
+  cardColumns: CardColumn[]
   forgebornName: string | null
   forgebornAbilities: AbilityEntry[]
 }
@@ -223,7 +223,9 @@ function touchEntry<T>(cache: Map<string, T>, key: string, entry: T) {
 }
 
 const isFullOgPayload = (payload: OgPayload) => {
-  const hasCards = payload.cardSections.some((section) => section.items.length > 0)
+  const hasCards = payload.cardColumns.some((column) =>
+    column.sections.some((section) => section.items.length > 0)
+  )
   const hasForgebornName = !!payload.forgebornName?.trim()
   const hasAbilities = payload.forgebornAbilities.some((ability) => !!ability?.text?.trim())
   return hasCards && hasForgebornName && hasAbilities
@@ -344,8 +346,56 @@ const getDeckFromUpstream = async (deckId: string) => {
   return null
 }
 
+const isFusedDeck = (deck: any) => {
+  const format = String(deck?.format || '').toLowerCase()
+  if (format === 'fused') return true
+  const idCandidates = [deck?.id, deck?.deckId, deck?.deck_id]
+    .filter(Boolean)
+    .map((value) => String(value).toLowerCase())
+  return idCandidates.some((value) => /^fused[_-]/.test(value) || value.includes('deck_fused'))
+}
+
+const buildCardColumns = (deck: any): CardColumn[] => {
+  const sourceDecks =
+    (Array.isArray(deck?.myDecks) && deck.myDecks.filter(Boolean)) ||
+    (Array.isArray(deck?.decks) && deck.decks.filter(Boolean)) ||
+    []
+
+  if (sourceDecks.length >= 2) {
+    const columnsFromSources = sourceDecks.slice(0, 2).map((source: any, idx: number) => ({
+      title: source?.name ? String(source.name) : `Half ${idx + 1}`,
+      sections: buildCardSections(source),
+    }))
+    const hasCardsInSources = columnsFromSources.some((column: CardColumn) =>
+      column.sections.some((section: CardSection) => section.items.length > 0)
+    )
+    if (hasCardsInSources) {
+      return columnsFromSources
+    }
+  }
+
+  if (isFusedDeck(deck)) {
+    const cards = Array.isArray(deck?.cards) ? deck.cards : []
+    const midpoint = Math.ceil(cards.length / 2)
+    const leftCards = cards.slice(0, midpoint)
+    const rightCards = cards.slice(midpoint)
+    return [
+      {
+        title: 'Half 1',
+        sections: buildCardSections({ ...deck, cards: leftCards }),
+      },
+      {
+        title: 'Half 2',
+        sections: buildCardSections({ ...deck, cards: rightCards }),
+      },
+    ]
+  }
+
+  return [{ title: null, sections: buildCardSections(deck) }]
+}
+
 const buildOgPayload = (deck: any): OgPayload => ({
-  cardSections: buildCardSections(deck),
+  cardColumns: buildCardColumns(deck),
   forgebornName: resolveForgebornName(deck),
   forgebornAbilities: collectForgebornAbilities(deck).slice(0, 3),
 })
@@ -365,7 +415,7 @@ const getOgPayload = async (deckId: string, options?: { forceRefresh?: boolean }
 
   const promise = (async () => {
     const deck = await getDeckFromUpstream(deckId)
-    const payload = deck ? buildOgPayload(deck) : { cardSections: [], forgebornName: null, forgebornAbilities: [] }
+    const payload = deck ? buildOgPayload(deck) : { cardColumns: [], forgebornName: null, forgebornAbilities: [] }
     setCachedOgPayload(cacheKey, payload)
     return payload
   })().finally(() => {
@@ -407,6 +457,7 @@ type CardListEntry = {
   factionColor: string
 }
 type CardSection = { label: string; items: CardListEntry[] }
+type CardColumn = { title: string | null; sections: CardSection[] }
 
 const getFactionBadgeColor = (faction?: string): string => {
   switch (faction) {
@@ -519,7 +570,7 @@ const renderAbilityText = (
   statIconMap: Map<string, string | null>,
   levelIconMap: Map<number, string | null>
 ) => {
-  const normalizedText = normalizeForgebornAbilityText(text)
+  const normalizedText = normalizeForgebornAbilityText(String(text || ''))
   const parts: Array<
     | { type: 'text'; value: string }
     | { type: 'level'; src: string }
@@ -762,7 +813,7 @@ export async function GET(
   }
 
   const payload = await getOgPayload(deckId, { forceRefresh })
-  const cardSections = payload.cardSections
+  const cardColumns = payload.cardColumns
   const forgebornName = payload.forgebornName
   const forgebornAbilities = payload.forgebornAbilities
 
@@ -820,8 +871,10 @@ export async function GET(
 
   const cardIconPaths = Array.from(
     new Set(
-      cardSections.flatMap((section) =>
-        section.items.flatMap((item) => [item.factionIconPath, item.rarityIconPath]).filter(Boolean)
+      cardColumns.flatMap((column) =>
+        column.sections.flatMap((section) =>
+          section.items.flatMap((item) => [item.factionIconPath, item.rarityIconPath]).filter(Boolean)
+        )
       )
     )
   ) as string[]
@@ -877,7 +930,8 @@ export async function GET(
     })
   }
 
-  const hasCardSections = cardSections.length > 0
+  const hasCardSections = cardColumns.some((column) => column.sections.length > 0)
+  const showFusedColumns = cardColumns.length > 1
 
   const imageResponse = new ImageResponse(
     (
@@ -886,155 +940,161 @@ export async function GET(
           width: '1200px',
           height: '630px',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'stretch',
-          gap: '24px',
-          padding: '24px 28px',
+          gap: '16px',
+          padding: '20px 24px',
           backgroundColor: '#0f172a',
         }}
       >
         <div
           style={{
-            flex: 1,
-            minWidth: 0,
-            height: '100%',
             display: 'flex',
             flexDirection: 'column',
-            gap: '14px',
+            gap: '10px',
+            minHeight: '190px',
             color: '#e2e8f0',
             fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
           }}
         >
-          {hasCardSections ? (
-            cardSections.map((section) => (
-              <div key={section.label} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span
-                  style={{
-                    color: '#94a3b8',
-                    fontSize: 16,
-                    fontWeight: 700,
-                    letterSpacing: '0.04em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {section.label}
-                </span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: 27, lineHeight: 1.2 }}>
-                  {section.items.map((item, idx) => {
-                    const factionIconSrc = item.factionIconPath
-                      ? cardIconMap.get(item.factionIconPath) || resolveAssetUrl(item.factionIconPath)
-                      : null
-                    const rarityIconSrc = item.rarityIconPath
-                      ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
-                      : null
-                    return (
+          <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1.1 }}>{forgebornName || 'Forgeborn'}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 24, lineHeight: 1.25, width: '100%' }}>
+            {forgebornAbilities.length > 0 ? (
+              forgebornAbilities.map((ability, idx) => {
+                const levelIconSrc =
+                  ability.level && levelIconMap.has(ability.level) ? levelIconMap.get(ability.level) : null
+                return (
+                  <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', gap: '8px' }}>
+                    {levelIconSrc ? (
+                      <img
+                        src={levelIconSrc}
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          objectFit: 'contain',
+                          transform: 'translateY(3px)',
+                        }}
+                      />
+                    ) : null}
+                    {ability.text ? (
                       <div
-                        key={`${section.label}-${idx}`}
-                        style={{ display: 'flex', alignItems: 'center', gap: '9px', minHeight: '30px' }}
+                        style={{
+                          display: 'flex',
+                          flex: 1,
+                          minWidth: 0,
+                          maxWidth: '100%',
+                          alignItems: 'flex-start',
+                        }}
                       >
-                        {factionIconSrc ? (
-                          <img src={factionIconSrc} style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
-                        ) : (
-                          <span
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '999px',
-                              backgroundColor: item.factionColor,
-                              opacity: 0.8,
-                            }}
-                          />
-                        )}
-                        {rarityIconSrc ? (
-                          <img src={rarityIconSrc} style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
-                        ) : (
-                          <span
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '999px',
-                              backgroundColor: item.factionColor,
-                              opacity: 0.8,
-                            }}
-                          />
-                        )}
-                        <span>{item.name}</span>
+                        {renderAbilityText(ability.text, statIconMap, levelIconMap)}
                       </div>
-                    )
-                  })}
-                </div>
+                    ) : null}
+                  </div>
+                )
+              })
+            ) : (
+              <div style={{ color: '#94a3b8', fontSize: 20 }}>Abilities unavailable</div>
+            )}
+          </div>
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'stretch',
+            gap: '18px',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          {hasCardSections ? (
+            cardColumns.map((column, columnIndex) => (
+              <div
+                key={`column-${columnIndex}`}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  flex: showFusedColumns ? 1 : 0,
+                  width: showFusedColumns ? 'auto' : '100%',
+                  minWidth: 0,
+                  color: '#e2e8f0',
+                  fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
+                }}
+              >
+                {showFusedColumns ? (
+                  <span
+                    style={{
+                      color: '#94a3b8',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {column.title || `Half ${columnIndex + 1}`}
+                  </span>
+                ) : null}
+                {column.sections.map((section) => (
+                  <div key={`${columnIndex}-${section.label}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {section.label}
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: 18, lineHeight: 1.15 }}>
+                      {section.items.map((item, idx) => {
+                        const factionIconSrc = item.factionIconPath
+                          ? cardIconMap.get(item.factionIconPath) || resolveAssetUrl(item.factionIconPath)
+                          : null
+                        const rarityIconSrc = item.rarityIconPath
+                          ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
+                          : null
+                        return (
+                          <div key={`${columnIndex}-${section.label}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {factionIconSrc ? (
+                              <img src={factionIconSrc} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
+                            ) : (
+                              <span
+                                style={{
+                                  width: '18px',
+                                  height: '18px',
+                                  borderRadius: '999px',
+                                  backgroundColor: item.factionColor,
+                                  opacity: 0.8,
+                                }}
+                              />
+                            )}
+                            {rarityIconSrc ? (
+                              <img src={rarityIconSrc} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
+                            ) : (
+                              <span
+                                style={{
+                                  width: '18px',
+                                  height: '18px',
+                                  borderRadius: '999px',
+                                  backgroundColor: item.factionColor,
+                                  opacity: 0.8,
+                                }}
+                              />
+                            )}
+                            <span>{item.name}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             ))
           ) : (
             <div style={{ color: '#94a3b8', fontSize: 18 }}>No cards available</div>
           )}
-        </div>
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            height: '100%',
-            display: 'flex',
-            alignItems: 'stretch',
-            justifyContent: 'flex-start',
-            paddingLeft: '0',
-          }}
-        >
-          <div
-            style={{
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              justifyContent: 'flex-start',
-              gap: '18px',
-              padding: '18px 24px',
-              color: '#e2e8f0',
-              fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
-            }}
-          >
-            <div style={{ fontSize: 36, fontWeight: 700, lineHeight: 1.1 }}>
-              {forgebornName || 'Forgeborn'}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: 16, lineHeight: 1.4, width: '100%' }}>
-              {forgebornAbilities.length > 0 ? (
-                forgebornAbilities.map((ability, idx) => {
-                  const levelIconSrc =
-                    ability.level && levelIconMap.has(ability.level) ? levelIconMap.get(ability.level) : null
-                  return (
-                    <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', gap: '8px' }}>
-                      {levelIconSrc ? (
-                        <img
-                          src={levelIconSrc}
-                          style={{
-                            width: '18px',
-                            height: '18px',
-                            objectFit: 'contain',
-                            transform: 'translateY(2px)',
-                          }}
-                        />
-                      ) : null}
-                      {ability.text ? (
-                        <div
-                          style={{
-                            display: 'flex',
-                            flex: 1,
-                            minWidth: 0,
-                            maxWidth: '100%',
-                            alignItems: 'flex-start',
-                          }}
-                        >
-                          {renderAbilityText(ability.text, statIconMap, levelIconMap)}
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                })
-              ) : (
-                <div style={{ color: '#94a3b8', fontSize: 20 }}>Abilities unavailable</div>
-              )}
-            </div>
-          </div>
         </div>
       </div>
     ),
