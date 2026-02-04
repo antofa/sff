@@ -699,10 +699,6 @@ const renderAbilityText = (
 ) => {
   const normalizedText = normalizeForgebornAbilityText(String(text || ''))
   if (!normalizedText) return null
-  // Keep ability rendering simple/stable for Satori: plain text avoids layout hangs.
-  if (statIconMap.size >= 0 && levelIconMap.size >= 0) {
-    return <span>{normalizedText}</span>
-  }
   const parts: Array<
     | { type: 'text'; value: string }
     | { type: 'level'; src: string }
@@ -742,11 +738,11 @@ const renderAbilityText = (
   }
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', width: '100%', minWidth: 0, maxWidth: '100%' }}>
       {parts.map((part, idx) => {
         if (part.type === 'text') {
           return (
-            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap' }}>
+            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {part.value}
             </span>
           )
