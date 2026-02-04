@@ -320,3 +320,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 51292be
   Request: Populate OG forgeborn ability text from the deck (Nova abilities were missing and showed as unavailable).
   Date: 2026-02-04
+- Commit: fffb4e4
+  Request: Remove the local card database fallback and split the changelog into 0.0.1 (through Jan 30) and 0.0.2 for new changes.
+  Date: 2026-02-04
