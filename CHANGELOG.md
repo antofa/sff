@@ -42,6 +42,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Replace the previous object-storage OG cache integration with optional Upstash Redis OG cache integration.
 - Read/write Upstash-cached OG images in a best-effort mode and keep in-app OG generation as fallback when Upstash is unavailable.
 - Document Upstash + Netlify OG cache setup and verification steps in `README.md`.
+- Normalize Upstash env values by trimming whitespace and optional wrapping quotes.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

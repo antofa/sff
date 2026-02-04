@@ -1,9 +1,28 @@
 import { Redis } from '@upstash/redis'
 
+const normalizeEnvValue = (value?: string | null): string | null => {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const hasWrappingDoubleQuotes = trimmed.startsWith('"') && trimmed.endsWith('"')
+  const hasWrappingSingleQuotes = trimmed.startsWith("'") && trimmed.endsWith("'")
+  if (hasWrappingDoubleQuotes || hasWrappingSingleQuotes) {
+    const unquoted = trimmed.slice(1, -1).trim()
+    return unquoted || null
+  }
+
+  return trimmed
+}
+
 const UPSTASH_REDIS_REST_URL =
-  process.env.OG_UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_REST_URL || null
+  normalizeEnvValue(process.env.OG_UPSTASH_REDIS_REST_URL) ||
+  normalizeEnvValue(process.env.UPSTASH_REDIS_REST_URL) ||
+  null
 const UPSTASH_REDIS_REST_TOKEN =
-  process.env.OG_UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || null
+  normalizeEnvValue(process.env.OG_UPSTASH_REDIS_REST_TOKEN) ||
+  normalizeEnvValue(process.env.UPSTASH_REDIS_REST_TOKEN) ||
+  null
 
 const hasConfig = !!(UPSTASH_REDIS_REST_URL && UPSTASH_REDIS_REST_TOKEN)
 
@@ -71,4 +90,3 @@ export const putOgImageToUpstashCache = async (
     // Best-effort cache write; ignore errors.
   }
 }
-
