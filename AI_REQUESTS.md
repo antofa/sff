@@ -311,3 +311,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: fcf7608
   Request: Speed up OG image generation so it completes within 2 seconds to avoid Discord timeouts.
   Date: 2026-02-04
+- Commit: a11f41c
+  Request: Remove the forgeborn image from OG and render the forgeborn name and abilities in a vertical list instead.
+  Date: 2026-02-04
