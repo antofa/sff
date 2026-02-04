@@ -398,6 +398,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a4070ff
   Request: Keep card-type counts on the same line as the type label and move the card list up closer under forgeborn abilities.
   Date: 2026-02-04
+- Commit: 632b9db
+  Request: For fused OG columns, replace Half1/Half2 with faction icon, set name, rounded score (x100), and rounded ELO.
+  Date: 2026-02-04
 - Commit: 3220e01
   Request: [2026-02-04T09:33:14.241Z] Error: Failed to find Server Action "x". This request might be from an older or newer deployment.
   Date: 2026-02-04
