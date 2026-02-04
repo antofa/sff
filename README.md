@@ -24,6 +24,41 @@ npm run dev
 # open http://localhost:3000
 ```
 
+## Optional: Cloudflare R2 OG Cache Setup (Netlify)
+Use this to cache pre-rendered OG PNGs for 24 hours so link previews (Discord/X/etc.) are served from cache instead of rendering from scratch.
+
+### 1) Create R2 resources
+- Create a bucket (for example: `sff-og-cache`).
+- Create an R2 API token (S3-compatible) and copy:
+  - Access Key ID
+  - Secret Access Key
+- Copy your Cloudflare Account ID.
+
+### 2) Configure Netlify environment variables
+In Netlify `Site settings -> Environment variables`, add:
+
+```bash
+OG_R2_ACCOUNT_ID=<cloudflare-account-id>
+OG_R2_BUCKET=<r2-bucket-name>
+OG_R2_ACCESS_KEY_ID=<r2-access-key-id>
+OG_R2_SECRET_ACCESS_KEY=<r2-secret-access-key>
+```
+
+Then redeploy the site.
+
+### 3) Verify
+1. Force-generate and upload one image:
+   - `/api/og/deck/<deckId>?refresh=1`
+2. Request the normal OG URL:
+   - `/api/og/deck/<deckId>`
+3. Confirm response header:
+   - `X-OG-Cache: r2-hit`
+
+### 4) Notes
+- If R2 is not configured or unavailable, the app falls back to normal in-app OG rendering.
+- Opening `/deck/<deckId>` pre-warms the OG route in the background.
+- `?refresh=1` bypasses local/R2 cache reads for manual refresh.
+
 ## API Notes
 - Endpoint: `https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/app`
 - Params: `?inclPve=true&username={username}`

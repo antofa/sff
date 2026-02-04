@@ -41,6 +41,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Refresh icon cache TTL on each icon cache hit (sliding expiration) to keep frequently used icons warm.
 - Add optional Cloudflare R2-backed OG image cache (24-hour max age) to reuse pre-rendered PNGs across cold starts and instances.
 - Read/write R2 OG images in a best-effort mode and keep in-app OG generation as fallback when R2 is unavailable.
+- Document Cloudflare R2 + Netlify OG cache setup and verification steps in `README.md`.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
