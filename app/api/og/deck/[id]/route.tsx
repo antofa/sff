@@ -7,6 +7,7 @@ export const runtime = 'edge'
 
 const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
 const OG_DECK_TIMEOUT_MS = 1200
+const OG_SOURCE_DECK_TIMEOUT_MS = 2200
 const OG_ICON_TIMEOUT_MS = 500
 const OG_UPSTASH_IMAGE_TTL_SECONDS = 24 * 60 * 60
 const OG_PAYLOAD_TTL_MS = 24 * 60 * 60 * 1000
@@ -308,10 +309,45 @@ const getDeckFromUpstream = async (deckId: string) => {
     const rawId = raw?.id || raw?.deckId || raw?.deck_id
     if (!rawId) continue
 
-    const sourceDecks =
+    const sourceDecksRaw =
       (Array.isArray(raw?.myDecks) && raw.myDecks) ||
       (Array.isArray(raw?.decks) && raw.decks) ||
       []
+    const sourceDecks = await Promise.all(
+      sourceDecksRaw.map(async (source: any) => {
+        const sourceId = source?.id || source?.deckId || source?.deck_id
+        if (!sourceId) return source
+
+        const detailUrl = `${API_BASE_URL}/deck/${encodeURIComponent(stripDeckPrefixes(String(sourceId)))}?inclCards=true&inclUsers=true`
+        const detailRes = await fetchWithTimeout(
+          detailUrl,
+          {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            cache: 'force-cache',
+            next: { revalidate: 300 },
+          },
+          OG_SOURCE_DECK_TIMEOUT_MS
+        )
+        if (!detailRes?.ok) return source
+        const detailRaw = await withTimeout(detailRes.json().catch(() => null), OG_SOURCE_DECK_TIMEOUT_MS, null)
+        if (!detailRaw || typeof detailRaw !== 'object') return source
+
+        return {
+          ...source,
+          // Prefer source fields when present, but fill missing metadata from half-deck detail.
+          cardSetNo: source?.cardSetNo ?? detailRaw?.cardSetNo ?? null,
+          cardSetName: source?.cardSetName ?? detailRaw?.cardSetName ?? null,
+          deckScore: source?.deckScore ?? detailRaw?.deckScore ?? detailRaw?.score ?? null,
+          elo: source?.elo ?? detailRaw?.elo ?? null,
+          cards:
+            (Array.isArray(source?.cards) && source.cards.length > 0 && source.cards) ||
+            (Array.isArray(detailRaw?.cards) && detailRaw.cards.length > 0 && detailRaw.cards) ||
+            source?.cards ||
+            [],
+        }
+      })
+    )
     const extractCards = (deckLike: any): any[] => {
       if (!deckLike) return []
       if (Array.isArray(deckLike.cardList) && deckLike.cardList.length > 0) return deckLike.cardList
@@ -343,6 +379,7 @@ const getDeckFromUpstream = async (deckId: string) => {
 
     return {
       ...raw,
+      myDecks: sourceDecks,
       cards,
       forgeborn: raw?.forgeborn || sourceForgeborn || null,
       forgebornId: raw?.forgebornId || raw?.forgeborn?.id || sourceForgebornId || null,
@@ -361,17 +398,78 @@ const isFusedDeck = (deck: any) => {
   return idCandidates.some((value) => /^fused[_-]/.test(value) || value.includes('deck_fused'))
 }
 
+const getSetLabel = (deckLike: any): string | null => {
+  const setName = deckLike?.cardSetName
+  if (typeof setName === 'string' && setName.trim()) return setName.trim()
+  const rawSetNo = deckLike?.cardSetNo
+  const normalize = (value: unknown): string | null => {
+    if (value === null || value === undefined) return null
+    const normalized = String(value).trim().toUpperCase()
+    if (!normalized) return null
+    if (/^[SB]\d+/.test(normalized)) return normalized
+    if (/^\d+$/.test(normalized)) return `S${normalized}`
+    return normalized
+  }
+
+  const normalizedFromDeck = normalize(rawSetNo)
+  if (normalizedFromDeck) return normalizedFromDeck
+
+  const cards =
+    (Array.isArray(deckLike?.cards) && deckLike.cards) ||
+    (Array.isArray(deckLike?.cardList) && deckLike.cardList) ||
+    []
+  const cardWithSet = cards.find((card: any) => card?.cardSetNo || card?.cardSetId || card?.SK || card?.sk)
+  const normalizedFromCards = normalize(cardWithSet?.cardSetNo || cardWithSet?.cardSetId || cardWithSet?.SK || cardWithSet?.sk)
+  if (normalizedFromCards) return normalizedFromCards
+
+  return null
+}
+
+const getRoundedScore = (deckLike: any): number | null => {
+  const raw =
+    deckLike?.deckScore ??
+    deckLike?.score ??
+    deckLike?.scoreValue ??
+    deckLike?.sffScore ??
+    null
+  const numeric = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(numeric) || numeric <= 0) return null
+  return Math.round(numeric * 100)
+}
+
+const getRoundedElo = (deckLike: any): number | null => {
+  const raw = deckLike?.elo ?? deckLike?.Elo ?? deckLike?.deckElo ?? null
+  const numeric = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(numeric) || numeric <= 0) return null
+  return Math.round(numeric)
+}
+
 const buildCardColumns = (deck: any): CardColumn[] => {
+  const extractCards = (deckLike: any): any[] => {
+    if (!deckLike) return []
+    if (Array.isArray(deckLike.cards) && deckLike.cards.length > 0) return deckLike.cards
+    if (Array.isArray(deckLike.cardList) && deckLike.cardList.length > 0) return deckLike.cardList
+    if (Array.isArray(deckLike.cardIds) && deckLike.cardIds.length > 0) return deckLike.cardIds
+    return []
+  }
+
   const sourceDecks =
     (Array.isArray(deck?.myDecks) && deck.myDecks.filter(Boolean)) ||
     (Array.isArray(deck?.decks) && deck.decks.filter(Boolean)) ||
     []
 
   if (sourceDecks.length >= 2) {
-    const columnsFromSources = sourceDecks.slice(0, 2).map((source: any, idx: number) => ({
-      title: source?.name ? String(source.name) : `Half ${idx + 1}`,
-      sections: buildCardSections(source),
-    }))
+    const columnsFromSources = sourceDecks.slice(0, 2).map((source: any, idx: number) => {
+      const normalizedSource = { ...source, cards: extractCards(source) }
+      return {
+        title: source?.name ? String(source.name) : `Half ${idx + 1}`,
+        sections: buildCardSections(normalizedSource),
+        factionIconPath: source?.faction ? `/images/icons/${String(source.faction).toLowerCase().trim()}.png` : null,
+        setLabel: getSetLabel(source),
+        score: getRoundedScore(source),
+        elo: getRoundedElo(source),
+      }
+    })
     const hasCardsInSources = columnsFromSources.some((column: CardColumn) =>
       column.sections.some((section: CardSection) => section.items.length > 0)
     )
@@ -389,15 +487,32 @@ const buildCardColumns = (deck: any): CardColumn[] => {
       {
         title: 'Half 1',
         sections: buildCardSections({ ...deck, cards: leftCards }),
+        factionIconPath: null,
+        setLabel: null,
+        score: null,
+        elo: null,
       },
       {
         title: 'Half 2',
         sections: buildCardSections({ ...deck, cards: rightCards }),
+        factionIconPath: null,
+        setLabel: null,
+        score: null,
+        elo: null,
       },
     ]
   }
 
-  return [{ title: null, sections: buildCardSections(deck) }]
+  return [
+    {
+      title: null,
+      sections: buildCardSections(deck),
+      factionIconPath: null,
+      setLabel: null,
+      score: null,
+      elo: null,
+    },
+  ]
 }
 
 const buildOgPayload = (deck: any): OgPayload => ({
@@ -466,7 +581,14 @@ type CardListEntry = {
   factionColor: string
 }
 type CardSection = { label: string; items: CardListEntry[] }
-type CardColumn = { title: string | null; sections: CardSection[] }
+type CardColumn = {
+  title: string | null
+  sections: CardSection[]
+  factionIconPath: string | null
+  setLabel: string | null
+  score: number | null
+  elo: number | null
+}
 
 const getFactionBadgeColor = (faction?: string): string => {
   switch (faction) {
@@ -880,11 +1002,12 @@ export async function GET(
 
   const cardIconPaths = Array.from(
     new Set(
-      cardColumns.flatMap((column) =>
-        column.sections.flatMap((section) =>
+      cardColumns.flatMap((column) => [
+        ...(column.factionIconPath ? [column.factionIconPath] : []),
+        ...column.sections.flatMap((section) =>
           section.items.flatMap((item) => [item.factionIconPath, item.rarityIconPath]).filter(Boolean)
-        )
-      )
+        ),
+      ])
     )
   ) as string[]
   const cardIconMap = new Map<string, string | null>()
@@ -1030,18 +1153,32 @@ export async function GET(
                 }}
               >
                 {showFusedColumns ? (
-                  <span
-                    style={{
-                      color: '#94a3b8',
-                      fontSize: 13,
-                      fontWeight: 700,
-                      letterSpacing: '0.04em',
-                      textTransform: 'uppercase',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {column.title || `Half ${columnIndex + 1}`}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    {column.factionIconPath ? (
+                      <img
+                        src={cardIconMap.get(column.factionIconPath) || resolveAssetUrl(column.factionIconPath) || ''}
+                        style={{ width: '16px', height: '16px', objectFit: 'contain' }}
+                      />
+                    ) : null}
+                    <span
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {[
+                        column.setLabel || 'Unknown Set',
+                        column.score !== null ? `Score ${column.score}` : null,
+                        column.elo !== null ? `ELO ${column.elo}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  </div>
                 ) : null}
                 {column.sections.map((section) => (
                   <div key={`${columnIndex}-${section.label}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
