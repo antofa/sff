@@ -314,3 +314,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a11f41c
   Request: Remove the forgeborn image from OG and render the forgeborn name and abilities in a vertical list instead.
   Date: 2026-02-04
+- Commit: 961dc7b
+  Request: Add 24-hour server caching for deck details opened in the modal (including fused halves and direct links) to avoid repeated API calls.
+  Date: 2026-02-04
