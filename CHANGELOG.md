@@ -48,6 +48,8 @@ Dates use UTC and roll over at 00:00 UTC.
 - Rework OG ability line rendering into flex-wrapped text/icon tokens so forgeborn ability text no longer overflows the right edge.
 - Redesign OG layout: move forgeborn abilities into a full-width top section and place the card list below it.
 - Render fused deck card lists in two columns (one half-deck per column) in OG previews.
+- Keep OG card names on a single line with ellipsis truncation instead of wrapping.
+- Unescape stray backslash-escaped quotes in OG forgeborn ability text.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

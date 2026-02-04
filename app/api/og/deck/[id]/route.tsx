@@ -69,7 +69,7 @@ const formatCardIdName = (cardId: string): string => {
 const getCardDisplayName = (card: any): string => {
   if (typeof card === 'string') return formatCardIdName(card)
   const name = card?.name || card?.Name || card?.cardName || card?.title || null
-  if (name) return String(name)
+  if (name) return String(name).replace(/\s+/g, ' ').trim()
   const fallbackId = card?.id || card?.cardId || card?.card_id
   return fallbackId ? formatCardIdName(String(fallbackId)) : 'Unknown Card'
 }
@@ -438,6 +438,9 @@ const stripMarkup = (value: string) => {
     })
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'")
+    .replace(/\\\\/g, '\\')
 
   return withIconText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }
@@ -1056,7 +1059,10 @@ export async function GET(
                           ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
                           : null
                         return (
-                          <div key={`${columnIndex}-${section.label}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div
+                            key={`${columnIndex}-${section.label}-${idx}`}
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', minWidth: 0 }}
+                          >
                             {factionIconSrc ? (
                               <img src={factionIconSrc} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
                             ) : (
@@ -1083,7 +1089,17 @@ export async function GET(
                                 }}
                               />
                             )}
-                            <span>{item.name}</span>
+                            <span
+                              style={{
+                                display: 'block',
+                                minWidth: 0,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {item.name}
+                            </span>
                           </div>
                         )
                       })}
