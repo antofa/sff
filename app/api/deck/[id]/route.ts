@@ -1,6 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchDeckDetails, normalizeDeck, getPlayerDecks } from '@/lib/api'
 
+const DECK_RESPONSE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+type DeckResponseCacheEntry = { expiresAt: number; data: { deck: any } }
+const deckResponseCache = new Map<string, DeckResponseCacheEntry>()
+
+const getDeckResponseCached = (key: string) => {
+  const entry = deckResponseCache.get(key)
+  if (!entry) return null
+  if (entry.expiresAt < Date.now()) {
+    deckResponseCache.delete(key)
+    return null
+  }
+  return entry.data
+}
+
+const setDeckResponseCached = (key: string, data: { deck: any }) => {
+  deckResponseCache.set(key, { expiresAt: Date.now() + DECK_RESPONSE_CACHE_TTL_MS, data })
+}
+
+const stripDeckPrefixes = (value: string) =>
+  value
+    .toString()
+    .replace(/^deck[_-]?fused[_-]?/i, '')
+    .replace(/^deck[_-]?/i, '')
+    .replace(/^fused[_-]?/i, '')
+
+const normalizeDeckCacheBase = (value: string) => {
+  const raw = value.toString().trim().toLowerCase()
+  return stripDeckPrefixes(raw) || raw
+}
+
 const mergeFromPlayerDecks = async (deck: any) => {
   const owner =
     deck?.playerName ||
@@ -71,15 +101,20 @@ export async function GET(
     return NextResponse.json({ error: 'Deck id is required' }, { status: 400 })
   }
 
+  const cacheBase = normalizeDeckCacheBase(deckId)
+  const cacheSuffix = `fast:${fast ? 1 : 0}|skip:${skipOwnerMerge ? 1 : 0}`
+  const regularCacheKey = `regular:${cacheBase}|${cacheSuffix}`
+  const fusedCacheKey = `fused:${cacheBase}|${cacheSuffix}`
+  const isFusedHint = /^fused[_-]?/i.test(deckId) || /^deck[_-]?fused[_-]?/i.test(deckId)
+  const cached =
+    getDeckResponseCached(isFusedHint ? fusedCacheKey : regularCacheKey) ??
+    getDeckResponseCached(isFusedHint ? regularCacheKey : fusedCacheKey)
+  if (cached) {
+    return NextResponse.json(cached)
+  }
+
   try {
     // Support multiple id formats: Deck_..., Deck_Fused_..., Fused_...
-    const stripDeckPrefixes = (value: string) =>
-      value
-        .toString()
-        .replace(/^deck[_-]?fused[_-]?/i, '')
-        .replace(/^deck[_-]?/i, '')
-        .replace(/^fused[_-]?/i, '')
-
     const toFusedApiId = (value: string) => {
       const raw = value.toString().trim()
       if (!raw) return raw
@@ -139,7 +174,9 @@ export async function GET(
             ;(deck as any).username = username
           }
           const enriched = skipOwnerMerge ? deck : await mergeFromPlayerDecks(deck)
-          return NextResponse.json({ deck: enriched })
+          const responseData = { deck: enriched }
+          setDeckResponseCached(regularCacheKey, responseData)
+          return NextResponse.json(responseData)
         } catch (e) {
           console.warn('[API] normalizeDeck failed, will try fused fallback:', e)
         }
@@ -355,7 +392,9 @@ export async function GET(
         }
       }
 
-      return NextResponse.json({ deck: enrichedFused })
+      const responseData = { deck: enrichedFused }
+      setDeckResponseCached(fusedCacheKey, responseData)
+      return NextResponse.json(responseData)
     }
 
     return NextResponse.json({ error: 'Deck not found' }, { status: 404 })
