@@ -461,3 +461,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: f18f27b
   Request: Fix third fused OG column wrapping so lines do not leave large empty gaps.
   Date: 2026-02-04
+- Commit: ec5e476
+  Request: In fused OG third column, stat icons disappeared and text overflowed right edge again; restore icons and constrain overflow.
+  Date: 2026-02-04
