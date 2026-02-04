@@ -308,3 +308,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 3908cbb
   Request: Remove the automatic changelog build date; set version 0.0.1 to January 30, 2026 and show it in the viewer's locale format.
   Date: 2026-02-04
+- Commit: fcf7608
+  Request: Speed up OG image generation so it completes within 2 seconds to avoid Discord timeouts.
+  Date: 2026-02-04
