@@ -22,6 +22,11 @@ Dates use UTC and roll over at 00:00 UTC.
 - Increase non-level icon sizes and align OG icons with text.
 - Show faction and rarity icons before each card name in the OG card list, matching the deck details modal style.
 - Insert a space before `+` in forgeborn ability text so stat boosts are easier to read in OG previews.
+- Split OG layout into two equal-width columns so card list and forgeborn ability text have balanced space.
+- Allow forgeborn ability text to wrap onto new lines in OG previews to avoid clipping at the right edge.
+- Insert a space before both `+` and `-` modifiers in forgeborn ability text.
+- Increase OG stat icon sizes (attack/health/armor) by 1.5x.
+- Increase OG card-list icon and font sizes by 1.5x for better readability.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

@@ -126,7 +126,7 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
 }
 
 const stripMarkup = (value: string) => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
-const normalizeForgebornAbilityText = (value: string) => value.replace(/([^\s])\+/g, '$1 +')
+const normalizeForgebornAbilityText = (value: string) => value.replace(/([^\s])([+-])(?=\d)/g, '$1 $2')
 type AbilityEntry = { title: string | null; text: string | null; level?: number | null }
 type CardListEntry = {
   name: string
@@ -291,12 +291,12 @@ const renderAbilityText = (
             <img
               src={iconSrc}
               style={{
-                width: '18px',
-                height: '18px',
+                width: '27px',
+                height: '27px',
                 objectFit: 'contain',
-                marginLeft: '4px',
+                marginLeft: '6px',
                 verticalAlign: 'middle',
-                transform: 'translateY(2px)',
+                transform: 'translateY(3px)',
               }}
             />
           </span>
@@ -330,7 +330,7 @@ const resolveForgebornName = (deck: any) => {
 const formatAbilityEntry = (ability: any): AbilityEntry | null => {
   if (!ability) return null
   if (typeof ability === 'string') {
-    const text = stripMarkup(ability)
+    const text = normalizeForgebornAbilityText(stripMarkup(ability))
     return text ? { title: null, text, level: null } : null
   }
   if (typeof ability !== 'object') return null
@@ -588,7 +588,7 @@ export async function GET(
           width: '1200px',
           height: '630px',
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'stretch',
           gap: '24px',
           padding: '24px 28px',
           backgroundColor: '#0f172a',
@@ -596,7 +596,9 @@ export async function GET(
       >
         <div
           style={{
-            width: '300px',
+            flex: 1,
+            minWidth: 0,
+            height: '100%',
             display: 'flex',
             flexDirection: 'column',
             gap: '14px',
@@ -618,7 +620,7 @@ export async function GET(
                 >
                   {section.label}
                 </span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: 18, lineHeight: 1.25 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: 27, lineHeight: 1.2 }}>
                   {section.items.map((item, idx) => {
                     const factionIconSrc = item.factionIconPath
                       ? cardIconMap.get(item.factionIconPath) || resolveAssetUrl(item.factionIconPath)
@@ -629,15 +631,15 @@ export async function GET(
                     return (
                       <div
                         key={`${section.label}-${idx}`}
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px', minHeight: '20px' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '9px', minHeight: '30px' }}
                       >
                         {factionIconSrc ? (
-                          <img src={factionIconSrc} style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+                          <img src={factionIconSrc} style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
                         ) : (
                           <span
                             style={{
-                              width: '16px',
-                              height: '16px',
+                              width: '24px',
+                              height: '24px',
                               borderRadius: '999px',
                               backgroundColor: item.factionColor,
                               opacity: 0.8,
@@ -645,12 +647,12 @@ export async function GET(
                           />
                         )}
                         {rarityIconSrc ? (
-                          <img src={rarityIconSrc} style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+                          <img src={rarityIconSrc} style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
                         ) : (
                           <span
                             style={{
-                              width: '16px',
-                              height: '16px',
+                              width: '24px',
+                              height: '24px',
                               borderRadius: '999px',
                               backgroundColor: item.factionColor,
                               opacity: 0.8,
@@ -671,17 +673,18 @@ export async function GET(
         <div
           style={{
             flex: 1,
+            minWidth: 0,
             height: '100%',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingLeft: '12px',
+            alignItems: 'stretch',
+            justifyContent: 'flex-start',
+            paddingLeft: '0',
           }}
         >
           <div
             style={{
-              width: '860px',
-              height: '560px',
+              width: '100%',
+              height: '100%',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'flex-start',
@@ -695,13 +698,13 @@ export async function GET(
             <div style={{ fontSize: 36, fontWeight: 700, lineHeight: 1.1 }}>
               {forgebornName || 'Forgeborn'}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 22, lineHeight: 1.3 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 22, lineHeight: 1.3, width: '100%' }}>
               {forgebornAbilities.length > 0 ? (
                 forgebornAbilities.map((ability, idx) => {
                   const levelIconSrc =
                     ability.level && levelIconMap.has(ability.level) ? levelIconMap.get(ability.level) : null
                   return (
-                    <div key={`ability-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div key={`ability-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
                       {levelIconSrc ? (
                         <img
                           src={levelIconSrc}
@@ -714,7 +717,19 @@ export async function GET(
                         />
                       ) : null}
                       {ability.text ? (
-                        <span>{renderAbilityText(ability.text, statIconMap, levelIconMap)}</span>
+                        <span
+                          style={{
+                            display: 'block',
+                            flex: 1,
+                            minWidth: 0,
+                            whiteSpace: 'normal',
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'break-word',
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {renderAbilityText(ability.text, statIconMap, levelIconMap)}
+                        </span>
                       ) : null}
                     </div>
                   )
