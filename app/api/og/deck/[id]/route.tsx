@@ -704,6 +704,11 @@ const renderAbilityText = (
   levelIconMap: Map<number, string | null>
 ) => {
   const normalizedText = normalizeForgebornAbilityText(String(text || ''))
+  if (!normalizedText) return null
+  // Keep ability rendering simple/stable for Satori: plain text avoids layout hangs.
+  if (statIconMap.size >= 0 && levelIconMap.size >= 0) {
+    return <span>{normalizedText}</span>
+  }
   const parts: Array<
     | { type: 'text'; value: string }
     | { type: 'level'; src: string }
@@ -743,10 +748,14 @@ const renderAbilityText = (
   }
 
   return (
-    <div style={{ display: 'block', width: '100%', wordBreak: 'break-word' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
       {parts.map((part, idx) => {
         if (part.type === 'text') {
-          return <span key={`text-${idx}`}>{part.value}</span>
+          return (
+            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap' }}>
+              {part.value}
+            </span>
+          )
         }
         if (part.type === 'level') {
           return (
@@ -764,7 +773,7 @@ const renderAbilityText = (
           )
         }
         return (
-          <span key={`stat-${idx}`} style={{ marginRight: '4px' }}>
+          <div key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', marginRight: '4px' }}>
             <span>{part.number}</span>
             <img
               src={part.src}
@@ -776,7 +785,7 @@ const renderAbilityText = (
                 transform: 'translateY(1px)',
               }}
             />
-          </span>
+          </div>
         )
       })}
     </div>
@@ -954,6 +963,11 @@ export async function GET(
 
   const loadIconSrc = async (url: string | null) => {
     if (!url) return null
+    // Avoid recursive/self fetches for local assets during OG rendering.
+    // Satori can consume these image URLs directly.
+    if (url.startsWith(`${origin}/images/`) || url.startsWith('/images/')) {
+      return url
+    }
     if (!forceRefresh) {
       const cached = iconSrcCache.get(url)
       if (cached) {
@@ -1113,11 +1127,11 @@ export async function GET(
                 {ability.text ? (
                   <div
                     style={{
-                      display: 'block',
+                      display: 'flex',
                       flex: 1,
-                      width: '100%',
                       minWidth: 0,
                       maxWidth: '100%',
+                      alignItems: 'flex-start',
                     }}
                   >
                     {renderAbilityText(ability.text, statIconMap, levelIconMap)}
