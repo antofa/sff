@@ -323,3 +323,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: fffb4e4
   Request: Remove the local card database fallback and split the changelog into 0.0.1 (through Jan 30) and 0.0.2 for new changes.
   Date: 2026-02-04
+- Commit: 6a606c0
+  Request: Download level 1-4 icons and use them before forgeborn ability levels in OG images.
+  Date: 2026-02-04
