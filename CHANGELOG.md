@@ -58,6 +58,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Scale all fused OG typography up by 20% for better readability.
 - Redesign fused OG layout into three equal columns: half-deck 1, half-deck 2, and forgeborn details.
 - Force explicit 33.33% widths for fused OG columns to prevent single-column overlap rendering.
+- Increase fused OG typography by another 20% to improve readability in the 3-column layout.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
