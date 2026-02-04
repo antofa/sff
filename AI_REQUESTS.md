@@ -419,3 +419,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 1075fb1
   Request: Increase all fonts in fused OG images by 20%.
   Date: 2026-02-04
+- Commit: 05ad24f
+  Request: In fused OG image, remove the deck name and keep only the forgeborn name in the title.
+  Date: 2026-02-04
