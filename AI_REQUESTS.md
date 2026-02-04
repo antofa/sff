@@ -329,3 +329,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: c8faee7
   Request: Diagnose why forgeborn abilities were missing and render them from deck JSON fields.
   Date: 2026-02-04
+- Commit: a420be3
+  Request: Render OG ability text on the same line as the level icon without repeating the level label.
+  Date: 2026-02-04
