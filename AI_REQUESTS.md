@@ -380,6 +380,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a2760c9
   Request: Do you see the forgeborn ability rendering issue (overlap and clipping in OG)? Finish fixing it.
   Date: 2026-02-04
+- Commit: 9a4b339
+  Request: For this OG URL, forgeborn ability text still goes past the right edge; fix wrapping/clipping.
+  Date: 2026-02-04
 - Commit: 3220e01
   Request: [2026-02-04T09:33:14.241Z] Error: Failed to find Server Action "x". This request might be from an older or newer deployment.
   Date: 2026-02-04
