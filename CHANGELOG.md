@@ -27,6 +27,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Insert a space before both `+` and `-` modifiers in forgeborn ability text.
 - Increase OG stat icon sizes (attack/health/armor) by 1.5x.
 - Increase OG card-list icon and font sizes by 1.5x for better readability.
+- Add hard OG request/read timeouts so slow deck/icon fetches fall back instead of hanging the image response.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

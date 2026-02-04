@@ -113,15 +113,38 @@ const buildCardSections = (deck: any) => {
 const OG_DECK_TIMEOUT_MS = 1200
 const OG_ICON_TIMEOUT_MS = 500
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => resolve(fallback), timeoutMs)
+  })
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
+
 const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number) => {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  const abortLater = setTimeout(() => {
+    try {
+      controller.abort()
+    } catch {
+      // ignore
+    }
+  }, timeoutMs)
   try {
-    return await fetch(url, { ...init, signal: controller.signal })
+    const response = await withTimeout(
+      fetch(url, { ...init, signal: controller.signal }).catch(() => null),
+      timeoutMs,
+      null
+    )
+    return response
   } catch {
     return null
   } finally {
-    clearTimeout(timeoutId)
+    clearTimeout(abortLater)
   }
 }
 
@@ -471,7 +494,7 @@ export async function GET(
       OG_DECK_TIMEOUT_MS
     )
     if (res?.ok) {
-      const json = await res.json()
+      const json = await withTimeout(res.json().catch(() => null), OG_DECK_TIMEOUT_MS, null)
       const deck = json?.deck
       forgebornName = resolveForgebornName(deck)
       forgebornAbilities = collectForgebornAbilities(deck).slice(0, 3)
@@ -509,7 +532,8 @@ export async function GET(
         OG_ICON_TIMEOUT_MS
       )
       if (iconRes?.ok) {
-        return { url, data: await iconRes.arrayBuffer() }
+        const data = await withTimeout(iconRes.arrayBuffer().catch(() => null), OG_ICON_TIMEOUT_MS, null)
+        return { url, data }
       }
     } catch {
       // ignore
@@ -723,8 +747,6 @@ export async function GET(
                             flex: 1,
                             minWidth: 0,
                             whiteSpace: 'normal',
-                            overflowWrap: 'anywhere',
-                            wordBreak: 'break-word',
                             lineHeight: 1.35,
                           }}
                         >
