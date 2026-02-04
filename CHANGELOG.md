@@ -19,6 +19,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Replace A/H/D stat letters with attack/health/armor icons in OG ability text.
 - Replace `[l1]`–`[l4]` tokens in OG ability text with level icons.
 - Show the full non-forgeborn card list in the OG left column instead of deck stats.
+- Increase non-level icon sizes and align OG icons with text.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

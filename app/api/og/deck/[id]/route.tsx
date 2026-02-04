@@ -135,6 +135,7 @@ const renderAbilityText = (
               height: '16px',
               objectFit: 'contain',
               verticalAlign: 'middle',
+              transform: 'translateY(1px)',
             }}
           />
         )
@@ -150,11 +151,12 @@ const renderAbilityText = (
             <img
               src={iconSrc}
               style={{
-                width: '16px',
-                height: '16px',
+                width: '18px',
+                height: '18px',
                 objectFit: 'contain',
                 marginLeft: '4px',
                 verticalAlign: 'middle',
+                transform: 'translateY(2px)',
               }}
             />
           </span>
@@ -501,7 +503,12 @@ export async function GET(
                       {levelIconSrc ? (
                         <img
                           src={levelIconSrc}
-                          style={{ width: '18px', height: '18px', objectFit: 'contain' }}
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            objectFit: 'contain',
+                            transform: 'translateY(1px)',
+                          }}
                         />
                       ) : null}
                       {ability.text ? (
