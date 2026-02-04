@@ -1281,7 +1281,17 @@ export async function GET(
           >
             <div style={{ display: 'flex', width: '33.3333%', minWidth: 0 }}>{renderCardColumn(cardColumns[0], 0)}</div>
             <div style={{ display: 'flex', width: '33.3333%', minWidth: 0 }}>{renderCardColumn(cardColumns[1], 1)}</div>
-            <div style={{ width: '33.3333%', minWidth: 0 }}>{renderForgebornBlock()}</div>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'stretch',
+                width: '33.3333%',
+                minWidth: 0,
+              }}
+            >
+              {renderForgebornBlock()}
+            </div>
           </div>
         ) : (
           <>
