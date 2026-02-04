@@ -73,6 +73,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Rebalance fused OG column widths to make the third (forgeborn) column narrower while preserving readable text and icon layout.
 - Set fused OG column ratios to 1.1 / 1.1 / 1.0 and smooth third-column wrapping with less aggressive word breaks.
 - Improve fused third-column line wrapping by rendering ability text as inline flow (no flex token wrapping) and stripping leftover `[l*]` markers.
+- Fix fused third-column stat icon rendering and reapply hard width constraints to prevent right-edge overflow.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

@@ -728,13 +728,17 @@ const renderAbilityText = (
   }
 
   return (
-    <span style={{ whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'break-word' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', width: '100%', minWidth: 0, maxWidth: '100%' }}>
       {parts.map((part, idx) => {
         if (part.type === 'text') {
-          return <span key={`text-${idx}`}>{part.value}</span>
+          return (
+            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {part.value}
+            </span>
+          )
         }
         return (
-          <span key={`stat-${idx}`} style={{ marginRight: '4px' }}>
+          <div key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', marginRight: '4px' }}>
             <span>{part.number}</span>
             <img
               src={part.src}
@@ -746,10 +750,10 @@ const renderAbilityText = (
                 transform: 'translateY(1px)',
               }}
             />
-          </span>
+          </div>
         )
       })}
-    </span>
+    </div>
   )
 }
 
@@ -1055,6 +1059,7 @@ export async function GET(
         minWidth: 0,
         width: '100%',
         flex: 1,
+        paddingRight: showFusedColumns ? '6px' : '0',
       }}
     >
       <div style={{ fontSize: forgebornTitleFont, fontWeight: 700, lineHeight: 1.1 }}>{forgebornName || 'Forgeborn'}</div>
@@ -1092,6 +1097,7 @@ export async function GET(
                       minWidth: 0,
                       maxWidth: '100%',
                       alignItems: 'flex-start',
+                      overflow: 'hidden',
                     }}
                   >
                     {renderAbilityText(ability.text, statIconMap, levelIconMap)}
@@ -1262,6 +1268,7 @@ export async function GET(
                 alignItems: 'stretch',
                 flex: 1.0,
                 minWidth: 0,
+                overflow: 'hidden',
               }}
             >
               {renderForgebornBlock()}
