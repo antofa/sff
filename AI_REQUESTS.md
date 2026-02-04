@@ -437,3 +437,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 2d70745
   Request: OG returns 500 due to unsupported CSS display:inline-block in ability rendering; remove unsupported styles.
   Date: 2026-02-04
+- Commit: dd61336
+  Request: The fused OG URL does not load; continue and fix the rendering stall.
+  Date: 2026-02-04
