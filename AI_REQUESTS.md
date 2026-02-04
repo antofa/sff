@@ -338,3 +338,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: db64428
   Request: Fix OG render failure caused by unsupported inline-flex in ability text rendering.
   Date: 2026-02-04
+- Commit: fc78c56
+  Request: Replace [l1]-[l4] tokens in forgeborn ability text with level icons in OG images.
+  Date: 2026-02-04
