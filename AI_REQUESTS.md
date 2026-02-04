@@ -326,3 +326,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 6a606c0
   Request: Download level 1-4 icons and use them before forgeborn ability levels in OG images.
   Date: 2026-02-04
+- Commit: c8faee7
+  Request: Diagnose why forgeborn abilities were missing and render them from deck JSON fields.
+  Date: 2026-02-04
