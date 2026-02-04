@@ -57,6 +57,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Show fused deck name in parentheses next to the forgeborn name in OG previews.
 - Scale all fused OG typography up by 20% for better readability.
 - Redesign fused OG layout into three equal columns: half-deck 1, half-deck 2, and forgeborn details.
+- Force explicit 33.33% widths for fused OG columns to prevent single-column overlap rendering.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

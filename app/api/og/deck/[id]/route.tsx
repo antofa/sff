@@ -1257,19 +1257,29 @@ export async function GET(
           width: '1200px',
           height: '630px',
           display: 'flex',
-          flexDirection: showFusedColumns ? 'row' : 'column',
+          flexDirection: 'column',
           alignItems: 'stretch',
-          gap: showFusedColumns ? '18px' : '8px',
+          gap: '8px',
           padding: '20px 24px',
           backgroundColor: '#0f172a',
         }}
       >
         {showFusedColumns ? (
-          <>
-            {renderCardColumn(cardColumns[0], 0)}
-            {renderCardColumn(cardColumns[1], 1)}
-            <div style={{ display: 'flex', flex: 1, minWidth: 0 }}>{renderForgebornBlock()}</div>
-          </>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'stretch',
+              gap: '18px',
+              width: '100%',
+              height: '100%',
+              minHeight: 0,
+            }}
+          >
+            <div style={{ display: 'flex', width: '33.3333%', minWidth: 0 }}>{renderCardColumn(cardColumns[0], 0)}</div>
+            <div style={{ display: 'flex', width: '33.3333%', minWidth: 0 }}>{renderCardColumn(cardColumns[1], 1)}</div>
+            <div style={{ display: 'flex', width: '33.3333%', minWidth: 0 }}>{renderForgebornBlock()}</div>
+          </div>
         ) : (
           <>
             {renderForgebornBlock()}
