@@ -383,6 +383,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 9a4b339
   Request: For this OG URL, forgeborn ability text still goes past the right edge; fix wrapping/clipping.
   Date: 2026-02-04
+- Commit: 4e63e43
+  Request: Make forgeborn abilities a full-width top section in OG; move card list below; for fused decks render card list in two columns (one half per column).
+  Date: 2026-02-04
 - Commit: 3220e01
   Request: [2026-02-04T09:33:14.241Z] Error: Failed to find Server Action "x". This request might be from an older or newer deployment.
   Date: 2026-02-04
