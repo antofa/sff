@@ -344,3 +344,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 0819077
   Request: Replace the OG left column stats with the non-forgeborn card list like the modal.
   Date: 2026-02-04
+- Commit: ad17201
+  Request: Make OG stat icons slightly larger (except level icons) and align all icons with text.
+  Date: 2026-02-04
