@@ -347,3 +347,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ad17201
   Request: Make OG stat icons slightly larger (except level icons) and align all icons with text.
   Date: 2026-02-04
+- Commit: 51c4272
+  Request: In the OG image, add icons before each card name like in the modal, and add a space before `+` in forgeborn ability text.
+  Date: 2026-02-04
