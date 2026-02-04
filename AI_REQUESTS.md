@@ -458,3 +458,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: b742f89
   Request: Set fused OG column widths to 1.1 / 1.1 / 1.0 and make third-column text wrapping normal.
   Date: 2026-02-04
+- Commit: f18f27b
+  Request: Fix third fused OG column wrapping so lines do not leave large empty gaps.
+  Date: 2026-02-04
