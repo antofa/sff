@@ -43,37 +43,62 @@ const getCardDisplayName = (card: any): string => {
   return fallbackId ? formatCardIdName(String(fallbackId)) : 'Unknown Card'
 }
 
+const getCardListEntry = (deck: any, card: any) => {
+  const cardData = typeof card === 'object' && card ? card : null
+  const cardId = cardData?.id || cardData?.cardId || cardData?.card_id || undefined
+  const isBetrayer = cardData?.betrayer === true || cardData?.betrayer === 'true'
+  const factionForIcon =
+    (isBetrayer && cardData?.crossFaction ? cardData.crossFaction : cardData?.faction) || deck?.faction
+  const factionLower = String(factionForIcon || '').toLowerCase().trim()
+  const rarity = cardData?.rarity || null
+  const isForgeborn =
+    String(cardData?.type || cardData?.cardType || '')
+      .toLowerCase()
+      .includes('forgeborn') || String(cardData?.rarity || '').toLowerCase().includes('forgeborn')
+
+  return {
+    name: getCardDisplayName(card),
+    factionIconPath: factionLower ? `/images/icons/${factionLower}.png` : null,
+    rarityIconPath: !isForgeborn
+      ? getRarityIconPath(deck?.cardSetNo, rarity, cardId ? String(cardId) : undefined, cardData)
+      : null,
+    factionColor: getFactionBadgeColor(
+      typeof factionForIcon === 'string' ? factionForIcon : typeof deck?.faction === 'string' ? deck.faction : undefined
+    ),
+  }
+}
+
 const buildCardSections = (deck: any) => {
   const cards = Array.isArray(deck?.cards) ? deck.cards : []
   const forgebornId = deck?.forgeborn?.id || deck?.forgebornId
-  const creatures: string[] = []
-  const spells: string[] = []
-  const solbind: string[] = []
-  const other: string[] = []
+  const creatures: CardListEntry[] = []
+  const spells: CardListEntry[] = []
+  const solbind: CardListEntry[] = []
+  const other: CardListEntry[] = []
 
   cards.forEach((card: any) => {
     if (isForgebornCard(card, forgebornId)) return
-    const name = getCardDisplayName(card)
+    const entry = getCardListEntry(deck, card)
     const typeValue = typeof card === 'string' ? '' : card?.type || card?.cardType || ''
     const rarityValue = typeof card === 'string' ? '' : card?.rarity || ''
     const typeLower = String(typeValue).toLowerCase()
     const rarityLower = String(rarityValue).toLowerCase()
     if (typeLower.includes('creature')) {
-      creatures.push(name)
+      creatures.push(entry)
       return
     }
     if (typeLower.includes('spell')) {
-      spells.push(name)
+      spells.push(entry)
       return
     }
     if (typeLower.includes('solbind') || rarityLower.includes('solbind')) {
-      solbind.push(name)
+      solbind.push(entry)
       return
     }
-    other.push(name)
+    other.push(entry)
   })
 
-  const sections: Array<{ label: string; items: string[] }> = []
+  const sections: CardSection[] = []
   const hasTyped = creatures.length > 0 || spells.length > 0 || solbind.length > 0
   if (hasTyped) {
     if (creatures.length > 0) sections.push({ label: `Creatures (${creatures.length})`, items: creatures })
@@ -101,24 +126,139 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
 }
 
 const stripMarkup = (value: string) => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+const normalizeForgebornAbilityText = (value: string) => value.replace(/([^\s])\+/g, '$1 +')
 type AbilityEntry = { title: string | null; text: string | null; level?: number | null }
+type CardListEntry = {
+  name: string
+  factionIconPath: string | null
+  rarityIconPath: string | null
+  factionColor: string
+}
+type CardSection = { label: string; items: CardListEntry[] }
+
+const getFactionBadgeColor = (faction?: string): string => {
+  switch (faction) {
+    case 'Alloyin':
+      return '#06b6d4'
+    case 'Uterra':
+      return '#14b8a6'
+    case 'Tempys':
+      return '#f97316'
+    case 'Nekrium':
+      return '#a855f7'
+    default:
+      return '#6b7280'
+  }
+}
+
+const normalizeRarityLabel = (rarity?: string | null): string | null => {
+  if (!rarity) return null
+  let normalized = rarity.trim()
+  const lower = normalized.toLowerCase()
+  if (lower === 'common common' || lower.match(/^common\s+common$/)) {
+    normalized = 'CommonCommon'
+  } else if (lower === 'rare rare' || lower.match(/^rare\s+rare$/)) {
+    normalized = 'RareRare'
+  } else if (lower.includes('darkforge') && lower.includes('rare')) {
+    normalized = 'DarkforgeRare'
+  } else if (lower.match(/^rare\s+common$/i) || (lower.startsWith('rare') && lower.includes('common') && !lower.startsWith('common'))) {
+    normalized = 'RareCommon'
+  } else if (lower.match(/^common\s+rare$/i) || (lower.startsWith('common') && lower.includes('rare'))) {
+    normalized = 'CommonRare'
+  } else if (lower.includes('common') && lower.includes('rare')) {
+    normalized = 'CommonRare'
+  } else if (lower.includes('common') && !lower.includes('rare')) {
+    normalized = 'Common'
+  } else if (lower.includes('rare') && !lower.includes('common')) {
+    normalized = 'Rare'
+  } else if (lower.includes('darkforge')) {
+    normalized = 'Darkforge'
+  } else if (lower.includes('ls') || lower.includes('legendary')) {
+    normalized = 'LS'
+  } else if (lower.includes('solbind')) {
+    normalized = 'Solbind'
+  }
+  return normalized
+}
+
+const getRarityIconPath = (
+  cardSetNo?: string | number,
+  rarity?: string,
+  cardId?: string,
+  cardData?: any
+): string | null => {
+  const normalizedRarity = normalizeRarityLabel(rarity)
+  if (!normalizedRarity) return null
+
+  let cardSet: string | undefined
+  if (cardData) {
+    cardSet = cardData.cardSetId || cardData.CardSetId || cardData.SK || cardData.sk
+    if (cardSet) {
+      cardSet = String(cardSet).toLowerCase().trim()
+    }
+  }
+  if (!cardSet && cardSetNo) {
+    cardSet = String(cardSetNo).toLowerCase().trim()
+  }
+  if (!cardSet && cardId) {
+    if (/^b3_/i.test(cardId)) {
+      cardSet = 'b3'
+    } else if (/^b2_/i.test(cardId)) {
+      cardSet = 'b2'
+    } else if (/^b1_/i.test(cardId)) {
+      cardSet = 'b1'
+    } else {
+      const match = cardId.match(/^s(\d+)/i)
+      if (match && match[1]) {
+        cardSet = `s${match[1]}`
+      }
+    }
+  }
+
+  const isB3Set =
+    (cardSet && (cardSet.toUpperCase() === 'B3' || cardSet === 'b3')) ||
+    (cardId && /^b3_/i.test(cardId))
+  const isB2Set =
+    (cardSet && (cardSet.toUpperCase() === 'B2' || cardSet === 'b2')) ||
+    (cardId && /^b2_/i.test(cardId))
+  const isB1Set =
+    (cardSet && (cardSet.toUpperCase() === 'B1' || cardSet === 'b1')) ||
+    (cardId && /^b1_/i.test(cardId))
+
+  if (isB3Set) return `/images/icons/rarity/B3_${normalizedRarity}.png`
+  if (isB2Set) return `/images/icons/rarity/B2_${normalizedRarity}.png`
+  if (isB1Set) return `/images/icons/rarity/B1_${normalizedRarity}.png`
+
+  let setNo = '1'
+  if (cardSet) {
+    const match = cardSet.match(/^s?(\d+)/i)
+    if (match && match[1]) {
+      setNo = match[1]
+    } else {
+      setNo = cardSet
+    }
+  }
+  if (setNo === '99') setNo = '1'
+  return `/images/icons/rarity/S${setNo}_${normalizedRarity}.png`
+}
 
 const renderAbilityText = (
   text: string,
   statIconMap: Map<string, string | null>,
   levelIconMap: Map<number, string | null>
 ) => {
+  const normalizedText = normalizeForgebornAbilityText(text)
   const parts: Array<string | ReactNode> = []
   const pattern = /(\[l([1-4])\])|([+-]?\d+)([ADH])/gi
   let lastIndex = 0
   let match: RegExpExecArray | null
   let keyIndex = 0
 
-  while ((match = pattern.exec(text)) !== null) {
+  while ((match = pattern.exec(normalizedText)) !== null) {
     const [full, levelToken, levelNumber, number, stat] = match
     const start = match.index
     if (start > lastIndex) {
-      parts.push(text.slice(lastIndex, start))
+      parts.push(normalizedText.slice(lastIndex, start))
     }
     if (levelToken) {
       const level = Number(levelNumber)
@@ -166,8 +306,8 @@ const renderAbilityText = (
     lastIndex = start + full.length
   }
 
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex))
+  if (lastIndex < normalizedText.length) {
+    parts.push(normalizedText.slice(lastIndex))
   }
 
   return parts
@@ -213,7 +353,7 @@ const formatAbilityEntry = (ability: any): AbilityEntry | null => {
     ability?.['2text'] ||
     ability?.['3text'] ||
     null
-  const text = rawText ? stripMarkup(String(rawText)) : null
+  const text = rawText ? normalizeForgebornAbilityText(stripMarkup(String(rawText))) : null
   if (!title && !text) return null
   return { title: title ? String(title).trim() : null, text, level }
 }
@@ -315,7 +455,7 @@ export async function GET(
   const deckId = id || ''
   const origin = new URL(request.url).origin
 
-  let cardSections: Array<{ label: string; items: string[] }> = []
+  let cardSections: CardSection[] = []
   let forgebornName: string | null = null
   let forgebornAbilities: AbilityEntry[] = []
 
@@ -351,6 +491,12 @@ export async function GET(
     return btoa(binary)
   }
 
+  const resolveAssetUrl = (url: string | null) => {
+    if (!url) return null
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url
+    return `${origin}${url.startsWith('/') ? '' : '/'}${url}`
+  }
+
   const loadIcon = async (url: string | null) => {
     if (!url) return { url: null, data: null }
     try {
@@ -369,6 +515,23 @@ export async function GET(
       // ignore
     }
     return { url, data: null }
+  }
+
+  const cardIconPaths = Array.from(
+    new Set(
+      cardSections.flatMap((section) =>
+        section.items.flatMap((item) => [item.factionIconPath, item.rarityIconPath]).filter(Boolean)
+      )
+    )
+  ) as string[]
+  const cardIconMap = new Map<string, string | null>()
+  if (cardIconPaths.length > 0) {
+    const loaded = await Promise.all(cardIconPaths.map((path) => loadIcon(resolveAssetUrl(path))))
+    loaded.forEach((item, idx) => {
+      const path = cardIconPaths[idx]
+      const src = item.data ? `data:image/png;base64,${toBase64(item.data)}` : item.url || resolveAssetUrl(path)
+      cardIconMap.set(path, src || null)
+    })
   }
 
   const abilityLevels = new Set<number>()
@@ -456,9 +619,48 @@ export async function GET(
                   {section.label}
                 </span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: 18, lineHeight: 1.25 }}>
-                  {section.items.map((name, idx) => (
-                    <span key={`${section.label}-${idx}`}>• {name}</span>
-                  ))}
+                  {section.items.map((item, idx) => {
+                    const factionIconSrc = item.factionIconPath
+                      ? cardIconMap.get(item.factionIconPath) || resolveAssetUrl(item.factionIconPath)
+                      : null
+                    const rarityIconSrc = item.rarityIconPath
+                      ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
+                      : null
+                    return (
+                      <div
+                        key={`${section.label}-${idx}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', minHeight: '20px' }}
+                      >
+                        {factionIconSrc ? (
+                          <img src={factionIconSrc} style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+                        ) : (
+                          <span
+                            style={{
+                              width: '16px',
+                              height: '16px',
+                              borderRadius: '999px',
+                              backgroundColor: item.factionColor,
+                              opacity: 0.8,
+                            }}
+                          />
+                        )}
+                        {rarityIconSrc ? (
+                          <img src={rarityIconSrc} style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+                        ) : (
+                          <span
+                            style={{
+                              width: '16px',
+                              height: '16px',
+                              borderRadius: '999px',
+                              backgroundColor: item.factionColor,
+                              opacity: 0.8,
+                            }}
+                          />
+                        )}
+                        <span>{item.name}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             ))
