@@ -350,3 +350,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 51c4272
   Request: In the OG image, add icons before each card name like in the modal, and add a space before `+` in forgeborn ability text.
   Date: 2026-02-04
+- Commit: 9b6ec79
+  Request: Make both OG image columns equal width, wrap forgeborn ability text to avoid right-edge clipping, add spaces before `+` and `-` in forgeborn abilities, increase attack/health/armor icons by 1.5x, and increase card-list icon/font sizes by 1.5x.
+  Date: 2026-02-04
