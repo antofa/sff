@@ -13,6 +13,7 @@
     "lint": "./run-with-nvm.sh npx eslint ."
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.982.0",
     "@mantine/core": "^8.3.9",
     "@mantine/hooks": "^8.3.9",
     "@mantine/notifications": "^8.3.9",
