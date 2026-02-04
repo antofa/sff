@@ -335,3 +335,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 6efd966
   Request: Download armor/attack/health icons and replace A/H/D letters with icons in OG forgeborn abilities.
   Date: 2026-02-04
+- Commit: db64428
+  Request: Fix OG render failure caused by unsupported inline-flex in ability text rendering.
+  Date: 2026-02-04
