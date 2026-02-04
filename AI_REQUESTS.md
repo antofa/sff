@@ -365,3 +365,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a3cf189
   Request: Enable sliding expiration for icon cache TTL (refresh TTL on icon use).
   Date: 2026-02-04
+- Commit: 904221b
+  Request: Implement the Netlify + Cloudflare R2 plan: prewarm OG on deck open, keep OG cached for a day, and serve Discord from cache instead of rendering from scratch.
+  Date: 2026-02-04
