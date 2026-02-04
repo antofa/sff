@@ -696,30 +696,45 @@ const getRarityIconPath = (
 const renderAbilityText = (
   text: string,
   statIconMap: Map<string, string | null>,
-  _levelIconMap: Map<number, string | null>
+  levelIconMap: Map<number, string | null>
 ) => {
   const normalizedText = normalizeForgebornAbilityText(String(text || ''))
   if (!normalizedText) return null
   const parts: Array<
     | { type: 'text'; value: string }
     | { type: 'stat'; src: string; number: string }
+    | { type: 'level'; src: string; level: string }
   > = []
-  const pattern = /([+-]?\d+)([ADH])/gi
+  const pattern = /(\[(?:l)?([1-4])\]|([+-]?\d+)\s*([ADH]))/gi
   let lastIndex = 0
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(normalizedText)) !== null) {
-    const [full, number, stat] = match
+    const [full, _token, levelValue, numberValue, statValue] = match
     const start = match.index
     if (start > lastIndex) {
       parts.push({ type: 'text', value: normalizedText.slice(lastIndex, start) })
     }
-    const iconSrc = statIconMap.get(stat) || null
-    if (!iconSrc) {
-      parts.push({ type: 'text', value: full })
+
+    if (levelValue) {
+      const level = Number(levelValue)
+      const iconSrc = Number.isFinite(level) ? levelIconMap.get(level) || null : null
+      if (!iconSrc) {
+        parts.push({ type: 'text', value: full })
+      } else {
+        parts.push({ type: 'level', src: iconSrc, level: levelValue })
+      }
     } else {
-      parts.push({ type: 'stat', src: iconSrc, number })
+      const number = numberValue || ''
+      const stat = (statValue || '').toUpperCase()
+      const iconSrc = statIconMap.get(stat) || null
+      if (!iconSrc || !number) {
+        parts.push({ type: 'text', value: full })
+      } else {
+        parts.push({ type: 'stat', src: iconSrc, number })
+      }
     }
+
     lastIndex = start + full.length
   }
 
@@ -728,17 +743,40 @@ const renderAbilityText = (
   }
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', width: '100%', minWidth: 0, maxWidth: '100%' }}>
+    <div
+      style={{
+        display: 'block',
+        width: '100%',
+        minWidth: 0,
+        maxWidth: '100%',
+        whiteSpace: 'normal',
+        wordBreak: 'break-word',
+      }}
+    >
       {parts.map((part, idx) => {
         if (part.type === 'text') {
           return (
-            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            <span key={`text-${idx}`}>
               {part.value}
             </span>
           )
         }
+        if (part.type === 'level') {
+          return (
+            <img
+              key={`level-${idx}`}
+              src={part.src}
+              style={{
+                width: '18px',
+                height: '18px',
+                objectFit: 'contain',
+                transform: 'translateY(3px)',
+              }}
+            />
+          )
+        }
         return (
-          <div key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', marginRight: '4px' }}>
+          <span key={`stat-${idx}`} style={{ whiteSpace: 'nowrap' }}>
             <span>{part.number}</span>
             <img
               src={part.src}
@@ -750,7 +788,7 @@ const renderAbilityText = (
                 transform: 'translateY(1px)',
               }}
             />
-          </div>
+          </span>
         )
       })}
     </div>
@@ -918,7 +956,10 @@ export async function GET(
   const payload = await getOgPayload(deckId, { forceRefresh })
   const cardColumns = payload.cardColumns
   const forgebornName = payload.forgebornName
-  const forgebornAbilities = payload.forgebornAbilities
+  const forgebornAbilities = payload.forgebornAbilities.map((ability, index) => ({
+    ...ability,
+    level: ability.level ?? (index < 3 ? index + 2 : null),
+  }))
 
   const resolveAssetUrl = (url: string | null) => {
     if (!url) return null
@@ -997,7 +1038,7 @@ export async function GET(
   }
 
   const abilityLevels = new Set<number>()
-  const levelTokenPattern = /\[l([1-4])\]/gi
+  const levelTokenPattern = /\[(?:l)?([1-4])\]/gi
   forgebornAbilities.forEach((ability) => {
     const level = ability.level
     if (level && level >= 1 && level <= 4) {
@@ -1013,6 +1054,7 @@ export async function GET(
       }
     }
   })
+  forgebornAbilities.slice(0, 3).forEach((_, idx) => abilityLevels.add(idx + 2))
   const levelIconEntries = Array.from(abilityLevels)
     .sort((a, b) => a - b)
     .map((level) => ({ level, url: `${origin}/images/icons/levels/lv${level}-icon.png` }))
@@ -1075,7 +1117,10 @@ export async function GET(
       >
         {forgebornAbilities.length > 0 ? (
           forgebornAbilities.map((ability, idx) => {
-            const levelIconSrc = ability.level && levelIconMap.has(ability.level) ? levelIconMap.get(ability.level) : null
+            const level =
+              ability.level && ability.level >= 1 && ability.level <= 4 ? ability.level : idx < 3 ? idx + 2 : null
+            const levelIconSrc =
+              level !== null ? levelIconMap.get(level) || resolveAssetUrl(`/images/icons/levels/lv${level}-icon.png`) : null
             return (
               <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', gap: '8px' }}>
                 {levelIconSrc ? (
@@ -1092,11 +1137,10 @@ export async function GET(
                 {ability.text ? (
                   <div
                     style={{
-                      display: 'flex',
+                      display: 'block',
                       flex: 1,
                       minWidth: 0,
                       maxWidth: '100%',
-                      alignItems: 'flex-start',
                       overflow: 'hidden',
                     }}
                   >
