@@ -1067,6 +1067,8 @@ export async function GET(
 
   const hasCardSections = cardColumns.some((column) => column.sections.length > 0)
   const showFusedColumns = cardColumns.length > 1
+  const fusedFontScale = showFusedColumns ? 1.2 : 1
+  const scaleFont = (size: number) => Math.round(size * fusedFontScale * 10) / 10
 
   const imageResponse = new ImageResponse(
     (
@@ -1091,10 +1093,19 @@ export async function GET(
             fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
           }}
         >
-          <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1.1 }}>
+          <div style={{ fontSize: scaleFont(40), fontWeight: 700, lineHeight: 1.1 }}>
             {(forgebornName || 'Forgeborn') + (showFusedColumns && deckName ? ` (${deckName})` : '')}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 20, lineHeight: 1.25, width: '100%' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              fontSize: scaleFont(20),
+              lineHeight: 1.25,
+              width: '100%',
+            }}
+          >
             {forgebornAbilities.length > 0 ? (
               forgebornAbilities.map((ability, idx) => {
                 const levelIconSrc =
@@ -1129,7 +1140,7 @@ export async function GET(
                 )
               })
             ) : (
-              <div style={{ color: '#94a3b8', fontSize: 20 }}>Abilities unavailable</div>
+              <div style={{ color: '#94a3b8', fontSize: scaleFont(20) }}>Abilities unavailable</div>
             )}
           </div>
         </div>
@@ -1168,7 +1179,7 @@ export async function GET(
                     <span
                       style={{
                         color: '#94a3b8',
-                        fontSize: 13,
+                        fontSize: scaleFont(13),
                         fontWeight: 700,
                         letterSpacing: '0.04em',
                         textTransform: 'uppercase',
@@ -1190,7 +1201,7 @@ export async function GET(
                     <span
                       style={{
                         color: '#94a3b8',
-                        fontSize: 12,
+                        fontSize: scaleFont(12),
                         fontWeight: 700,
                         letterSpacing: '0.04em',
                         textTransform: 'uppercase',
@@ -1199,7 +1210,15 @@ export async function GET(
                     >
                       {section.label}
                     </span>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: 20, lineHeight: 1.15 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        fontSize: scaleFont(20),
+                        lineHeight: 1.15,
+                      }}
+                    >
                       {section.items.map((item, idx) => {
                         const factionIconSrc = item.factionIconPath
                           ? cardIconMap.get(item.factionIconPath) || resolveAssetUrl(item.factionIconPath)
@@ -1250,7 +1269,7 @@ export async function GET(
               </div>
             ))
           ) : (
-            <div style={{ color: '#94a3b8', fontSize: 18 }}>No cards available</div>
+            <div style={{ color: '#94a3b8', fontSize: scaleFont(18) }}>No cards available</div>
           )}
         </div>
       </div>
