@@ -13,6 +13,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - `.env.example` with required environment variables.
 
 ### Changed
+- Rename the OG label from "Creature Tags" to "Creature Types".
 - Updated contribution rules in `AGENTS.md` (build/commit flow and logging).
 - Switched `AI_REQUESTS.md` request entries to English and added an English-only rule in `AGENTS.md`.
 - Added a UTC date requirement for `CHANGELOG.md` entries.

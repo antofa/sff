@@ -467,7 +467,7 @@ export async function GET(
               lineHeight: 1.3,
             }}
           >
-            <span style={{ color: '#94a3b8' }}>Creature Tags</span>
+            <span style={{ color: '#94a3b8' }}>Creature Types</span>
             <span style={{ color: '#e2e8f0' }}>{tagText}</span>
           </div>
           <div style={{ height: '1px', backgroundColor: 'rgba(148, 163, 184, 0.25)' }} />
