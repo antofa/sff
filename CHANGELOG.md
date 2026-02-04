@@ -34,6 +34,10 @@ Dates use UTC and roll over at 00:00 UTC.
 - Extend OG CDN cache (`s-maxage`) from 10 minutes to 60 minutes.
 - Add a lighter fast path in `/api/deck/[id]` by reducing candidate IDs and using shorter timeouts for `fast=1`.
 - Pre-warm `/api/og/deck/[id]` when opening `/deck/[id]` so sharing is faster right after viewing a deck.
+- Extend in-memory OG payload and icon cache TTL to 24 hours.
+- Cache only complete OG payloads (with card list + forgeborn name + abilities) to avoid persisting fallback/incomplete results.
+- Add LRU limits to OG payload and icon caches to bound memory usage.
+- Add manual OG cache bypass via `?refresh=1`.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

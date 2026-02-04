@@ -7,7 +7,10 @@ export const runtime = 'edge'
 const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
 const OG_DECK_TIMEOUT_MS = 1200
 const OG_ICON_TIMEOUT_MS = 500
-const OG_PAYLOAD_TTL_MS = 10 * 60 * 1000
+const OG_PAYLOAD_TTL_MS = 24 * 60 * 60 * 1000
+const OG_ICON_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+const OG_PAYLOAD_CACHE_MAX_ENTRIES = 500
+const OG_ICON_CACHE_MAX_ENTRIES = 500
 
 type OgPayload = {
   cardSections: CardSection[]
@@ -20,9 +23,14 @@ type OgPayloadCacheEntry = {
   payload: OgPayload
 }
 
+type IconSrcCacheEntry = {
+  expiresAt: number
+  src: string | null
+}
+
 const ogPayloadCache = new Map<string, OgPayloadCacheEntry>()
 const ogPayloadInFlight = new Map<string, Promise<OgPayload>>()
-const iconSrcCache = new Map<string, string | null>()
+const iconSrcCache = new Map<string, IconSrcCacheEntry>()
 const iconSrcInFlight = new Map<string, Promise<string | null>>()
 
 const toTitleCase = (value: string) =>
@@ -199,6 +207,26 @@ const toFusedApiId = (value: string) => {
 
 const normalizeOgPayloadKey = (deckId: string) => stripDeckPrefixes(deckId).trim().toLowerCase()
 
+function trimLru<T>(cache: Map<string, T>, maxEntries: number) {
+  while (cache.size > maxEntries) {
+    const oldestKey = cache.keys().next().value
+    if (oldestKey === undefined) break
+    cache.delete(oldestKey)
+  }
+}
+
+function touchEntry<T>(cache: Map<string, T>, key: string, entry: T) {
+  cache.delete(key)
+  cache.set(key, entry)
+}
+
+const isFullOgPayload = (payload: OgPayload) => {
+  const hasCards = payload.cardSections.some((section) => section.items.length > 0)
+  const hasForgebornName = !!payload.forgebornName?.trim()
+  const hasAbilities = payload.forgebornAbilities.some((ability) => !!ability?.text?.trim())
+  return hasCards && hasForgebornName && hasAbilities
+}
+
 const getCachedOgPayload = (key: string): OgPayload | null => {
   const cached = ogPayloadCache.get(key)
   if (!cached) return null
@@ -206,11 +234,14 @@ const getCachedOgPayload = (key: string): OgPayload | null => {
     ogPayloadCache.delete(key)
     return null
   }
+  touchEntry(ogPayloadCache, key, cached)
   return cached.payload
 }
 
 const setCachedOgPayload = (key: string, payload: OgPayload) => {
-  ogPayloadCache.set(key, { expiresAt: Date.now() + OG_PAYLOAD_TTL_MS, payload })
+  if (!isFullOgPayload(payload)) return
+  touchEntry(ogPayloadCache, key, { expiresAt: Date.now() + OG_PAYLOAD_TTL_MS, payload })
+  trimLru(ogPayloadCache, OG_PAYLOAD_CACHE_MAX_ENTRIES)
 }
 
 const getDeckFromUpstream = async (deckId: string) => {
@@ -317,13 +348,18 @@ const buildOgPayload = (deck: any): OgPayload => ({
   forgebornAbilities: collectForgebornAbilities(deck).slice(0, 3),
 })
 
-const getOgPayload = async (deckId: string): Promise<OgPayload> => {
+const getOgPayload = async (deckId: string, options?: { forceRefresh?: boolean }): Promise<OgPayload> => {
+  const forceRefresh = options?.forceRefresh === true
   const cacheKey = normalizeOgPayloadKey(deckId)
-  const cached = getCachedOgPayload(cacheKey)
-  if (cached) return cached
+  if (!forceRefresh) {
+    const cached = getCachedOgPayload(cacheKey)
+    if (cached) return cached
 
-  const inflight = ogPayloadInFlight.get(cacheKey)
-  if (inflight) return inflight
+    const inflight = ogPayloadInFlight.get(cacheKey)
+    if (inflight) return inflight
+  } else {
+    ogPayloadCache.delete(cacheKey)
+  }
 
   const promise = (async () => {
     const deck = await getDeckFromUpstream(deckId)
@@ -666,9 +702,10 @@ export async function GET(
 ) {
   const { id } = await context.params
   const deckId = id || ''
+  const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1'
   const origin = new URL(request.url).origin
 
-  const payload = await getOgPayload(deckId)
+  const payload = await getOgPayload(deckId, { forceRefresh })
   const cardSections = payload.cardSections
   const forgebornName = payload.forgebornName
   const forgebornAbilities = payload.forgebornAbilities
@@ -681,10 +718,20 @@ export async function GET(
 
   const loadIconSrc = async (url: string | null) => {
     if (!url) return null
-    const cached = iconSrcCache.get(url)
-    if (cached !== undefined) return cached
-    const inflight = iconSrcInFlight.get(url)
-    if (inflight) return inflight
+    if (!forceRefresh) {
+      const cached = iconSrcCache.get(url)
+      if (cached) {
+        if (cached.expiresAt >= Date.now()) {
+          touchEntry(iconSrcCache, url, cached)
+          return cached.src
+        }
+        iconSrcCache.delete(url)
+      }
+      const inflight = iconSrcInFlight.get(url)
+      if (inflight) return inflight
+    } else {
+      iconSrcCache.delete(url)
+    }
 
     const promise = (async () => {
       try {
@@ -710,7 +757,8 @@ export async function GET(
 
     iconSrcInFlight.set(url, promise)
     const resolved = await promise
-    iconSrcCache.set(url, resolved)
+    touchEntry(iconSrcCache, url, { expiresAt: Date.now() + OG_ICON_CACHE_TTL_MS, src: resolved })
+    trimLru(iconSrcCache, OG_ICON_CACHE_MAX_ENTRIES)
     return resolved
   }
 
