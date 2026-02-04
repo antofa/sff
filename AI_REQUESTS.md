@@ -455,3 +455,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 7a4dd0a
   Request: Reduce fused OG third-column width (not font size) so text stays inside the image bounds.
   Date: 2026-02-04
+- Commit: b742f89
+  Request: Set fused OG column widths to 1.1 / 1.1 / 1.0 and make third-column text wrapping normal.
+  Date: 2026-02-04
