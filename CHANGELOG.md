@@ -43,6 +43,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Read/write Upstash-cached OG images in a best-effort mode and keep in-app OG generation as fallback when Upstash is unavailable.
 - Document Upstash + Netlify OG cache setup and verification steps in `README.md`.
 - Normalize Upstash env values by trimming whitespace and optional wrapping quotes.
+- Sanitize forgeborn ability HTML text in OG previews and stabilize OG-safe rendering so iconized ability lines render without overlap.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
