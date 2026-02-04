@@ -50,6 +50,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Render fused deck card lists in two columns (one half-deck per column) in OG previews.
 - Keep OG card names on a single line with ellipsis truncation instead of wrapping.
 - Unescape stray backslash-escaped quotes in OG forgeborn ability text.
+- Force single-line OG card names via pre-truncation + nowrap to keep names visible in the card list.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

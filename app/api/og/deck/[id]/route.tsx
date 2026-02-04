@@ -74,6 +74,12 @@ const getCardDisplayName = (card: any): string => {
   return fallbackId ? formatCardIdName(String(fallbackId)) : 'Unknown Card'
 }
 
+const truncateCardName = (name: string, maxChars: number) => {
+  if (!name) return ''
+  if (name.length <= maxChars) return name
+  return `${name.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`
+}
+
 const getCardListEntry = (deck: any, card: any) => {
   const cardData = typeof card === 'object' && card ? card : null
   const cardId = cardData?.id || cardData?.cardId || cardData?.card_id || undefined
@@ -1089,16 +1095,8 @@ export async function GET(
                                 }}
                               />
                             )}
-                            <span
-                              style={{
-                                display: 'block',
-                                minWidth: 0,
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                            >
-                              {item.name}
+                            <span style={{ display: 'block', whiteSpace: 'nowrap' }}>
+                              {truncateCardName(item.name, showFusedColumns ? 24 : 38)}
                             </span>
                           </div>
                         )
