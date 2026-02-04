@@ -1,14 +1,14 @@
 import { ImageResponse } from 'next/og'
 import type { NextRequest } from 'next/server'
 import type { ReactNode } from 'react'
-import { getOgImageFromR2Cache, isOgR2CacheConfigured, putOgImageToR2Cache } from '@/lib/ogR2Cache'
+import { getOgImageFromUpstashCache, isOgUpstashCacheConfigured, putOgImageToUpstashCache } from '@/lib/ogUpstashCache'
 
-export const runtime = 'nodejs'
+export const runtime = 'edge'
 
 const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
 const OG_DECK_TIMEOUT_MS = 1200
 const OG_ICON_TIMEOUT_MS = 500
-const OG_R2_IMAGE_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const OG_UPSTASH_IMAGE_TTL_SECONDS = 24 * 60 * 60
 const OG_PAYLOAD_TTL_MS = 24 * 60 * 60 * 1000
 const OG_ICON_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const OG_PAYLOAD_CACHE_MAX_ENTRIES = 500
@@ -707,8 +707,8 @@ export async function GET(
   const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1'
   const origin = new URL(request.url).origin
 
-  if (!forceRefresh && isOgR2CacheConfigured()) {
-    const cachedImage = await getOgImageFromR2Cache(deckId, { maxAgeMs: OG_R2_IMAGE_MAX_AGE_MS })
+  if (!forceRefresh && isOgUpstashCacheConfigured()) {
+    const cachedImage = await getOgImageFromUpstashCache(deckId)
     if (cachedImage) {
       const cachedBuffer = new ArrayBuffer(cachedImage.byteLength)
       new Uint8Array(cachedBuffer).set(cachedImage)
@@ -716,7 +716,7 @@ export async function GET(
         headers: {
           'Content-Type': 'image/png',
           'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
-          'X-OG-Cache': 'r2-hit',
+          'X-OG-Cache': 'upstash-hit',
         },
       })
     }
@@ -1008,11 +1008,13 @@ export async function GET(
     }
   )
 
-  if (isOgR2CacheConfigured()) {
+  if (isOgUpstashCacheConfigured()) {
     const responseClone = imageResponse.clone()
     void responseClone
       .arrayBuffer()
-      .then((buffer) => putOgImageToR2Cache(deckId, new Uint8Array(buffer)))
+      .then((buffer) =>
+        putOgImageToUpstashCache(deckId, new Uint8Array(buffer), { ttlSeconds: OG_UPSTASH_IMAGE_TTL_SECONDS })
+      )
       .catch(() => {
         // Best-effort write; ignore cache upload errors.
       })
