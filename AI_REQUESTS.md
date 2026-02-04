@@ -305,3 +305,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: d2e074d
   Request: Rename "Creature tags" to "Creature types" in the OG image.
   Date: 2026-02-04
+- Commit: 3908cbb
+  Request: Remove the automatic changelog build date; set version 0.0.1 to January 30, 2026 and show it in the viewer's locale format.
+  Date: 2026-02-04
