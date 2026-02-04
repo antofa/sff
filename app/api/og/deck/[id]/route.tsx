@@ -1,9 +1,11 @@
 import { ImageResponse } from 'next/og'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import type { NextRequest } from 'next/server'
 import type { ReactNode } from 'react'
 import { getOgImageFromUpstashCache, isOgUpstashCacheConfigured, putOgImageToUpstashCache } from '@/lib/ogUpstashCache'
 
-export const runtime = 'edge'
+export const runtime = 'nodejs'
 
 const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
 const OG_DECK_TIMEOUT_MS = 1200
@@ -36,6 +38,7 @@ const ogPayloadCache = new Map<string, OgPayloadCacheEntry>()
 const ogPayloadInFlight = new Map<string, Promise<OgPayload>>()
 const iconSrcCache = new Map<string, IconSrcCacheEntry>()
 const iconSrcInFlight = new Map<string, Promise<string | null>>()
+const localAssetDataCache = new Map<string, string>()
 
 const toTitleCase = (value: string) =>
   value
@@ -186,6 +189,36 @@ const toBase64 = (buffer: ArrayBuffer) => {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
   }
   return btoa(binary)
+}
+
+const getMimeTypeByPath = (assetPath: string) => {
+  const lower = assetPath.toLowerCase()
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.svg')) return 'image/svg+xml'
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  return 'application/octet-stream'
+}
+
+const getLocalAssetDataUrl = async (assetPath: string): Promise<string | null> => {
+  const normalized = assetPath.replace(/^\/+/, '')
+  if (!normalized || normalized.includes('..')) return null
+
+  const cached = localAssetDataCache.get(normalized)
+  if (cached) return cached
+
+  try {
+    const fullPath = path.join(process.cwd(), 'public', normalized)
+    const data = await readFile(fullPath)
+    const mimeType = getMimeTypeByPath(normalized)
+    const encoded = data.toString('base64')
+    const dataUrl = `data:${mimeType};base64,${encoded}`
+    localAssetDataCache.set(normalized, dataUrl)
+    return dataUrl
+  } catch {
+    return null
+  }
 }
 
 const stripDeckPrefixes = (value: string) =>
@@ -564,7 +597,7 @@ const stripMarkup = (value: string) => {
 
 const normalizeForgebornAbilityText = (value: string) =>
   value
-    .replace(/\[l[1-4]\]/gi, '')
+    .replace(/\[(?:l)?[1-4]\]/gi, '')
     .replace(/([^\s])([+-])(?=\d)/g, '$1 $2')
     .replace(/([.!?])([A-Za-z])/g, '$1 $2')
     .replace(/\s+/g, ' ')
@@ -696,45 +729,32 @@ const getRarityIconPath = (
 const renderAbilityText = (
   text: string,
   statIconMap: Map<string, string | null>,
-  levelIconMap: Map<number, string | null>
+  _levelIconMap: Map<number, string | null>
 ) => {
   const normalizedText = normalizeForgebornAbilityText(String(text || ''))
   if (!normalizedText) return null
   const parts: Array<
     | { type: 'text'; value: string }
     | { type: 'stat'; src: string; number: string }
-    | { type: 'level'; src: string; level: string }
   > = []
-  const pattern = /(\[(?:l)?([1-4])\]|([+-]?\d+)\s*([ADH]))/gi
+  const pattern = /([+-]?\d+)\s*([ADH])/gi
   let lastIndex = 0
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(normalizedText)) !== null) {
-    const [full, _token, levelValue, numberValue, statValue] = match
+    const [full, numberValue, statValue] = match
     const start = match.index
     if (start > lastIndex) {
       parts.push({ type: 'text', value: normalizedText.slice(lastIndex, start) })
     }
-
-    if (levelValue) {
-      const level = Number(levelValue)
-      const iconSrc = Number.isFinite(level) ? levelIconMap.get(level) || null : null
-      if (!iconSrc) {
-        parts.push({ type: 'text', value: full })
-      } else {
-        parts.push({ type: 'level', src: iconSrc, level: levelValue })
-      }
+    const number = numberValue || ''
+    const stat = (statValue || '').toUpperCase()
+    const iconSrc = statIconMap.get(stat) || null
+    if (!iconSrc || !number) {
+      parts.push({ type: 'text', value: full })
     } else {
-      const number = numberValue || ''
-      const stat = (statValue || '').toUpperCase()
-      const iconSrc = statIconMap.get(stat) || null
-      if (!iconSrc || !number) {
-        parts.push({ type: 'text', value: full })
-      } else {
-        parts.push({ type: 'stat', src: iconSrc, number })
-      }
+      parts.push({ type: 'stat', src: iconSrc, number })
     }
-
     lastIndex = start + full.length
   }
 
@@ -743,40 +763,17 @@ const renderAbilityText = (
   }
 
   return (
-    <div
-      style={{
-        display: 'block',
-        width: '100%',
-        minWidth: 0,
-        maxWidth: '100%',
-        whiteSpace: 'normal',
-        wordBreak: 'break-word',
-      }}
-    >
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', width: '100%', minWidth: 0, maxWidth: '100%' }}>
       {parts.map((part, idx) => {
         if (part.type === 'text') {
           return (
-            <span key={`text-${idx}`}>
+            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {part.value}
             </span>
           )
         }
-        if (part.type === 'level') {
-          return (
-            <img
-              key={`level-${idx}`}
-              src={part.src}
-              style={{
-                width: '18px',
-                height: '18px',
-                objectFit: 'contain',
-                transform: 'translateY(3px)',
-              }}
-            />
-          )
-        }
         return (
-          <span key={`stat-${idx}`} style={{ whiteSpace: 'nowrap' }}>
+          <div key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', marginRight: '4px' }}>
             <span>{part.number}</span>
             <img
               src={part.src}
@@ -788,7 +785,7 @@ const renderAbilityText = (
                 transform: 'translateY(1px)',
               }}
             />
-          </span>
+          </div>
         )
       })}
     </div>
@@ -969,10 +966,14 @@ export async function GET(
 
   const loadIconSrc = async (url: string | null) => {
     if (!url) return null
-    // Avoid recursive/self fetches for local assets during OG rendering.
-    // Satori can consume these image URLs directly.
-    if (url.startsWith(`${origin}/images/`) || url.startsWith('/images/')) {
-      return url
+    const localPath = url.startsWith(`${origin}/images/`)
+      ? new URL(url).pathname
+      : url.startsWith('/images/')
+        ? url
+        : null
+    if (localPath) {
+      const localDataUrl = await getLocalAssetDataUrl(localPath)
+      if (localDataUrl) return localDataUrl
     }
     if (!forceRefresh) {
       const cached = iconSrcCache.get(url)
@@ -1036,7 +1037,6 @@ export async function GET(
       cardIconMap.set(path, src || resolveAssetUrl(path))
     })
   }
-
   const abilityLevels = new Set<number>()
   const levelTokenPattern = /\[(?:l)?([1-4])\]/gi
   forgebornAbilities.forEach((ability) => {
@@ -1080,7 +1080,6 @@ export async function GET(
       statIconMap.set(entry.key, src || null)
     })
   }
-
   const hasCardSections = cardColumns.some((column) => column.sections.length > 0)
   const showFusedColumns = cardColumns.length > 1
   const fusedFontScale = showFusedColumns ? 1.44 : 1
@@ -1137,7 +1136,7 @@ export async function GET(
                 {ability.text ? (
                   <div
                     style={{
-                      display: 'block',
+                      display: 'flex',
                       flex: 1,
                       minWidth: 0,
                       maxWidth: '100%',
@@ -1344,18 +1343,19 @@ export async function GET(
       },
     }
   )
-
+  const imageBuffer = await imageResponse.arrayBuffer()
   if (isOgUpstashCacheConfigured()) {
-    const responseClone = imageResponse.clone()
-    void responseClone
-      .arrayBuffer()
-      .then((buffer) =>
-        putOgImageToUpstashCache(deckId, new Uint8Array(buffer), { ttlSeconds: OG_UPSTASH_IMAGE_TTL_SECONDS })
-      )
-      .catch(() => {
-        // Best-effort write; ignore cache upload errors.
-      })
+    void putOgImageToUpstashCache(deckId, new Uint8Array(imageBuffer), {
+      ttlSeconds: OG_UPSTASH_IMAGE_TTL_SECONDS,
+    }).catch(() => {
+      // Best-effort write; ignore cache upload errors.
+    })
   }
 
-  return imageResponse
+  return new Response(imageBuffer, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+    },
+  })
 }

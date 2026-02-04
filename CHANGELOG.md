@@ -75,6 +75,8 @@ Dates use UTC and roll over at 00:00 UTC.
 - Improve fused third-column line wrapping by rendering ability text as inline flow (no flex token wrapping) and stripping leftover `[l*]` markers.
 - Fix fused third-column stat icon rendering and reapply hard width constraints to prevent right-edge overflow.
 - Ensure fused forgeborn abilities always show level icons, render `[1-4]` inline level tokens as icons, and wrap third-column text in block flow to prevent right-edge clipping.
+- Fix OG route stalls by resolving local `/images/*` assets to data URLs and returning a fully buffered PNG response.
+- Move OG rendering to Node runtime and keep Satori-safe `display:flex` wrappers to avoid hidden 500 failures.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
