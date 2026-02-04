@@ -371,3 +371,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 3ffa846
   Request: Add the Netlify + Cloudflare R2 setup checklist to README.
   Date: 2026-02-04
+- Commit: a7f065e
+  Request: Remove Cloudflare R2 everywhere (including .env.example and README.md) and add Upstash instead.
+  Date: 2026-02-04
