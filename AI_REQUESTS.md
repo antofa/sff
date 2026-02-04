@@ -332,3 +332,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a420be3
   Request: Render OG ability text on the same line as the level icon without repeating the level label.
   Date: 2026-02-04
+- Commit: 6efd966
+  Request: Download armor/attack/health icons and replace A/H/D letters with icons in OG forgeborn abilities.
+  Date: 2026-02-04
