@@ -967,7 +967,7 @@ export async function GET(
           }}
         >
           <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1.1 }}>{forgebornName || 'Forgeborn'}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 24, lineHeight: 1.25, width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 20, lineHeight: 1.25, width: '100%' }}>
             {forgebornAbilities.length > 0 ? (
               forgebornAbilities.map((ability, idx) => {
                 const levelIconSrc =
@@ -1056,7 +1056,7 @@ export async function GET(
                     >
                       {section.label}
                     </span>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: 18, lineHeight: 1.15 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: 20, lineHeight: 1.15 }}>
                       {section.items.map((item, idx) => {
                         const factionIconSrc = item.factionIconPath
                           ? cardIconMap.get(item.factionIconPath) || resolveAssetUrl(item.factionIconPath)

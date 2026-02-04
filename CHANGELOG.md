@@ -51,6 +51,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Keep OG card names on a single line with ellipsis truncation instead of wrapping.
 - Unescape stray backslash-escaped quotes in OG forgeborn ability text.
 - Force single-line OG card names via pre-truncation + nowrap to keep names visible in the card list.
+- Use one shared medium font size for OG forgeborn ability text and card list entries.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
