@@ -398,6 +398,7 @@ const normalizeForgebornAbilityText = (value: string) =>
     .replace(/([.!?])([A-Za-z])/g, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim()
+
 type AbilityEntry = { title: string | null; text: string | null; level?: number | null }
 type CardListEntry = {
   name: string
@@ -519,69 +520,87 @@ const renderAbilityText = (
   levelIconMap: Map<number, string | null>
 ) => {
   const normalizedText = normalizeForgebornAbilityText(text)
-  const parts: Array<string | ReactNode> = []
+  const parts: Array<
+    | { type: 'text'; value: string }
+    | { type: 'level'; src: string }
+    | { type: 'stat'; src: string; number: string }
+  > = []
   const pattern = /(\[l([1-4])\])|([+-]?\d+)([ADH])/gi
   let lastIndex = 0
   let match: RegExpExecArray | null
-  let keyIndex = 0
 
   while ((match = pattern.exec(normalizedText)) !== null) {
     const [full, levelToken, levelNumber, number, stat] = match
     const start = match.index
     if (start > lastIndex) {
-      parts.push(normalizedText.slice(lastIndex, start))
+      parts.push({ type: 'text', value: normalizedText.slice(lastIndex, start) })
     }
     if (levelToken) {
       const level = Number(levelNumber)
       const iconSrc = Number.isFinite(level) ? levelIconMap.get(level) || null : null
       if (!iconSrc) {
-        parts.push(full)
+        parts.push({ type: 'text', value: full })
       } else {
-        parts.push(
-          <img
-            key={`level-${keyIndex++}`}
-            src={iconSrc}
-            style={{
-              width: '16px',
-              height: '16px',
-              objectFit: 'contain',
-              verticalAlign: 'middle',
-              transform: 'translateY(1px)',
-            }}
-          />
-        )
+        parts.push({ type: 'level', src: iconSrc })
       }
+    } else {
+      const iconSrc = statIconMap.get(stat) || null
+      if (!iconSrc) {
+        parts.push({ type: 'text', value: full })
       } else {
-        const iconSrc = statIconMap.get(stat) || null
-        if (!iconSrc) {
-          parts.push(full)
-        } else {
-          // Render number and icon as separate inline nodes; this avoids text/icon overlap in next/og.
-          parts.push(`${number} `)
-          parts.push(
-            <img
-              key={`stat-${keyIndex++}`}
-              src={iconSrc}
-              style={{
-                width: '22px',
-                height: '22px',
-                objectFit: 'contain',
-                marginRight: '4px',
-                verticalAlign: 'middle',
-                transform: 'translateY(2px)',
-              }}
-            />
-          )
-        }
+        parts.push({ type: 'stat', src: iconSrc, number })
       }
+    }
     lastIndex = start + full.length
   }
 
   if (lastIndex < normalizedText.length) {
-    parts.push(normalizedText.slice(lastIndex))
+    parts.push({ type: 'text', value: normalizedText.slice(lastIndex) })
   }
 
-  return parts
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
+      {parts.map((part, idx) => {
+        if (part.type === 'text') {
+          return (
+            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap' }}>
+              {part.value}
+            </span>
+          )
+        }
+        if (part.type === 'level') {
+          return (
+            <img
+              key={`level-${idx}`}
+              src={part.src}
+              style={{
+                width: '16px',
+                height: '16px',
+                objectFit: 'contain',
+                marginRight: '4px',
+                transform: 'translateY(1px)',
+              }}
+            />
+          )
+        }
+        return (
+          <div key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', marginRight: '4px' }}>
+            <span>{part.number}</span>
+            <img
+              src={part.src}
+              style={{
+                width: '20px',
+                height: '20px',
+                objectFit: 'contain',
+                marginLeft: '2px',
+                transform: 'translateY(1px)',
+              }}
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 const resolveForgebornName = (deck: any) => {
@@ -977,36 +996,36 @@ export async function GET(
             <div style={{ fontSize: 36, fontWeight: 700, lineHeight: 1.1 }}>
               {forgebornName || 'Forgeborn'}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 17, lineHeight: 1.4, width: '100%' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: 16, lineHeight: 1.4, width: '100%' }}>
               {forgebornAbilities.length > 0 ? (
                 forgebornAbilities.map((ability, idx) => {
                   const levelIconSrc =
                     ability.level && levelIconMap.has(ability.level) ? levelIconMap.get(ability.level) : null
                   return (
-                    <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%' }}>
-                      {ability.text ? (
-                        <span
+                    <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', gap: '8px' }}>
+                      {levelIconSrc ? (
+                        <img
+                          src={levelIconSrc}
                           style={{
-                            display: 'block',
-                            whiteSpace: 'normal',
-                            lineHeight: 1.4,
+                            width: '18px',
+                            height: '18px',
+                            objectFit: 'contain',
+                            transform: 'translateY(2px)',
+                          }}
+                        />
+                      ) : null}
+                      {ability.text ? (
+                        <div
+                          style={{
+                            display: 'flex',
+                            flex: 1,
+                            minWidth: 0,
+                            maxWidth: '100%',
+                            alignItems: 'flex-start',
                           }}
                         >
-                          {levelIconSrc ? (
-                            <img
-                              src={levelIconSrc}
-                              style={{
-                                width: '18px',
-                                height: '18px',
-                                objectFit: 'contain',
-                                marginRight: '8px',
-                                verticalAlign: 'middle',
-                                transform: 'translateY(1px)',
-                              }}
-                            />
-                          ) : null}
                           {renderAbilityText(ability.text, statIconMap, levelIconMap)}
-                        </span>
+                        </div>
                       ) : null}
                     </div>
                   )

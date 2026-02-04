@@ -44,6 +44,8 @@ Dates use UTC and roll over at 00:00 UTC.
 - Document Upstash + Netlify OG cache setup and verification steps in `README.md`.
 - Normalize Upstash env values by trimming whitespace and optional wrapping quotes.
 - Sanitize forgeborn ability HTML text in OG previews and stabilize OG-safe rendering so iconized ability lines render without overlap.
+- Tighten OG forgeborn ability typography and enforce flex item width constraints so long ability text wraps within the right column.
+- Rework OG ability line rendering into flex-wrapped text/icon tokens so forgeborn ability text no longer overflows the right edge.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
