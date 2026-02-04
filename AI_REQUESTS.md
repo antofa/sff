@@ -440,3 +440,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: dd61336
   Request: The fused OG URL does not load; continue and fix the rendering stall.
   Date: 2026-02-04
+- Commit: ee5f024
+  Request: Also fix text wrapping in the other fused OG columns for this URL.
+  Date: 2026-02-04
