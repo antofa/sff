@@ -1,21 +1,8 @@
 import { ImageResponse } from 'next/og'
 import type { NextRequest } from 'next/server'
-import { getCardImageUrl, getForgebornAlternativeUrl } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 
 export const runtime = 'edge'
-
-const resolveForgebornImageUrl = (forgebornId?: string | null) => {
-  if (!forgebornId) return null
-  const cleanId = String(forgebornId).replace(/_/g, ' ')
-  if (cleanId.includes(' ')) {
-    return getForgebornAlternativeUrl(cleanId)
-  }
-  if (cleanId.includes('-')) {
-    return getForgebornAlternativeUrl(cleanId)
-  }
-  return getCardImageUrl(cleanId, 1, true)
-}
 
 const formatSetLabel = (value?: string | number | null, fallback?: string | number | null) => {
   const raw = value ?? fallback
@@ -152,7 +139,6 @@ const formatElo = (value: unknown) => {
 }
 
 const OG_DECK_TIMEOUT_MS = 1200
-const OG_IMAGE_TIMEOUT_MS = 900
 const OG_ICON_TIMEOUT_MS = 500
 
 const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number) => {
@@ -167,6 +153,85 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
+const stripMarkup = (value: string) => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+
+const resolveForgebornName = (deck: any) => {
+  const forgeborn = deck?.forgeborn
+  const named =
+    forgeborn?.name ||
+    forgeborn?.Name ||
+    forgeborn?.title ||
+    forgeborn?.cardName ||
+    null
+  if (named) return String(named).trim()
+  const fallback = deck?.forgebornName || deck?.forgebornId || forgeborn?.id || null
+  if (!fallback) return null
+  return toTitleCase(String(fallback).replace(/[_-]+/g, ' ').trim())
+}
+
+const formatAbilityEntry = (ability: any) => {
+  if (!ability) return null
+  if (typeof ability === 'string') {
+    const text = stripMarkup(ability)
+    return text ? { title: null, text } : null
+  }
+  if (typeof ability !== 'object') return null
+  const title = ability?.name || ability?.Name || ability?.title || ability?.cardName || null
+  const rawText =
+    ability?.text ||
+    ability?.Text ||
+    ability?.description ||
+    ability?.desc ||
+    ability?.['1text'] ||
+    ability?.['2text'] ||
+    ability?.['3text'] ||
+    null
+  const text = rawText ? stripMarkup(String(rawText)) : null
+  if (!title && !text) return null
+  return { title: title ? String(title).trim() : null, text }
+}
+
+const collectForgebornAbilities = (deck: any) => {
+  const forgeborn = deck?.forgeborn
+  if (!forgeborn || typeof forgeborn !== 'object') return []
+  const entries: Array<{ title: string | null; text: string | null }> = []
+  const pushAbility = (ability: any) => {
+    const entry = formatAbilityEntry(ability)
+    if (entry) entries.push(entry)
+  }
+
+  const rawAbilities =
+    forgeborn?.abilities ||
+    forgeborn?.abilityCards ||
+    forgeborn?.ability_cards ||
+    forgeborn?.abilityList ||
+    forgeborn?.abilitiesList ||
+    null
+  if (Array.isArray(rawAbilities)) {
+    rawAbilities.forEach(pushAbility)
+  } else if (rawAbilities) {
+    pushAbility(rawAbilities)
+  }
+
+  const abilityKeys = ['ability1', 'ability2', 'ability3', 'ability4', 'ability5']
+  abilityKeys.forEach((key) => {
+    if (forgeborn?.[key]) pushAbility(forgeborn[key])
+  })
+
+  if (entries.length === 0) {
+    const levelKeys = ['1text', '2text', '3text']
+    levelKeys.forEach((key) => {
+      if (forgeborn?.[key]) pushAbility(forgeborn[key])
+    })
+  }
+
+  if (entries.length === 0 && (forgeborn?.text || forgeborn?.Text)) {
+    pushAbility(forgeborn?.text || forgeborn?.Text)
+  }
+
+  return entries
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id?: string }> }
@@ -175,7 +240,6 @@ export async function GET(
   const deckId = id || ''
   const origin = new URL(request.url).origin
 
-  let forgebornImageUrl: string | null = null
   let factionIconUrl: string | null = null
   let fusedSetEntries: Array<{ label: string; iconUrl: string | null }> = []
   let cardCounts = { creatures: 0, spells: 0, solbind: 0 }
@@ -186,6 +250,8 @@ export async function GET(
   let elo: number | null = null
   let expiry: string | null = null
   let setLabel: string | null = null
+  let forgebornName: string | null = null
+  let forgebornAbilities: Array<{ title: string | null; text: string | null }> = []
 
   const resolveFactionIconUrl = (factionRaw?: string | null) => {
     const factionKey = factionRaw ? String(factionRaw).trim().toLowerCase() : ''
@@ -211,8 +277,8 @@ export async function GET(
       const json = await res.json()
       const deck = json?.deck
       const isFused = String(deck?.format || '').toLowerCase() === 'fused'
-      const forgebornId = deck?.forgeborn?.id || deck?.forgebornId || null
-      forgebornImageUrl = resolveForgebornImageUrl(forgebornId)
+      forgebornName = resolveForgebornName(deck)
+      forgebornAbilities = collectForgebornAbilities(deck).slice(0, 3)
 
       cardCounts = countCardTypes(deck)
       rarityEntries = countRarities(deck)
@@ -257,26 +323,7 @@ export async function GET(
       )
     }
   } catch {
-    forgebornImageUrl = null
-  }
-
-  let imageData: ArrayBuffer | null = null
-  if (forgebornImageUrl) {
-    try {
-      const imageRes = await fetchWithTimeout(
-        forgebornImageUrl,
-        {
-          cache: 'force-cache',
-          next: { revalidate: 86400 },
-        },
-        OG_IMAGE_TIMEOUT_MS
-      )
-      if (imageRes?.ok) {
-        imageData = await imageRes.arrayBuffer()
-      }
-    } catch {
-      imageData = null
-    }
+    // ignore fetch failures
   }
 
   const toBase64 = (buffer: ArrayBuffer) => {
@@ -325,53 +372,6 @@ export async function GET(
     })
   }
 
-  const getImageInfo = (buffer: ArrayBuffer) => {
-    const bytes = new Uint8Array(buffer)
-    if (bytes.length >= 24 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
-      const view = new DataView(buffer)
-      return { width: view.getUint32(16), height: view.getUint32(20), mime: 'image/png' }
-    }
-
-    if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
-      let offset = 2
-      while (offset + 9 < bytes.length) {
-        if (bytes[offset] !== 0xff) {
-          offset += 1
-          continue
-        }
-        const marker = bytes[offset + 1]
-        const length = (bytes[offset + 2] << 8) + bytes[offset + 3]
-        const isSof =
-          marker === 0xc0 ||
-          marker === 0xc1 ||
-          marker === 0xc2 ||
-          marker === 0xc3 ||
-          marker === 0xc5 ||
-          marker === 0xc6 ||
-          marker === 0xc7 ||
-          marker === 0xc9 ||
-          marker === 0xca ||
-          marker === 0xcb ||
-          marker === 0xcd ||
-          marker === 0xce ||
-          marker === 0xcf
-        if (isSof) {
-          const height = (bytes[offset + 5] << 8) + bytes[offset + 6]
-          const width = (bytes[offset + 7] << 8) + bytes[offset + 8]
-          return { width, height, mime: 'image/jpeg' }
-        }
-        if (length <= 0) break
-        offset += 2 + length
-      }
-    }
-    return null
-  }
-
-  const imageInfo = imageData ? getImageInfo(imageData) : null
-  const shouldRotate = !!imageInfo && imageInfo.height > imageInfo.width
-  const imageSrc = imageData
-    ? `data:${imageInfo?.mime || 'image/jpeg'};base64,${toBase64(imageData)}`
-    : null
   const factionIconSrc = factionIconData
     ? `data:image/png;base64,${toBase64(factionIconData)}`
     : factionIconUrl
@@ -541,33 +541,34 @@ export async function GET(
               width: '860px',
               height: '560px',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              justifyContent: 'flex-start',
+              gap: '18px',
+              padding: '18px 24px',
+              color: '#e2e8f0',
+              fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
             }}
           >
-            {imageSrc ? (
-              <img
-                src={imageSrc}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  transform: `${shouldRotate ? 'rotate(-90deg)' : ''} scale(1.5)`.trim(),
-                  transformOrigin: 'center center',
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  color: '#e2e8f0',
-                  fontSize: 42,
-                  fontWeight: 600,
-                  fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
-                }}
-              >
-                SolForge Fusion Deck
-              </div>
-            )}
+            <div style={{ fontSize: 36, fontWeight: 700, lineHeight: 1.1 }}>
+              {forgebornName || 'Forgeborn'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 22, lineHeight: 1.3 }}>
+              {forgebornAbilities.length > 0 ? (
+                forgebornAbilities.map((ability, idx) => (
+                  <div key={`ability-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {ability.title ? (
+                      <span style={{ color: '#94a3b8', fontSize: 16, fontWeight: 700, letterSpacing: '0.04em' }}>
+                        {ability.title}
+                      </span>
+                    ) : null}
+                    {ability.text ? <span>{ability.text}</span> : null}
+                  </div>
+                ))
+              ) : (
+                <div style={{ color: '#94a3b8', fontSize: 20 }}>Abilities unavailable</div>
+              )}
+            </div>
           </div>
         </div>
       </div>
