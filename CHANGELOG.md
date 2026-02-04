@@ -15,6 +15,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Render forgeborn ability text only from the deck JSON (no local card database fallback).
 - Show level icons next to forgeborn abilities in OG previews.
 - Read forgeborn ability text from deck `levels`/`a2t` fields so abilities render reliably.
+- Render OG ability text on the same line as the level icon without duplicating the level label.
 
 ## [0.0.1] - 2026-01-30
 

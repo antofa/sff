@@ -155,8 +155,6 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
 
 const stripMarkup = (value: string) => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
 type AbilityEntry = { title: string | null; text: string | null; level?: number | null }
-const toRomanLevel = (level?: number | null) =>
-  level === 2 ? 'II' : level === 3 ? 'III' : level === 4 ? 'IV' : null
 
 const resolveForgebornName = (deck: any) => {
   const forgeborn = deck?.forgeborn
@@ -636,23 +634,15 @@ export async function GET(
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 22, lineHeight: 1.3 }}>
               {forgebornAbilities.length > 0 ? (
                 forgebornAbilities.map((ability, idx) => {
-                  const levelLabel = toRomanLevel(ability.level) || ability.title
                   const levelIconSrc =
                     ability.level && levelIconMap.has(ability.level) ? levelIconMap.get(ability.level) : null
                   return (
-                    <div key={`ability-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {levelLabel ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {levelIconSrc ? (
-                            <img
-                              src={levelIconSrc}
-                              style={{ width: '18px', height: '18px', objectFit: 'contain' }}
-                            />
-                          ) : null}
-                          <span style={{ color: '#94a3b8', fontSize: 16, fontWeight: 700, letterSpacing: '0.04em' }}>
-                            {levelLabel}
-                          </span>
-                        </div>
+                    <div key={`ability-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {levelIconSrc ? (
+                        <img
+                          src={levelIconSrc}
+                          style={{ width: '18px', height: '18px', objectFit: 'contain' }}
+                        />
                       ) : null}
                       {ability.text ? <span>{ability.text}</span> : null}
                     </div>
