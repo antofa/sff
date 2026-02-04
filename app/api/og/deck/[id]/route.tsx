@@ -948,7 +948,6 @@ export async function GET(
   const payload = await getOgPayload(deckId, { forceRefresh })
   const cardColumns = payload.cardColumns
   const forgebornName = payload.forgebornName
-  const deckName = payload.deckName
   const forgebornAbilities = payload.forgebornAbilities
 
   const resolveAssetUrl = (url: string | null) => {
@@ -1082,9 +1081,7 @@ export async function GET(
         minWidth: 0,
       }}
     >
-      <div style={{ fontSize: scaleFont(40), fontWeight: 700, lineHeight: 1.1 }}>
-        {(forgebornName || 'Forgeborn') + (showFusedColumns && deckName ? ` (${deckName})` : '')}
-      </div>
+      <div style={{ fontSize: scaleFont(40), fontWeight: 700, lineHeight: 1.1 }}>{forgebornName || 'Forgeborn'}</div>
       <div
         style={{
           display: 'flex',

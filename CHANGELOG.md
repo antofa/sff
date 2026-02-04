@@ -59,6 +59,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Redesign fused OG layout into three equal columns: half-deck 1, half-deck 2, and forgeborn details.
 - Force explicit 33.33% widths for fused OG columns to prevent single-column overlap rendering.
 - Increase fused OG typography by another 20% to improve readability in the 3-column layout.
+- Show only the forgeborn name in fused OG titles (remove deck name suffix).
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
