@@ -431,3 +431,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 39d06de
   Request: OG route fails with "Expected <div> to have explicit display:flex"; fix fused third-column wrapper rendering.
   Date: 2026-02-04
+- Commit: 40c50da
+  Request: Strange line breaks in fused OG third column; fix ability text wrapping to use full line flow.
+  Date: 2026-02-04
