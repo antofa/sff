@@ -76,12 +76,6 @@ const getCardDisplayName = (card: any): string => {
   return fallbackId ? formatCardIdName(String(fallbackId)) : 'Unknown Card'
 }
 
-const truncateCardName = (name: string, maxChars: number) => {
-  if (!name) return ''
-  if (name.length <= maxChars) return name
-  return `${name.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`
-}
-
 const getCardListEntry = (deck: any, card: any) => {
   const cardData = typeof card === 'object' && card ? card : null
   const cardId = cardData?.id || cardData?.cardId || cardData?.card_id || undefined
@@ -707,7 +701,11 @@ const renderAbilityText = (
   if (!normalizedText) return null
   // Keep ability rendering simple/stable for Satori: plain text avoids layout hangs.
   if (statIconMap.size >= 0 && levelIconMap.size >= 0) {
-    return <span>{normalizedText}</span>
+    return (
+      <div style={{ display: 'block', width: '100%', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+        {normalizedText}
+      </div>
+    )
   }
   const parts: Array<
     | { type: 'text'; value: string }
@@ -1078,7 +1076,6 @@ export async function GET(
   const showFusedColumns = cardColumns.length > 1
   const fusedFontScale = showFusedColumns ? 1.44 : 1
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * 10) / 10
-  const cardNameLimit = showFusedColumns ? 24 : 38
   const forgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
   const forgebornAbilityFont = showFusedColumns ? scaleFont(14) : scaleFont(20)
   const forgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
@@ -1127,11 +1124,11 @@ export async function GET(
                 {ability.text ? (
                   <div
                     style={{
-                      display: 'flex',
+                      display: 'block',
                       flex: 1,
+                      width: '100%',
                       minWidth: 0,
                       maxWidth: '100%',
-                      alignItems: 'flex-start',
                     }}
                   >
                     {renderAbilityText(ability.text, statIconMap, levelIconMap)}
@@ -1250,7 +1247,9 @@ export async function GET(
                         }}
                       />
                     )}
-                    <span style={{ display: 'block', whiteSpace: 'nowrap' }}>{truncateCardName(item.name, cardNameLimit)}</span>
+                    <span style={{ display: 'block', flex: 1, minWidth: 0, whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                      {item.name}
+                    </span>
                   </div>
                 )
               })}

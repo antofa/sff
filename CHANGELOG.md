@@ -66,6 +66,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Render OG ability text as inline flow tokens (instead of wrapped flex items) to prevent odd line breaks in the fused third column.
 - Remove unsupported `display: inline-block` styles from OG ability tokens to prevent 500 rendering errors in Satori.
 - Skip base64 icon fetches for local `/images/*` assets in OG rendering to avoid self-fetch stalls and restore fast responses.
+- Let OG text wrap naturally across all three fused columns (cards and forgeborn abilities) instead of truncating to one line.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
