@@ -13,6 +13,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Replace the OG forgeborn art with the forgeborn name and abilities.
 - Cache deck detail responses on the server for 24 hours, including fused half-decks.
 - Render forgeborn ability text only from the deck JSON (no local card database fallback).
+- Show level icons next to forgeborn abilities in OG previews.
 
 ## [0.0.1] - 2026-01-30
 

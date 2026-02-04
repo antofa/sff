@@ -154,6 +154,9 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
 }
 
 const stripMarkup = (value: string) => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+type AbilityEntry = { title: string | null; text: string | null; level?: number | null }
+const toRomanLevel = (level?: number | null) =>
+  level === 2 ? 'II' : level === 3 ? 'III' : level === 4 ? 'IV' : null
 
 const resolveForgebornName = (deck: any) => {
   const forgeborn = deck?.forgeborn
@@ -169,13 +172,22 @@ const resolveForgebornName = (deck: any) => {
   return toTitleCase(String(fallback).replace(/[_-]+/g, ' ').trim())
 }
 
-const formatAbilityEntry = (ability: any) => {
+const formatAbilityEntry = (ability: any): AbilityEntry | null => {
   if (!ability) return null
   if (typeof ability === 'string') {
     const text = stripMarkup(ability)
-    return text ? { title: null, text } : null
+    return text ? { title: null, text, level: null } : null
   }
   if (typeof ability !== 'object') return null
+  const levelRaw = Number(
+    ability?.level ??
+      ability?.lvl ??
+      ability?.levelNumber ??
+      ability?.rank ??
+      ability?.abilityLevel ??
+      NaN
+  )
+  const level = Number.isFinite(levelRaw) ? levelRaw : null
   const title = ability?.name || ability?.Name || ability?.title || ability?.cardName || null
   const rawText =
     ability?.text ||
@@ -188,15 +200,20 @@ const formatAbilityEntry = (ability: any) => {
     null
   const text = rawText ? stripMarkup(String(rawText)) : null
   if (!title && !text) return null
-  return { title: title ? String(title).trim() : null, text }
+  return { title: title ? String(title).trim() : null, text, level }
 }
 
 const collectForgebornAbilities = (deck: any) => {
   const forgeborn = deck?.forgeborn
-  const entries: Array<{ title: string | null; text: string | null }> = []
-  const pushAbility = (ability: any) => {
+  const entries: AbilityEntry[] = []
+  const pushAbility = (ability: any, levelOverride?: number | null) => {
     const entry = formatAbilityEntry(ability)
-    if (entry) entries.push(entry)
+    if (entry) {
+      entries.push({
+        ...entry,
+        level: levelOverride ?? entry.level ?? null,
+      })
+    }
   }
 
   if (!forgeborn || typeof forgeborn !== 'object') return entries
@@ -209,20 +226,30 @@ const collectForgebornAbilities = (deck: any) => {
     forgeborn?.abilitiesList ||
     null
   if (Array.isArray(rawAbilities)) {
-    rawAbilities.forEach(pushAbility)
+    rawAbilities.forEach((ability, index) => pushAbility(ability, 2 + index))
   } else if (rawAbilities) {
     pushAbility(rawAbilities)
   }
 
-  const abilityKeys = ['ability1', 'ability2', 'ability3', 'ability4', 'ability5']
-  abilityKeys.forEach((key) => {
-    if (forgeborn?.[key]) pushAbility(forgeborn[key])
+  const abilityKeys: Array<[string, number | null]> = [
+    ['ability1', 2],
+    ['ability2', 3],
+    ['ability3', 4],
+    ['ability4', null],
+    ['ability5', null],
+  ]
+  abilityKeys.forEach(([key, level]) => {
+    if (forgeborn?.[key]) pushAbility(forgeborn[key], level)
   })
 
   if (entries.length === 0) {
-    const levelKeys = ['1text', '2text', '3text']
-    levelKeys.forEach((key) => {
-      if (forgeborn?.[key]) pushAbility(forgeborn[key])
+    const levelKeys: Array<[string, number]> = [
+      ['1text', 2],
+      ['2text', 3],
+      ['3text', 4],
+    ]
+    levelKeys.forEach(([key, level]) => {
+      if (forgeborn?.[key]) pushAbility(forgeborn[key], level)
     })
   }
 
@@ -252,7 +279,7 @@ export async function GET(
   let expiry: string | null = null
   let setLabel: string | null = null
   let forgebornName: string | null = null
-  let forgebornAbilities: Array<{ title: string | null; text: string | null }> = []
+  let forgebornAbilities: AbilityEntry[] = []
 
   const resolveFactionIconUrl = (factionRaw?: string | null) => {
     const factionKey = factionRaw ? String(factionRaw).trim().toLowerCase() : ''
@@ -370,6 +397,26 @@ export async function GET(
     loaded.forEach((item) => {
       const src = item.data ? `data:image/png;base64,${toBase64(item.data)}` : item.url
       if (item.url) fusedSetIconMap.set(item.url, src || null)
+    })
+  }
+
+  const abilityLevels = new Set<number>()
+  forgebornAbilities.forEach((ability) => {
+    const level = ability.level
+    if (level && level >= 2 && level <= 4) {
+      abilityLevels.add(level)
+    }
+  })
+  const levelIconEntries = Array.from(abilityLevels)
+    .sort((a, b) => a - b)
+    .map((level) => ({ level, url: `${origin}/images/icons/levels/lv${level}-icon.png` }))
+  const levelIconMap = new Map<number, string | null>()
+  if (levelIconEntries.length > 0) {
+    const loaded = await Promise.all(levelIconEntries.map((entry) => loadIcon(entry.url)))
+    loaded.forEach((item, idx) => {
+      const entry = levelIconEntries[idx]
+      const src = item.data ? `data:image/png;base64,${toBase64(item.data)}` : item.url
+      levelIconMap.set(entry.level, src || null)
     })
   }
 
@@ -556,16 +603,29 @@ export async function GET(
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 22, lineHeight: 1.3 }}>
               {forgebornAbilities.length > 0 ? (
-                forgebornAbilities.map((ability, idx) => (
-                  <div key={`ability-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {ability.title ? (
-                      <span style={{ color: '#94a3b8', fontSize: 16, fontWeight: 700, letterSpacing: '0.04em' }}>
-                        {ability.title}
-                      </span>
-                    ) : null}
-                    {ability.text ? <span>{ability.text}</span> : null}
-                  </div>
-                ))
+                forgebornAbilities.map((ability, idx) => {
+                  const levelLabel = toRomanLevel(ability.level) || ability.title
+                  const levelIconSrc =
+                    ability.level && levelIconMap.has(ability.level) ? levelIconMap.get(ability.level) : null
+                  return (
+                    <div key={`ability-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {levelLabel ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {levelIconSrc ? (
+                            <img
+                              src={levelIconSrc}
+                              style={{ width: '18px', height: '18px', objectFit: 'contain' }}
+                            />
+                          ) : null}
+                          <span style={{ color: '#94a3b8', fontSize: 16, fontWeight: 700, letterSpacing: '0.04em' }}>
+                            {levelLabel}
+                          </span>
+                        </div>
+                      ) : null}
+                      {ability.text ? <span>{ability.text}</span> : null}
+                    </div>
+                  )
+                })
               ) : (
                 <div style={{ color: '#94a3b8', fontSize: 20 }}>Abilities unavailable</div>
               )}
