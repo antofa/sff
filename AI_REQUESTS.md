@@ -452,3 +452,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 843ca64
   Request: The fused OG third column still needs to be tightened so ability text does not clip on the right edge.
   Date: 2026-02-04
+- Commit: 7a4dd0a
+  Request: Reduce fused OG third-column width (not font size) so text stays inside the image bounds.
+  Date: 2026-02-04
