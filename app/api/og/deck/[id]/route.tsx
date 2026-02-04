@@ -722,7 +722,7 @@ export async function GET(
       const cached = iconSrcCache.get(url)
       if (cached) {
         if (cached.expiresAt >= Date.now()) {
-          touchEntry(iconSrcCache, url, cached)
+          touchEntry(iconSrcCache, url, { ...cached, expiresAt: Date.now() + OG_ICON_CACHE_TTL_MS })
           return cached.src
         }
         iconSrcCache.delete(url)

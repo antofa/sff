@@ -38,6 +38,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Cache only complete OG payloads (with card list + forgeborn name + abilities) to avoid persisting fallback/incomplete results.
 - Add LRU limits to OG payload and icon caches to bound memory usage.
 - Add manual OG cache bypass via `?refresh=1`.
+- Refresh icon cache TTL on each icon cache hit (sliding expiration) to keep frequently used icons warm.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
