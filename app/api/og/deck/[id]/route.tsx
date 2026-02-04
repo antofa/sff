@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og'
 import type { NextRequest } from 'next/server'
+import type { ReactNode } from 'react'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 
 export const runtime = 'edge'
@@ -155,6 +156,43 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
 
 const stripMarkup = (value: string) => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
 type AbilityEntry = { title: string | null; text: string | null; level?: number | null }
+
+const renderAbilityText = (text: string, iconMap: Map<string, string | null>) => {
+  const parts: Array<string | ReactNode> = []
+  const pattern = /([+-]?\d+)([ADH])/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let keyIndex = 0
+
+  while ((match = pattern.exec(text)) !== null) {
+    const [full, number, stat] = match
+    const start = match.index
+    if (start > lastIndex) {
+      parts.push(text.slice(lastIndex, start))
+    }
+    const iconSrc = iconMap.get(stat) || null
+    if (!iconSrc) {
+      parts.push(full)
+    } else {
+      parts.push(
+        <span
+          key={`stat-${keyIndex++}`}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+        >
+          <span>{number}</span>
+          <img src={iconSrc} style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+        </span>
+      )
+    }
+    lastIndex = start + full.length
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex))
+  }
+
+  return parts
+}
 
 const resolveForgebornName = (deck: any) => {
   const forgeborn = deck?.forgeborn
@@ -450,6 +488,21 @@ export async function GET(
     })
   }
 
+  const statIconEntries = [
+    { key: 'A', url: `${origin}/images/icons/attack.png` },
+    { key: 'H', url: `${origin}/images/icons/health.png` },
+    { key: 'D', url: `${origin}/images/icons/armor.png` },
+  ]
+  const statIconMap = new Map<string, string | null>()
+  if (statIconEntries.length > 0) {
+    const loaded = await Promise.all(statIconEntries.map((entry) => loadIcon(entry.url)))
+    loaded.forEach((item, idx) => {
+      const entry = statIconEntries[idx]
+      const src = item.data ? `data:image/png;base64,${toBase64(item.data)}` : item.url
+      statIconMap.set(entry.key, src || null)
+    })
+  }
+
   const factionIconSrc = factionIconData
     ? `data:image/png;base64,${toBase64(factionIconData)}`
     : factionIconUrl
@@ -644,7 +697,7 @@ export async function GET(
                           style={{ width: '18px', height: '18px', objectFit: 'contain' }}
                         />
                       ) : null}
-                      {ability.text ? <span>{ability.text}</span> : null}
+                      {ability.text ? <span>{renderAbilityText(ability.text, statIconMap)}</span> : null}
                     </div>
                   )
                 })

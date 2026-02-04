@@ -16,6 +16,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Show level icons next to forgeborn abilities in OG previews.
 - Read forgeborn ability text from deck `levels`/`a2t` fields so abilities render reliably.
 - Render OG ability text on the same line as the level icon without duplicating the level label.
+- Replace A/H/D stat letters with attack/health/armor icons in OG ability text.
 
 ## [0.0.1] - 2026-01-30
 
