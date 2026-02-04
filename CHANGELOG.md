@@ -3,7 +3,18 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
-## [Unreleased] - 2026-02-04
+## [0.0.2] - 2026-02-04
+
+### Changed
+- Round ELO values in OG deck previews to whole numbers.
+- Rename the OG label from "Creature Tags" to "Creature Types".
+- Set the site changelog date manually and format it using the viewer's locale.
+- Speed up OG image generation by using a fast deck lookup, timeouts, and caching.
+- Replace the OG forgeborn art with the forgeborn name and abilities.
+- Cache deck detail responses on the server for 24 hours, including fused half-decks.
+- Render forgeborn ability text only from the deck JSON (no local card database fallback).
+
+## [0.0.1] - 2026-01-30
 
 ### Added
 - `AGENTS.md` with project notes and contribution rules.
@@ -13,12 +24,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - `.env.example` with required environment variables.
 
 ### Changed
-- Set the site changelog date manually and format it using the viewer's locale.
-- Speed up OG image generation by using a fast deck lookup, timeouts, and caching.
-- Replace the OG forgeborn art with the forgeborn name and abilities.
-- Cache deck detail responses on the server for 24 hours, including fused half-decks.
-- Fall back to deck cards/card database to render forgeborn ability text in OG previews.
-- Rename the OG label from "Creature Tags" to "Creature Types".
 - Updated contribution rules in `AGENTS.md` (build/commit flow and logging).
 - Switched `AI_REQUESTS.md` request entries to English and added an English-only rule in `AGENTS.md`.
 - Added a UTC date requirement for `CHANGELOG.md` entries.
@@ -106,7 +111,6 @@ Dates use UTC and roll over at 00:00 UTC.
 - Derive the header changelog merge date from git merge commits via a release API.
 
 ### Fixed
-- Round ELO values in OG deck previews to whole numbers.
 - Populate fused deck card set values from source halves to keep card-set filtering reliable.
 - Generate deck preview metadata for fused decks by falling back to the internal deck API.
 - Force deck pages to render metadata dynamically so fused previews resolve at request time.
