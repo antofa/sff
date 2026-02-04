@@ -428,3 +428,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 73bfb47
   Request: In fused OG, third-column text does not use full column width; make forgeborn content fill the whole third column.
   Date: 2026-02-04
+- Commit: 39d06de
+  Request: OG route fails with "Expected <div> to have explicit display:flex"; fix fused third-column wrapper rendering.
+  Date: 2026-02-04
