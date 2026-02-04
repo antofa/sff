@@ -64,7 +64,8 @@ export async function GET(
 ) {
   const { id } = await context.params
   const deckId = id
-  const skipOwnerMerge = request.nextUrl.searchParams.get('skipOwnerMerge') === '1'
+  const fast = request.nextUrl.searchParams.get('fast') === '1'
+  const skipOwnerMerge = request.nextUrl.searchParams.get('skipOwnerMerge') === '1' || fast
 
   if (!deckId) {
     return NextResponse.json({ error: 'Deck id is required' }, { status: 400 })
@@ -185,7 +186,7 @@ export async function GET(
       let deckRankFromListing: string | null | undefined = fusedRaw.deckRank || fusedRaw.rank || null
       const metaSourceMap = new Map<string, any>()
       const usernameForMeta = username || owner
-      if (usernameForMeta) {
+      if (!fast && usernameForMeta) {
         try {
           const metaRes = await fetch(
             `${API_BASE_URL}/fuseddeck/app?pageSize=200&username=${encodeURIComponent(usernameForMeta)}`,
@@ -256,53 +257,55 @@ export async function GET(
       }))
 
       // Try to hydrate source halves with full data (to get deckRank/elo/score/set info)
-      const hydratedSources = await Promise.all(
-        myDecksNormalized.map(async (src) => {
-          const srcId = (src as any)?.id || (src as any)?.deckId || (src as any)?.deck_id
-          if (!srcId) return src
+      const sourcesWithMeta = fast
+        ? myDecksNormalized
+        : (
+            await Promise.all(
+              myDecksNormalized.map(async (src) => {
+                const srcId = (src as any)?.id || (src as any)?.deckId || (src as any)?.deck_id
+                if (!srcId) return src
 
-          // Skip fetch if we already have meta fields
-          const hasMeta =
-            (src as any)?.deckRank ||
-            (src as any)?.deckScore !== undefined ||
-            (src as any)?.elo !== undefined
-          if (hasMeta) return src
+                // Skip fetch if we already have meta fields
+                const hasMeta =
+                  (src as any)?.deckRank ||
+                  (src as any)?.deckScore !== undefined ||
+                  (src as any)?.elo !== undefined
+                if (hasMeta) return src
 
-          try {
-            const full = await fetchDeckDetails(srcId)
-            if (!full) return src
-            const normalized = normalizeDeck(full)
-            const resolvedCardSetNo = resolveCardSetNo(
-              (src as any)?.cardSetNo ?? (normalized as any)?.cardSetNo,
-              (src as any)?.cardSetId ?? (normalized as any)?.cardSetId
+                try {
+                  const full = await fetchDeckDetails(srcId)
+                  if (!full) return src
+                  const normalized = normalizeDeck(full)
+                  const resolvedCardSetNo = resolveCardSetNo(
+                    (src as any)?.cardSetNo ?? (normalized as any)?.cardSetNo,
+                    (src as any)?.cardSetId ?? (normalized as any)?.cardSetId
+                  )
+                  return {
+                    ...src,
+                    ...normalized,
+                    cards: Array.isArray(src.cards) && src.cards.length > 0 ? src.cards : normalized.cards,
+                    cardSetNo: resolvedCardSetNo,
+                    cardSetId: (src as any)?.cardSetId ?? (normalized as any)?.cardSetId ?? (normalized as any)?.cardSetNo,
+                    forgeborn: (src as any)?.forgeborn || (normalized as any)?.forgeborn,
+                    forgebornId: (src as any)?.forgebornId || (normalized as any)?.forgebornId,
+                  }
+                } catch (err) {
+                  console.warn('[API] Failed to hydrate fused source deck', srcId, err)
+                  return src
+                }
+              })
             )
+          ).map((src) => {
+            if (!src) return src
+            const key = normalizeId((src as any)?.id || (src as any)?.deckId || (src as any)?.deck_id)
+            const meta = key ? metaSourceMap.get(key) : undefined
+            if (!meta) return src
             return {
               ...src,
-              ...normalized,
-              cards: Array.isArray(src.cards) && src.cards.length > 0 ? src.cards : normalized.cards,
-              cardSetNo: resolvedCardSetNo,
-              cardSetId: (src as any)?.cardSetId ?? (normalized as any)?.cardSetId ?? (normalized as any)?.cardSetNo,
-              forgeborn: (src as any)?.forgeborn || (normalized as any)?.forgeborn,
-              forgebornId: (src as any)?.forgebornId || (normalized as any)?.forgebornId,
+              deckRank: (src as any)?.deckRank ?? meta.deckRank ?? meta.rank ?? null,
+              faction: (src as any)?.faction ?? meta.faction ?? null,
             }
-          } catch (err) {
-            console.warn('[API] Failed to hydrate fused source deck', srcId, err)
-            return src
-          }
-        })
-      )
-
-      const sourcesWithMeta = hydratedSources.map((src) => {
-        if (!src) return src
-        const key = normalizeId((src as any)?.id || (src as any)?.deckId || (src as any)?.deck_id)
-        const meta = key ? metaSourceMap.get(key) : undefined
-        if (!meta) return src
-        return {
-          ...src,
-          deckRank: (src as any)?.deckRank ?? meta.deckRank ?? meta.rank ?? null,
-          faction: (src as any)?.faction ?? meta.faction ?? null,
-        }
-      })
+          })
 
       const resolveFusedForgeborn = (sources: any[]) => {
         for (const src of sources) {
@@ -344,10 +347,12 @@ export async function GET(
       }
 
       let enrichedFused = fusedDeck
-      try {
-        enrichedFused = await mergeFromPlayerDecks(fusedDeck)
-      } catch (err) {
-        console.warn('[API] Failed to enrich fused deck from player decks:', err)
+      if (!fast) {
+        try {
+          enrichedFused = await mergeFromPlayerDecks(fusedDeck)
+        } catch (err) {
+          console.warn('[API] Failed to enrich fused deck from player decks:', err)
+        }
       }
 
       return NextResponse.json({ deck: enrichedFused })

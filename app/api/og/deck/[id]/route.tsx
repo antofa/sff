@@ -151,6 +151,22 @@ const formatElo = (value: unknown) => {
   return Math.round(numeric)
 }
 
+const OG_DECK_TIMEOUT_MS = 1200
+const OG_IMAGE_TIMEOUT_MS = 900
+const OG_ICON_TIMEOUT_MS = 500
+
+const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number) => {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id?: string }> }
@@ -181,11 +197,17 @@ export async function GET(
   }
 
   try {
-    const res = await fetch(`${origin}/api/deck/${encodeURIComponent(deckId)}`, {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    })
-    if (res.ok) {
+    const deckUrl = `${origin}/api/deck/${encodeURIComponent(deckId)}?fast=1&skipOwnerMerge=1`
+    const res = await fetchWithTimeout(
+      deckUrl,
+      {
+        headers: { Accept: 'application/json' },
+        cache: 'force-cache',
+        next: { revalidate: 300 },
+      },
+      OG_DECK_TIMEOUT_MS
+    )
+    if (res?.ok) {
       const json = await res.json()
       const deck = json?.deck
       const isFused = String(deck?.format || '').toLowerCase() === 'fused'
@@ -241,8 +263,15 @@ export async function GET(
   let imageData: ArrayBuffer | null = null
   if (forgebornImageUrl) {
     try {
-      const imageRes = await fetch(forgebornImageUrl)
-      if (imageRes.ok) {
+      const imageRes = await fetchWithTimeout(
+        forgebornImageUrl,
+        {
+          cache: 'force-cache',
+          next: { revalidate: 86400 },
+        },
+        OG_IMAGE_TIMEOUT_MS
+      )
+      if (imageRes?.ok) {
         imageData = await imageRes.arrayBuffer()
       }
     } catch {
@@ -263,8 +292,15 @@ export async function GET(
   const loadIcon = async (url: string | null) => {
     if (!url) return { url: null, data: null }
     try {
-      const iconRes = await fetch(url)
-      if (iconRes.ok) {
+      const iconRes = await fetchWithTimeout(
+        url,
+        {
+          cache: 'force-cache',
+          next: { revalidate: 86400 },
+        },
+        OG_ICON_TIMEOUT_MS
+      )
+      if (iconRes?.ok) {
         return { url, data: await iconRes.arrayBuffer() }
       }
     } catch {
@@ -539,6 +575,9 @@ export async function GET(
     {
       width: 1200,
       height: 630,
+      headers: {
+        'Cache-Control': 'public, max-age=60, s-maxage=600, stale-while-revalidate=86400',
+      },
     }
   )
 }
