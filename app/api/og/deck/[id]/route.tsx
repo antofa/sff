@@ -144,6 +144,13 @@ const formatScore = (value: unknown) => {
   return Math.round(numeric * 100)
 }
 
+const formatElo = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return null
+  const numeric = Number(value)
+  if (Number.isNaN(numeric)) return null
+  return Math.round(numeric)
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id?: string }> }
@@ -222,7 +229,7 @@ export async function GET(
 
       owner = deck?.playerName || deck?.username || deck?.owner || null
       score = formatScore(deck?.deckScore ?? deck?.elo ?? deck?.deckRank ?? null)
-      elo = formatScore(deck?.elo ?? null)
+      elo = formatElo(deck?.elo ?? null)
       expiry = formatExpiry(
         deck?.expireAt ?? deck?.expire ?? deck?.expire_date ?? deck?.expireDate ?? deck?.pExpiry ?? null
       )

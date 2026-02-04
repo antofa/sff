@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
-## [Unreleased] - 2026-01-30
+## [Unreleased] - 2026-02-04
 
 ### Added
 - `AGENTS.md` with project notes and contribution rules.
@@ -100,6 +100,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Derive the header changelog merge date from git merge commits via a release API.
 
 ### Fixed
+- Round ELO values in OG deck previews to whole numbers.
 - Populate fused deck card set values from source halves to keep card-set filtering reliable.
 - Generate deck preview metadata for fused decks by falling back to the internal deck API.
 - Force deck pages to render metadata dynamically so fused previews resolve at request time.
