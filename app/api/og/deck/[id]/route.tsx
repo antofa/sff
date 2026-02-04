@@ -1068,10 +1068,10 @@ export async function GET(
   const showFusedColumns = cardColumns.length > 1
   const fusedFontScale = showFusedColumns ? 1.44 : 1
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * 10) / 10
-  const forgebornTitleFont = showFusedColumns ? scaleFont(18) : scaleFont(40)
-  const forgebornAbilityFont = showFusedColumns ? scaleFont(10.5) : scaleFont(20)
-  const forgebornAbilityLineHeight = showFusedColumns ? 1.22 : 1.25
-  const forgebornLevelIconSize = showFusedColumns ? '15px' : '20px'
+  const forgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
+  const forgebornAbilityFont = showFusedColumns ? scaleFont(14) : scaleFont(20)
+  const forgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
+  const forgebornLevelIconSize = showFusedColumns ? '18px' : '20px'
 
   const renderForgebornBlock = () => (
     <div
@@ -1084,7 +1084,6 @@ export async function GET(
         minWidth: 0,
         width: '100%',
         flex: 1,
-        paddingRight: showFusedColumns ? '8px' : '0',
       }}
     >
       <div style={{ fontSize: forgebornTitleFont, fontWeight: 700, lineHeight: 1.1 }}>{forgebornName || 'Forgeborn'}</div>
@@ -1279,14 +1278,18 @@ export async function GET(
               minHeight: 0,
             }}
           >
-            <div style={{ display: 'flex', width: '33.3333%', minWidth: 0 }}>{renderCardColumn(cardColumns[0], 0)}</div>
-            <div style={{ display: 'flex', width: '33.3333%', minWidth: 0 }}>{renderCardColumn(cardColumns[1], 1)}</div>
+            <div style={{ display: 'flex', flex: 1.2, minWidth: 0 }}>
+              {renderCardColumn(cardColumns[0], 0)}
+            </div>
+            <div style={{ display: 'flex', flex: 1.2, minWidth: 0 }}>
+              {renderCardColumn(cardColumns[1], 1)}
+            </div>
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'stretch',
-                width: '33.3333%',
+                flex: 0.8,
                 minWidth: 0,
               }}
             >

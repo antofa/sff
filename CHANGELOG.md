@@ -70,6 +70,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Allow long fused OG card names to wrap within their columns instead of truncating with ellipsis.
 - Restore iconized forgeborn ability rendering in fused OG and constrain third-column text wrapping to prevent right-edge clipping.
 - Further tighten fused OG third-column typography and add right padding so forgeborn abilities fit without clipping.
+- Rebalance fused OG column widths to make the third (forgeborn) column narrower while preserving readable text and icon layout.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
