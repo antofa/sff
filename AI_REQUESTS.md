@@ -302,3 +302,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 320e244
   Request: Round the ELO value to a whole number in the OG card.
   Date: 2026-02-04
+- Commit: d2e074d
+  Request: Rename "Creature tags" to "Creature types" in the OG image.
+  Date: 2026-02-04
