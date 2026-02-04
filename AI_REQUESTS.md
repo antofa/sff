@@ -422,3 +422,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 05ad24f
   Request: In fused OG image, remove the deck name and keep only the forgeborn name in the title.
   Date: 2026-02-04
+- Commit: d5b887a
+  Request: Third column text in fused OG formats strangely; fix forgeborn column typography/wrapping.
+  Date: 2026-02-04
