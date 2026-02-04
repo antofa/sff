@@ -362,3 +362,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 7a254c5
   Request: Set payload/icon cache TTL to one day and add safeguards: cache only full payloads, cap cache size with LRU, and add manual bypass with `refresh=1`.
   Date: 2026-02-04
+- Commit: a3cf189
+  Request: Enable sliding expiration for icon cache TTL (refresh TTL on icon use).
+  Date: 2026-02-04
