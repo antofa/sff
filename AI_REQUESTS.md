@@ -359,3 +359,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: aced616
   Request: Implement all listed OG speed improvements (remove internal API hop, add OG payload and icon caches, increase CDN cache, optimize fast API path, and pre-warm OG on deck page open).
   Date: 2026-02-04
+- Commit: 7a254c5
+  Request: Set payload/icon cache TTL to one day and add safeguards: cache only full payloads, cap cache size with LRU, and add manual bypass with `refresh=1`.
+  Date: 2026-02-04
