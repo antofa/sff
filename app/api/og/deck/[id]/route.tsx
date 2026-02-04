@@ -951,7 +951,7 @@ export async function GET(
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'stretch',
-          gap: '16px',
+          gap: '8px',
           padding: '20px 24px',
           backgroundColor: '#0f172a',
         }}
@@ -960,8 +960,7 @@ export async function GET(
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px',
-            minHeight: '190px',
+            gap: '6px',
             color: '#e2e8f0',
             fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
           }}
@@ -1038,6 +1037,7 @@ export async function GET(
                       fontWeight: 700,
                       letterSpacing: '0.04em',
                       textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     {column.title || `Half ${columnIndex + 1}`}
@@ -1052,6 +1052,7 @@ export async function GET(
                         fontWeight: 700,
                         letterSpacing: '0.04em',
                         textTransform: 'uppercase',
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       {section.label}
