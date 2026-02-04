@@ -61,6 +61,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Increase fused OG typography by another 20% to improve readability in the 3-column layout.
 - Show only the forgeborn name in fused OG titles (remove deck name suffix).
 - Tune fused OG third-column typography (forgeborn title and ability text) to avoid cramped wrapping.
+- Make fused OG forgeborn column use the full third-column width instead of content-sized width.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

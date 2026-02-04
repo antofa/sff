@@ -1083,6 +1083,8 @@ export async function GET(
         color: '#e2e8f0',
         fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
         minWidth: 0,
+        width: '100%',
+        flex: 1,
       }}
     >
       <div style={{ fontSize: forgebornTitleFont, fontWeight: 700, lineHeight: 1.1 }}>{forgebornName || 'Forgeborn'}</div>
@@ -1279,7 +1281,7 @@ export async function GET(
           >
             <div style={{ display: 'flex', width: '33.3333%', minWidth: 0 }}>{renderCardColumn(cardColumns[0], 0)}</div>
             <div style={{ display: 'flex', width: '33.3333%', minWidth: 0 }}>{renderCardColumn(cardColumns[1], 1)}</div>
-            <div style={{ display: 'flex', width: '33.3333%', minWidth: 0 }}>{renderForgebornBlock()}</div>
+            <div style={{ width: '33.3333%', minWidth: 0 }}>{renderForgebornBlock()}</div>
           </div>
         ) : (
           <>
