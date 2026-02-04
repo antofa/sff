@@ -443,3 +443,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ee5f024
   Request: Also fix text wrapping in the other fused OG columns for this URL.
   Date: 2026-02-04
+- Commit: b390193
+  Request: Continue fixing fused OG column wrapping so long card names wrap instead of clipping/truncating.
+  Date: 2026-02-04
