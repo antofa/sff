@@ -1069,6 +1069,186 @@ export async function GET(
   const showFusedColumns = cardColumns.length > 1
   const fusedFontScale = showFusedColumns ? 1.2 : 1
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * 10) / 10
+  const cardNameLimit = showFusedColumns ? 24 : 38
+
+  const renderForgebornBlock = () => (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+        color: '#e2e8f0',
+        fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
+        minWidth: 0,
+      }}
+    >
+      <div style={{ fontSize: scaleFont(40), fontWeight: 700, lineHeight: 1.1 }}>
+        {(forgebornName || 'Forgeborn') + (showFusedColumns && deckName ? ` (${deckName})` : '')}
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          fontSize: scaleFont(20),
+          lineHeight: 1.25,
+          width: '100%',
+        }}
+      >
+        {forgebornAbilities.length > 0 ? (
+          forgebornAbilities.map((ability, idx) => {
+            const levelIconSrc = ability.level && levelIconMap.has(ability.level) ? levelIconMap.get(ability.level) : null
+            return (
+              <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', gap: '8px' }}>
+                {levelIconSrc ? (
+                  <img
+                    src={levelIconSrc}
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      objectFit: 'contain',
+                      transform: 'translateY(3px)',
+                    }}
+                  />
+                ) : null}
+                {ability.text ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flex: 1,
+                      minWidth: 0,
+                      maxWidth: '100%',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    {renderAbilityText(ability.text, statIconMap, levelIconMap)}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })
+        ) : (
+          <div style={{ color: '#94a3b8', fontSize: scaleFont(20) }}>Abilities unavailable</div>
+        )}
+      </div>
+    </div>
+  )
+
+  const renderCardColumn = (column: (typeof cardColumns)[number] | undefined, columnIndex: number) => (
+    <div
+      key={`column-${columnIndex}`}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        flex: 1,
+        minWidth: 0,
+        color: '#e2e8f0',
+        fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
+      }}
+    >
+      {showFusedColumns && column ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+          {column.factionIconPath ? (
+            <img
+              src={cardIconMap.get(column.factionIconPath) || resolveAssetUrl(column.factionIconPath) || ''}
+              style={{ width: '16px', height: '16px', objectFit: 'contain' }}
+            />
+          ) : null}
+          <span
+            style={{
+              color: '#94a3b8',
+              fontSize: scaleFont(13),
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {[
+              column.setLabel || 'Unknown Set',
+              column.score !== null ? `Score ${column.score}` : null,
+              column.elo !== null ? `ELO ${column.elo}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        </div>
+      ) : null}
+      {column && column.sections.length > 0 ? (
+        column.sections.map((section) => (
+          <div key={`${columnIndex}-${section.label}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span
+              style={{
+                color: '#94a3b8',
+                fontSize: scaleFont(12),
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {section.label}
+            </span>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                fontSize: scaleFont(20),
+                lineHeight: 1.15,
+              }}
+            >
+              {section.items.map((item, idx) => {
+                const factionIconSrc = item.factionIconPath
+                  ? cardIconMap.get(item.factionIconPath) || resolveAssetUrl(item.factionIconPath)
+                  : null
+                const rarityIconSrc = item.rarityIconPath
+                  ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
+                  : null
+                return (
+                  <div
+                    key={`${columnIndex}-${section.label}-${idx}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', minWidth: 0 }}
+                  >
+                    {factionIconSrc ? (
+                      <img src={factionIconSrc} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
+                    ) : (
+                      <span
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '999px',
+                          backgroundColor: item.factionColor,
+                          opacity: 0.8,
+                        }}
+                      />
+                    )}
+                    {rarityIconSrc ? (
+                      <img src={rarityIconSrc} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
+                    ) : (
+                      <span
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '999px',
+                          backgroundColor: item.factionColor,
+                          opacity: 0.8,
+                        }}
+                      />
+                    )}
+                    <span style={{ display: 'block', whiteSpace: 'nowrap' }}>{truncateCardName(item.name, cardNameLimit)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))
+      ) : (
+        <div style={{ color: '#94a3b8', fontSize: scaleFont(18) }}>No cards available</div>
+      )}
+    </div>
+  )
 
   const imageResponse = new ImageResponse(
     (
@@ -1077,201 +1257,35 @@ export async function GET(
           width: '1200px',
           height: '630px',
           display: 'flex',
-          flexDirection: 'column',
+          flexDirection: showFusedColumns ? 'row' : 'column',
           alignItems: 'stretch',
-          gap: '8px',
+          gap: showFusedColumns ? '18px' : '8px',
           padding: '20px 24px',
           backgroundColor: '#0f172a',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px',
-            color: '#e2e8f0',
-            fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
-          }}
-        >
-          <div style={{ fontSize: scaleFont(40), fontWeight: 700, lineHeight: 1.1 }}>
-            {(forgebornName || 'Forgeborn') + (showFusedColumns && deckName ? ` (${deckName})` : '')}
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-              fontSize: scaleFont(20),
-              lineHeight: 1.25,
-              width: '100%',
-            }}
-          >
-            {forgebornAbilities.length > 0 ? (
-              forgebornAbilities.map((ability, idx) => {
-                const levelIconSrc =
-                  ability.level && levelIconMap.has(ability.level) ? levelIconMap.get(ability.level) : null
-                return (
-                  <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', gap: '8px' }}>
-                    {levelIconSrc ? (
-                      <img
-                        src={levelIconSrc}
-                        style={{
-                          width: '20px',
-                          height: '20px',
-                          objectFit: 'contain',
-                          transform: 'translateY(3px)',
-                        }}
-                      />
-                    ) : null}
-                    {ability.text ? (
-                      <div
-                        style={{
-                          display: 'flex',
-                          flex: 1,
-                          minWidth: 0,
-                          maxWidth: '100%',
-                          alignItems: 'flex-start',
-                        }}
-                      >
-                        {renderAbilityText(ability.text, statIconMap, levelIconMap)}
-                      </div>
-                    ) : null}
-                  </div>
-                )
-              })
-            ) : (
-              <div style={{ color: '#94a3b8', fontSize: scaleFont(20) }}>Abilities unavailable</div>
-            )}
-          </div>
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'stretch',
-            gap: '18px',
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
-          {hasCardSections ? (
-            cardColumns.map((column, columnIndex) => (
-              <div
-                key={`column-${columnIndex}`}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                  flex: showFusedColumns ? 1 : 0,
-                  width: showFusedColumns ? 'auto' : '100%',
-                  minWidth: 0,
-                  color: '#e2e8f0',
-                  fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
-                }}
-              >
-                {showFusedColumns ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                    {column.factionIconPath ? (
-                      <img
-                        src={cardIconMap.get(column.factionIconPath) || resolveAssetUrl(column.factionIconPath) || ''}
-                        style={{ width: '16px', height: '16px', objectFit: 'contain' }}
-                      />
-                    ) : null}
-                    <span
-                      style={{
-                        color: '#94a3b8',
-                        fontSize: scaleFont(13),
-                        fontWeight: 700,
-                        letterSpacing: '0.04em',
-                        textTransform: 'uppercase',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {[
-                        column.setLabel || 'Unknown Set',
-                        column.score !== null ? `Score ${column.score}` : null,
-                        column.elo !== null ? `ELO ${column.elo}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </span>
-                  </div>
-                ) : null}
-                {column.sections.map((section) => (
-                  <div key={`${columnIndex}-${section.label}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <span
-                      style={{
-                        color: '#94a3b8',
-                        fontSize: scaleFont(12),
-                        fontWeight: 700,
-                        letterSpacing: '0.04em',
-                        textTransform: 'uppercase',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {section.label}
-                    </span>
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
-                        fontSize: scaleFont(20),
-                        lineHeight: 1.15,
-                      }}
-                    >
-                      {section.items.map((item, idx) => {
-                        const factionIconSrc = item.factionIconPath
-                          ? cardIconMap.get(item.factionIconPath) || resolveAssetUrl(item.factionIconPath)
-                          : null
-                        const rarityIconSrc = item.rarityIconPath
-                          ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
-                          : null
-                        return (
-                          <div
-                            key={`${columnIndex}-${section.label}-${idx}`}
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', minWidth: 0 }}
-                          >
-                            {factionIconSrc ? (
-                              <img src={factionIconSrc} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
-                            ) : (
-                              <span
-                                style={{
-                                  width: '18px',
-                                  height: '18px',
-                                  borderRadius: '999px',
-                                  backgroundColor: item.factionColor,
-                                  opacity: 0.8,
-                                }}
-                              />
-                            )}
-                            {rarityIconSrc ? (
-                              <img src={rarityIconSrc} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
-                            ) : (
-                              <span
-                                style={{
-                                  width: '18px',
-                                  height: '18px',
-                                  borderRadius: '999px',
-                                  backgroundColor: item.factionColor,
-                                  opacity: 0.8,
-                                }}
-                              />
-                            )}
-                            <span style={{ display: 'block', whiteSpace: 'nowrap' }}>
-                              {truncateCardName(item.name, showFusedColumns ? 24 : 38)}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))
-          ) : (
-            <div style={{ color: '#94a3b8', fontSize: scaleFont(18) }}>No cards available</div>
-          )}
-        </div>
+        {showFusedColumns ? (
+          <>
+            {renderCardColumn(cardColumns[0], 0)}
+            {renderCardColumn(cardColumns[1], 1)}
+            <div style={{ display: 'flex', flex: 1, minWidth: 0 }}>{renderForgebornBlock()}</div>
+          </>
+        ) : (
+          <>
+            {renderForgebornBlock()}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'stretch',
+                gap: '18px',
+                flex: 1,
+                minHeight: 0,
+              }}
+            >
+              {hasCardSections ? renderCardColumn(cardColumns[0], 0) : <div style={{ color: '#94a3b8', fontSize: scaleFont(18) }}>No cards available</div>}
+            </div>
+          </>
+        )}
       </div>
     ),
     {

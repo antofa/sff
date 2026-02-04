@@ -56,6 +56,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Replace fused OG column headers with faction icon + set + rounded score (x100) + rounded ELO.
 - Show fused deck name in parentheses next to the forgeborn name in OG previews.
 - Scale all fused OG typography up by 20% for better readability.
+- Redesign fused OG layout into three equal columns: half-deck 1, half-deck 2, and forgeborn details.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
