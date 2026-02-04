@@ -467,3 +467,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 2ae505c
   Request: For fused OG (`/api/og/deck/Fused_4bu6z8m0h1nq0m?refresh=1`), restore the missing level icon on the level-2 forgeborn ability and keep third-column ability text inside the image bounds.
   Date: 2026-02-04
+- Commit: a5da6cc
+  Request: `/api/og/deck/Fused_4bu6z8m0h1nq0m?refresh=1` stopped loading; fix OG route so it returns reliably while keeping third-column icons and bounds.
+  Date: 2026-02-04
