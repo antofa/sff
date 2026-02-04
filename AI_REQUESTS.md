@@ -356,3 +356,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 15391b8
   Request: http://hadoop21.click:3000/deck/s4-a7hainaunav6awkayfbxzcfscgmcll has no OG image; check and fix.
   Date: 2026-02-04
+- Commit: aced616
+  Request: Implement all listed OG speed improvements (remove internal API hop, add OG payload and icon caches, increase CDN cache, optimize fast API path, and pre-warm OG on deck page open).
+  Date: 2026-02-04
