@@ -1,6 +1,7 @@
 import { ImageResponse } from 'next/og'
 import type { NextRequest } from 'next/server'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
+import cardDatabase from '@/card-database-cleaned.json'
 
 export const runtime = 'edge'
 
@@ -154,6 +155,7 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
 }
 
 const stripMarkup = (value: string) => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+const normalizeNameKey = (value: string) => value.toLowerCase().replace(/[^a-z]/g, '')
 
 const resolveForgebornName = (deck: any) => {
   const forgeborn = deck?.forgeborn
@@ -167,6 +169,96 @@ const resolveForgebornName = (deck: any) => {
   const fallback = deck?.forgebornName || deck?.forgebornId || forgeborn?.id || null
   if (!fallback) return null
   return toTitleCase(String(fallback).replace(/[_-]+/g, ' ').trim())
+}
+
+const forgebornAbilityLookup = (() => {
+  const map = new Map<string, any>()
+  const cards = (cardDatabase as any)?.cards
+  if (!Array.isArray(cards)) return map
+  cards.forEach((card) => {
+    const type = String(card?.cardType || '').toLowerCase()
+    if (type !== 'forgeborn-ability') return
+    const id = String(card?.id || '').toLowerCase()
+    if (id) map.set(id, card)
+  })
+  return map
+})()
+
+const resolveAbilityCardData = (card: any) => {
+  if (!card) return null
+  if (typeof card === 'string') {
+    const key = card.toLowerCase()
+    return forgebornAbilityLookup.get(key) || null
+  }
+  if (typeof card !== 'object') return null
+  const id = String(card?.id || card?.cardId || card?.card_id || '').toLowerCase()
+  const hasText =
+    card?.text ||
+    card?.Text ||
+    card?.description ||
+    card?.desc ||
+    card?.['1text'] ||
+    card?.['2text'] ||
+    card?.['3text']
+  if (hasText) return card
+  const fallback = id ? forgebornAbilityLookup.get(id) : null
+  if (!fallback) return card
+  return { ...fallback, ...card }
+}
+
+const resolveAbilityText = (card: any) => {
+  if (!card) return null
+  const id = String(card?.id || '').toLowerCase()
+  const level = id.startsWith('c2-') ? 2 : id.startsWith('c3-') ? 3 : id.startsWith('c4-') ? 4 : null
+  const rawText =
+    level === 2
+      ? card?.['1text'] ?? card?.text ?? card?.Text ?? card?.description ?? card?.desc
+      : level === 3
+        ? card?.['2text'] ?? card?.text ?? card?.Text ?? card?.description ?? card?.desc
+        : level === 4
+          ? card?.['3text'] ?? card?.text ?? card?.Text ?? card?.description ?? card?.desc
+          : card?.text ?? card?.Text ?? card?.description ?? card?.desc ?? card?.['1text'] ?? card?.['2text'] ?? card?.['3text']
+  if (!rawText) return null
+  const text = stripMarkup(String(rawText))
+  if (!text) return null
+  return { level, text }
+}
+
+const collectForgebornAbilitiesFromCards = (deck: any, forgebornKey: string) => {
+  const sources = [deck?.cards, ...(Array.isArray(deck?.myDecks) ? deck.myDecks.map((d: any) => d?.cards) : [])]
+  const cards = sources.flatMap((list) => (Array.isArray(list) ? list : []))
+  if (cards.length === 0) return []
+
+  const abilityEntries: Array<{ title: string | null; text: string | null }> = []
+  const seenLevels = new Set<number>()
+  const abilityCards = cards
+    .map(resolveAbilityCardData)
+    .filter((card) => {
+      if (!card || typeof card !== 'object') return false
+      const type = String(card?.cardType || card?.type || card?.card_type || '').toLowerCase()
+      const id = String(card?.id || card?.cardId || card?.card_id || '').toLowerCase()
+      if (!type.includes('forgeborn') && !id.startsWith('c2-') && !id.startsWith('c3-') && !id.startsWith('c4-')) {
+        return false
+      }
+      if (!forgebornKey) return true
+      const cardKey = normalizeNameKey(String(card?.name || card?.Name || id || ''))
+      return cardKey.includes(forgebornKey)
+    })
+
+  abilityCards.forEach((card) => {
+    const resolved = resolveAbilityText(card)
+    if (!resolved || !resolved.text) return
+    const level = resolved.level
+    if (level && seenLevels.has(level)) return
+    if (level) seenLevels.add(level)
+    const label = level === 2 ? 'II' : level === 3 ? 'III' : level === 4 ? 'IV' : null
+    abilityEntries.push({ title: label, text: resolved.text })
+  })
+
+  const orderMap: Record<string, number> = { II: 2, III: 3, IV: 4 }
+  return abilityEntries
+    .sort((a, b) => (orderMap[a.title || ''] || 99) - (orderMap[b.title || ''] || 99))
+    .slice(0, 3)
 }
 
 const formatAbilityEntry = (ability: any) => {
@@ -191,45 +283,50 @@ const formatAbilityEntry = (ability: any) => {
   return { title: title ? String(title).trim() : null, text }
 }
 
-const collectForgebornAbilities = (deck: any) => {
+const collectForgebornAbilities = (deck: any, forgebornName?: string | null) => {
   const forgeborn = deck?.forgeborn
-  if (!forgeborn || typeof forgeborn !== 'object') return []
   const entries: Array<{ title: string | null; text: string | null }> = []
   const pushAbility = (ability: any) => {
     const entry = formatAbilityEntry(ability)
     if (entry) entries.push(entry)
   }
 
-  const rawAbilities =
-    forgeborn?.abilities ||
-    forgeborn?.abilityCards ||
-    forgeborn?.ability_cards ||
-    forgeborn?.abilityList ||
-    forgeborn?.abilitiesList ||
-    null
-  if (Array.isArray(rawAbilities)) {
-    rawAbilities.forEach(pushAbility)
-  } else if (rawAbilities) {
-    pushAbility(rawAbilities)
-  }
+  if (forgeborn && typeof forgeborn === 'object') {
+    const rawAbilities =
+      forgeborn?.abilities ||
+      forgeborn?.abilityCards ||
+      forgeborn?.ability_cards ||
+      forgeborn?.abilityList ||
+      forgeborn?.abilitiesList ||
+      null
+    if (Array.isArray(rawAbilities)) {
+      rawAbilities.forEach(pushAbility)
+    } else if (rawAbilities) {
+      pushAbility(rawAbilities)
+    }
 
-  const abilityKeys = ['ability1', 'ability2', 'ability3', 'ability4', 'ability5']
-  abilityKeys.forEach((key) => {
-    if (forgeborn?.[key]) pushAbility(forgeborn[key])
-  })
-
-  if (entries.length === 0) {
-    const levelKeys = ['1text', '2text', '3text']
-    levelKeys.forEach((key) => {
+    const abilityKeys = ['ability1', 'ability2', 'ability3', 'ability4', 'ability5']
+    abilityKeys.forEach((key) => {
       if (forgeborn?.[key]) pushAbility(forgeborn[key])
     })
+
+    if (entries.length === 0) {
+      const levelKeys = ['1text', '2text', '3text']
+      levelKeys.forEach((key) => {
+        if (forgeborn?.[key]) pushAbility(forgeborn[key])
+      })
+    }
+
+    if (entries.length === 0 && (forgeborn?.text || forgeborn?.Text)) {
+      pushAbility(forgeborn?.text || forgeborn?.Text)
+    }
   }
 
-  if (entries.length === 0 && (forgeborn?.text || forgeborn?.Text)) {
-    pushAbility(forgeborn?.text || forgeborn?.Text)
-  }
+  if (entries.length > 0) return entries
 
-  return entries
+  const keySource = forgebornName || resolveForgebornName(deck) || String(forgeborn?.id || '')
+  const forgebornKey = keySource ? normalizeNameKey(String(keySource)) : ''
+  return collectForgebornAbilitiesFromCards(deck, forgebornKey)
 }
 
 export async function GET(
@@ -278,7 +375,7 @@ export async function GET(
       const deck = json?.deck
       const isFused = String(deck?.format || '').toLowerCase() === 'fused'
       forgebornName = resolveForgebornName(deck)
-      forgebornAbilities = collectForgebornAbilities(deck).slice(0, 3)
+      forgebornAbilities = collectForgebornAbilities(deck, forgebornName).slice(0, 3)
 
       cardCounts = countCardTypes(deck)
       rarityEntries = countRarities(deck)
