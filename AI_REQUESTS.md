@@ -368,3 +368,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 904221b
   Request: Implement the Netlify + Cloudflare R2 plan: prewarm OG on deck open, keep OG cached for a day, and serve Discord from cache instead of rendering from scratch.
   Date: 2026-02-04
+- Commit: 3ffa846
+  Request: Add the Netlify + Cloudflare R2 setup checklist to README.
+  Date: 2026-02-04
