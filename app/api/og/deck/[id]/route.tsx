@@ -175,12 +175,18 @@ const renderAbilityText = (text: string, iconMap: Map<string, string | null>) =>
       parts.push(full)
     } else {
       parts.push(
-        <span
-          key={`stat-${keyIndex++}`}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-        >
-          <span>{number}</span>
-          <img src={iconSrc} style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+        <span key={`stat-${keyIndex++}`}>
+          {number}
+          <img
+            src={iconSrc}
+            style={{
+              width: '16px',
+              height: '16px',
+              objectFit: 'contain',
+              marginLeft: '4px',
+              verticalAlign: 'middle',
+            }}
+          />
         </span>
       )
     }

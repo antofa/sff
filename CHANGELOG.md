@@ -18,6 +18,9 @@ Dates use UTC and roll over at 00:00 UTC.
 - Render OG ability text on the same line as the level icon without duplicating the level label.
 - Replace A/H/D stat letters with attack/health/armor icons in OG ability text.
 
+### Fixed
+- Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
+
 ## [0.0.1] - 2026-01-30
 
 ### Added
