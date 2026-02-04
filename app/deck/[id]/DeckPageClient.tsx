@@ -64,6 +64,19 @@ export default function DeckPageClient() {
   }, [deckId])
 
   useEffect(() => {
+    if (!deckId) return
+    const encodedDeckId = encodeURIComponent(deckId)
+    // Warm the OG route in the background so sharing is instant after opening the deck.
+    void fetch(`/api/og/deck/${encodedDeckId}`, {
+      method: 'GET',
+      cache: 'force-cache',
+      keepalive: true,
+    }).catch(() => {
+      // ignore prewarm failures
+    })
+  }, [deckId])
+
+  useEffect(() => {
     const run = async () => {
       if (!deck) return
       const isFused = String((deck as any).format || '').toLowerCase() === 'fused'

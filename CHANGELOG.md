@@ -28,6 +28,12 @@ Dates use UTC and roll over at 00:00 UTC.
 - Increase OG stat icon sizes (attack/health/armor) by 1.5x.
 - Increase OG card-list icon and font sizes by 1.5x for better readability.
 - Add hard OG request/read timeouts so slow deck/icon fetches fall back instead of hanging the image response.
+- Fetch OG deck data directly from the upstream SolForge API instead of calling the internal `/api/deck` route first.
+- Add a 10-minute in-memory cache for computed OG payloads and reuse in-flight OG payload fetches per deck.
+- Cache OG icon data URLs in memory and reuse in-flight icon fetches to avoid repeated icon downloads.
+- Extend OG CDN cache (`s-maxage`) from 10 minutes to 60 minutes.
+- Add a lighter fast path in `/api/deck/[id]` by reducing candidate IDs and using shorter timeouts for `fast=1`.
+- Pre-warm `/api/og/deck/[id]` when opening `/deck/[id]` so sharing is faster right after viewing a deck.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

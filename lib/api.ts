@@ -206,13 +206,18 @@ export function normalizeDeck(deck: any): ApiDeck {
 /**
  * Fetch detailed deck information with full card data
  */
-export async function fetchDeckDetails(deckId: string): Promise<any> {
+export async function fetchDeckDetails(
+  deckId: string,
+  options?: { timeoutMs?: number; revalidateSeconds?: number }
+): Promise<any> {
   try {
     const cacheKey = normalizeDeckDetailsKey(deckId)
     const cached = getDeckDetailsCached(cacheKey)
     if (cached) return cached
 
     const url = `${API_BASE_URL}/deck/${deckId}?inclCards=true&inclUsers=true`
+    const timeoutMs = Math.max(500, options?.timeoutMs ?? 60000)
+    const revalidateSeconds = Math.max(30, options?.revalidateSeconds ?? 86400)
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -220,8 +225,8 @@ export async function fetchDeckDetails(deckId: string): Promise<any> {
         'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
       },
       cache: 'force-cache',
-      next: { revalidate: 86400 },
-      signal: AbortSignal.timeout(60000),
+      next: { revalidate: revalidateSeconds },
+      signal: AbortSignal.timeout(timeoutMs),
     })
 
     if (!response.ok) {

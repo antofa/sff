@@ -4,6 +4,27 @@ import type { ReactNode } from 'react'
 
 export const runtime = 'edge'
 
+const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
+const OG_DECK_TIMEOUT_MS = 1200
+const OG_ICON_TIMEOUT_MS = 500
+const OG_PAYLOAD_TTL_MS = 10 * 60 * 1000
+
+type OgPayload = {
+  cardSections: CardSection[]
+  forgebornName: string | null
+  forgebornAbilities: AbilityEntry[]
+}
+
+type OgPayloadCacheEntry = {
+  expiresAt: number
+  payload: OgPayload
+}
+
+const ogPayloadCache = new Map<string, OgPayloadCacheEntry>()
+const ogPayloadInFlight = new Map<string, Promise<OgPayload>>()
+const iconSrcCache = new Map<string, string | null>()
+const iconSrcInFlight = new Map<string, Promise<string | null>>()
+
 const toTitleCase = (value: string) =>
   value
     .split(' ')
@@ -110,9 +131,6 @@ const buildCardSections = (deck: any) => {
   return sections
 }
 
-const OG_DECK_TIMEOUT_MS = 1200
-const OG_ICON_TIMEOUT_MS = 500
-
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   const timeoutPromise = new Promise<T>((resolve) => {
@@ -146,6 +164,178 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
   } finally {
     clearTimeout(abortLater)
   }
+}
+
+const toBase64 = (buffer: ArrayBuffer) => {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return btoa(binary)
+}
+
+const stripDeckPrefixes = (value: string) =>
+  value
+    .toString()
+    .replace(/^deck[_-]?fused[_-]?/i, '')
+    .replace(/^deck[_-]?/i, '')
+    .replace(/^fused[_-]?/i, '')
+
+const toFusedApiId = (value: string) => {
+  const raw = value.toString().trim()
+  if (!raw) return raw
+  if (/^fused[_-]/i.test(raw)) {
+    return raw.replace(/^fused[-_]/i, 'Fused_')
+  }
+  if (/^deck[_-]?fused[_-]?/i.test(raw)) {
+    const stripped = raw.replace(/^deck[_-]?/i, '')
+    return stripped.replace(/^fused[-_]/i, 'Fused_')
+  }
+  const base = stripDeckPrefixes(raw)
+  return `Fused_${base}`
+}
+
+const normalizeOgPayloadKey = (deckId: string) => stripDeckPrefixes(deckId).trim().toLowerCase()
+
+const getCachedOgPayload = (key: string): OgPayload | null => {
+  const cached = ogPayloadCache.get(key)
+  if (!cached) return null
+  if (cached.expiresAt < Date.now()) {
+    ogPayloadCache.delete(key)
+    return null
+  }
+  return cached.payload
+}
+
+const setCachedOgPayload = (key: string, payload: OgPayload) => {
+  ogPayloadCache.set(key, { expiresAt: Date.now() + OG_PAYLOAD_TTL_MS, payload })
+}
+
+const getDeckFromUpstream = async (deckId: string) => {
+  const baseId = stripDeckPrefixes(deckId)
+  const regularCandidates = Array.from(new Set([baseId, deckId].filter(Boolean)))
+
+  for (const candidate of regularCandidates) {
+    const url = `${API_BASE_URL}/deck/${encodeURIComponent(stripDeckPrefixes(candidate))}?inclCards=true&inclUsers=true`
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        cache: 'force-cache',
+        next: { revalidate: 300 },
+      },
+      OG_DECK_TIMEOUT_MS
+    )
+    if (!response?.ok) continue
+    const raw = await withTimeout(response.json().catch(() => null), OG_DECK_TIMEOUT_MS, null)
+    if (!raw) continue
+    const rawId = raw?.id || raw?.deckId || raw?.deck_id
+    if (!rawId) continue
+    const cards =
+      Array.isArray(raw?.cards) && raw.cards.length > 0
+        ? raw.cards
+        : Array.isArray(raw?.cardList) && raw.cardList.length > 0
+          ? raw.cardList
+          : []
+    return {
+      ...raw,
+      cards,
+      forgeborn: raw?.forgeborn || null,
+      forgebornId: raw?.forgebornId || raw?.forgeborn?.id || null,
+    }
+  }
+
+  const fusedCandidates = Array.from(new Set([toFusedApiId(deckId), `Fused_${baseId}`].filter(Boolean)))
+  for (const fusedCandidate of fusedCandidates) {
+    const url = `${API_BASE_URL}/fuseddeck/${encodeURIComponent(fusedCandidate)}?inclCards=true&inclUsers=true`
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        cache: 'force-cache',
+        next: { revalidate: 300 },
+      },
+      OG_DECK_TIMEOUT_MS
+    )
+    if (!response?.ok) continue
+    const raw = await withTimeout(response.json().catch(() => null), OG_DECK_TIMEOUT_MS, null)
+    if (!raw) continue
+    const rawId = raw?.id || raw?.deckId || raw?.deck_id
+    if (!rawId) continue
+
+    const sourceDecks =
+      (Array.isArray(raw?.myDecks) && raw.myDecks) ||
+      (Array.isArray(raw?.decks) && raw.decks) ||
+      []
+    const extractCards = (deckLike: any): any[] => {
+      if (!deckLike) return []
+      if (Array.isArray(deckLike.cardList) && deckLike.cardList.length > 0) return deckLike.cardList
+      if (Array.isArray(deckLike.cards) && deckLike.cards.length > 0) return deckLike.cards
+      if (Array.isArray(deckLike.cardIds) && deckLike.cardIds.length > 0) return deckLike.cardIds
+      return []
+    }
+    const mergedCardsFromSources = sourceDecks.flatMap(extractCards).filter(Boolean)
+    const fusedCards =
+      Array.isArray(raw?.cardList) && raw.cardList.length > 0
+        ? raw.cardList
+        : Array.isArray(raw?.cards) && raw.cards.length > 0
+          ? raw.cards
+          : []
+    const cards = mergedCardsFromSources.length > 0 ? mergedCardsFromSources : fusedCards
+
+    let sourceForgeborn: any = null
+    let sourceForgebornId: string | null = null
+    for (const source of sourceDecks) {
+      if (!source) continue
+      const fb = source?.forgeborn || null
+      const fbId = source?.forgebornId || fb?.id || null
+      if (fb || fbId) {
+        sourceForgeborn = fb
+        sourceForgebornId = fbId
+        break
+      }
+    }
+
+    return {
+      ...raw,
+      cards,
+      forgeborn: raw?.forgeborn || sourceForgeborn || null,
+      forgebornId: raw?.forgebornId || raw?.forgeborn?.id || sourceForgebornId || null,
+    }
+  }
+
+  return null
+}
+
+const buildOgPayload = (deck: any): OgPayload => ({
+  cardSections: buildCardSections(deck),
+  forgebornName: resolveForgebornName(deck),
+  forgebornAbilities: collectForgebornAbilities(deck).slice(0, 3),
+})
+
+const getOgPayload = async (deckId: string): Promise<OgPayload> => {
+  const cacheKey = normalizeOgPayloadKey(deckId)
+  const cached = getCachedOgPayload(cacheKey)
+  if (cached) return cached
+
+  const inflight = ogPayloadInFlight.get(cacheKey)
+  if (inflight) return inflight
+
+  const promise = (async () => {
+    const deck = await getDeckFromUpstream(deckId)
+    const payload = deck ? buildOgPayload(deck) : { cardSections: [], forgebornName: null, forgebornAbilities: [] }
+    setCachedOgPayload(cacheKey, payload)
+    return payload
+  })().finally(() => {
+    ogPayloadInFlight.delete(cacheKey)
+  })
+
+  ogPayloadInFlight.set(cacheKey, promise)
+  return promise
 }
 
 const stripMarkup = (value: string) => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
@@ -478,41 +668,10 @@ export async function GET(
   const deckId = id || ''
   const origin = new URL(request.url).origin
 
-  let cardSections: CardSection[] = []
-  let forgebornName: string | null = null
-  let forgebornAbilities: AbilityEntry[] = []
-
-  try {
-    const deckUrl = `${origin}/api/deck/${encodeURIComponent(deckId)}?fast=1&skipOwnerMerge=1`
-    const res = await fetchWithTimeout(
-      deckUrl,
-      {
-        headers: { Accept: 'application/json' },
-        cache: 'force-cache',
-        next: { revalidate: 300 },
-      },
-      OG_DECK_TIMEOUT_MS
-    )
-    if (res?.ok) {
-      const json = await withTimeout(res.json().catch(() => null), OG_DECK_TIMEOUT_MS, null)
-      const deck = json?.deck
-      forgebornName = resolveForgebornName(deck)
-      forgebornAbilities = collectForgebornAbilities(deck).slice(0, 3)
-      cardSections = buildCardSections(deck)
-    }
-  } catch {
-    // ignore fetch failures
-  }
-
-  const toBase64 = (buffer: ArrayBuffer) => {
-    const bytes = new Uint8Array(buffer)
-    let binary = ''
-    const chunkSize = 0x8000
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
-    }
-    return btoa(binary)
-  }
+  const payload = await getOgPayload(deckId)
+  const cardSections = payload.cardSections
+  const forgebornName = payload.forgebornName
+  const forgebornAbilities = payload.forgebornAbilities
 
   const resolveAssetUrl = (url: string | null) => {
     if (!url) return null
@@ -520,25 +679,39 @@ export async function GET(
     return `${origin}${url.startsWith('/') ? '' : '/'}${url}`
   }
 
-  const loadIcon = async (url: string | null) => {
-    if (!url) return { url: null, data: null }
-    try {
-      const iconRes = await fetchWithTimeout(
-        url,
-        {
-          cache: 'force-cache',
-          next: { revalidate: 86400 },
-        },
-        OG_ICON_TIMEOUT_MS
-      )
-      if (iconRes?.ok) {
-        const data = await withTimeout(iconRes.arrayBuffer().catch(() => null), OG_ICON_TIMEOUT_MS, null)
-        return { url, data }
+  const loadIconSrc = async (url: string | null) => {
+    if (!url) return null
+    const cached = iconSrcCache.get(url)
+    if (cached !== undefined) return cached
+    const inflight = iconSrcInFlight.get(url)
+    if (inflight) return inflight
+
+    const promise = (async () => {
+      try {
+        const iconRes = await fetchWithTimeout(
+          url,
+          {
+            cache: 'force-cache',
+            next: { revalidate: 86400 },
+          },
+          OG_ICON_TIMEOUT_MS
+        )
+        if (iconRes?.ok) {
+          const data = await withTimeout(iconRes.arrayBuffer().catch(() => null), OG_ICON_TIMEOUT_MS, null)
+          if (data) return `data:image/png;base64,${toBase64(data)}`
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-    return { url, data: null }
+      return url
+    })().finally(() => {
+      iconSrcInFlight.delete(url)
+    })
+
+    iconSrcInFlight.set(url, promise)
+    const resolved = await promise
+    iconSrcCache.set(url, resolved)
+    return resolved
   }
 
   const cardIconPaths = Array.from(
@@ -550,11 +723,10 @@ export async function GET(
   ) as string[]
   const cardIconMap = new Map<string, string | null>()
   if (cardIconPaths.length > 0) {
-    const loaded = await Promise.all(cardIconPaths.map((path) => loadIcon(resolveAssetUrl(path))))
-    loaded.forEach((item, idx) => {
+    const loaded = await Promise.all(cardIconPaths.map((path) => loadIconSrc(resolveAssetUrl(path))))
+    loaded.forEach((src, idx) => {
       const path = cardIconPaths[idx]
-      const src = item.data ? `data:image/png;base64,${toBase64(item.data)}` : item.url || resolveAssetUrl(path)
-      cardIconMap.set(path, src || null)
+      cardIconMap.set(path, src || resolveAssetUrl(path))
     })
   }
 
@@ -580,10 +752,9 @@ export async function GET(
     .map((level) => ({ level, url: `${origin}/images/icons/levels/lv${level}-icon.png` }))
   const levelIconMap = new Map<number, string | null>()
   if (levelIconEntries.length > 0) {
-    const loaded = await Promise.all(levelIconEntries.map((entry) => loadIcon(entry.url)))
-    loaded.forEach((item, idx) => {
+    const loaded = await Promise.all(levelIconEntries.map((entry) => loadIconSrc(entry.url)))
+    loaded.forEach((src, idx) => {
       const entry = levelIconEntries[idx]
-      const src = item.data ? `data:image/png;base64,${toBase64(item.data)}` : item.url
       levelIconMap.set(entry.level, src || null)
     })
   }
@@ -595,10 +766,9 @@ export async function GET(
   ]
   const statIconMap = new Map<string, string | null>()
   if (statIconEntries.length > 0) {
-    const loaded = await Promise.all(statIconEntries.map((entry) => loadIcon(entry.url)))
-    loaded.forEach((item, idx) => {
+    const loaded = await Promise.all(statIconEntries.map((entry) => loadIconSrc(entry.url)))
+    loaded.forEach((src, idx) => {
       const entry = statIconEntries[idx]
-      const src = item.data ? `data:image/png;base64,${toBase64(item.data)}` : item.url
       statIconMap.set(entry.key, src || null)
     })
   }
@@ -768,7 +938,7 @@ export async function GET(
       width: 1200,
       height: 630,
       headers: {
-        'Cache-Control': 'public, max-age=60, s-maxage=600, stale-while-revalidate=86400',
+        'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
       },
     }
   )

@@ -144,10 +144,19 @@ export async function GET(
         ].filter(Boolean)
       )
     )
+    const regularCandidates = fast
+      ? Array.from(new Set([baseId, deckId].filter(Boolean)))
+      : candidates
+    const fusedCandidates = fast
+      ? Array.from(new Set([toFusedApiId(deckId), `Fused_${baseId}`].filter(Boolean)))
+      : candidates.map((candidate) => toFusedApiId(candidate))
 
     // 1) Try as regular deck for each candidate via external API
-    for (const candidate of candidates) {
-      const raw = await fetchDeckDetails(stripDeckPrefixes(candidate))
+    for (const candidate of regularCandidates) {
+      const raw = await fetchDeckDetails(
+        stripDeckPrefixes(candidate),
+        fast ? { timeoutMs: 4000, revalidateSeconds: 300 } : undefined
+      )
       if (raw) {
         const rawId = raw?.id || raw?.deckId || raw?.deck_id
         if (!rawId) {
@@ -185,12 +194,11 @@ export async function GET(
 
     // 2) Fallback for fused decks
     const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
-    for (const candidate of candidates) {
-      const fusedCandidate = toFusedApiId(candidate)
+    for (const fusedCandidate of fusedCandidates) {
       const fusedRes = await fetch(`${API_BASE_URL}/fuseddeck/${fusedCandidate}?inclCards=true&inclUsers=true`, {
         method: 'GET',
         headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(fast ? 5000 : 15000),
       })
 
       if (!fusedRes.ok) {
@@ -236,7 +244,7 @@ export async function GET(
           if (metaRes.ok) {
             const metaJson = await metaRes.json()
             const items = Array.isArray(metaJson?.Items) ? metaJson.Items : []
-            const targetNorm = normalizeId(candidate)
+            const targetNorm = normalizeId(fusedCandidate)
             const matched = items.find((item: any) => normalizeId(item?.id) === targetNorm)
             if (matched) {
               deckRankFromListing = deckRankFromListing ?? matched.deckRank ?? matched.rank ?? null
@@ -361,7 +369,7 @@ export async function GET(
       const deckRankResolved: string | null | undefined = deckRankFromListing ?? null
 
       const fusedDeck = {
-        id: fusedRaw.id || candidate,
+        id: fusedRaw.id || fusedCandidate,
         name: fusedRaw.name || 'Fused Deck',
         format: 'Fused',
         cards,
