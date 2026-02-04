@@ -464,3 +464,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ec5e476
   Request: In fused OG third column, stat icons disappeared and text overflowed right edge again; restore icons and constrain overflow.
   Date: 2026-02-04
+- Commit: 2ae505c
+  Request: For fused OG (`/api/og/deck/Fused_4bu6z8m0h1nq0m?refresh=1`), restore the missing level icon on the level-2 forgeborn ability and keep third-column ability text inside the image bounds.
+  Date: 2026-02-04
