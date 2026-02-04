@@ -743,14 +743,10 @@ const renderAbilityText = (
   }
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
+    <div style={{ display: 'block', width: '100%', wordBreak: 'break-word' }}>
       {parts.map((part, idx) => {
         if (part.type === 'text') {
-          return (
-            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap' }}>
-              {part.value}
-            </span>
-          )
+          return <span key={`text-${idx}`}>{part.value}</span>
         }
         if (part.type === 'level') {
           return (
@@ -758,6 +754,7 @@ const renderAbilityText = (
               key={`level-${idx}`}
               src={part.src}
               style={{
+                display: 'inline-block',
                 width: '16px',
                 height: '16px',
                 objectFit: 'contain',
@@ -768,11 +765,12 @@ const renderAbilityText = (
           )
         }
         return (
-          <div key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', marginRight: '4px' }}>
+          <span key={`stat-${idx}`} style={{ display: 'inline-block', marginRight: '4px' }}>
             <span>{part.number}</span>
             <img
               src={part.src}
               style={{
+                display: 'inline-block',
                 width: '20px',
                 height: '20px',
                 objectFit: 'contain',
@@ -780,7 +778,7 @@ const renderAbilityText = (
                 transform: 'translateY(1px)',
               }}
             />
-          </div>
+          </span>
         )
       })}
     </div>
@@ -1117,11 +1115,11 @@ export async function GET(
                 {ability.text ? (
                   <div
                     style={{
-                      display: 'flex',
+                      display: 'block',
                       flex: 1,
+                      width: '100%',
                       minWidth: 0,
                       maxWidth: '100%',
-                      alignItems: 'flex-start',
                     }}
                   >
                     {renderAbilityText(ability.text, statIconMap, levelIconMap)}
