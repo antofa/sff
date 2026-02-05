@@ -78,6 +78,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Fix OG route stalls by resolving local `/images/*` assets to data URLs and returning a fully buffered PNG response.
 - Move OG rendering to Node runtime and keep Satori-safe `display:flex` wrappers to avoid hidden 500 failures.
 - Increase all OG image typography by 10% for better readability.
+- Color OG card names by faction with high-contrast shades so all four factions remain readable on the dark background.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

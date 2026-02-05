@@ -101,6 +101,9 @@ const getCardListEntry = (deck: any, card: any) => {
     factionColor: getFactionBadgeColor(
       typeof factionForIcon === 'string' ? factionForIcon : typeof deck?.faction === 'string' ? deck.faction : undefined
     ),
+    factionTextColor: getFactionTextColor(
+      typeof factionForIcon === 'string' ? factionForIcon : typeof deck?.faction === 'string' ? deck.faction : undefined
+    ),
   }
 }
 
@@ -609,6 +612,7 @@ type CardListEntry = {
   factionIconPath: string | null
   rarityIconPath: string | null
   factionColor: string
+  factionTextColor: string
 }
 type CardSection = { label: string; items: CardListEntry[] }
 type CardColumn = {
@@ -632,6 +636,21 @@ const getFactionBadgeColor = (faction?: string): string => {
       return '#a855f7'
     default:
       return '#6b7280'
+  }
+}
+
+const getFactionTextColor = (faction?: string): string => {
+  switch (faction) {
+    case 'Alloyin':
+      return '#7dd3fc'
+    case 'Uterra':
+      return '#86efac'
+    case 'Tempys':
+      return '#fdba74'
+    case 'Nekrium':
+      return '#c4b5fd'
+    default:
+      return '#e2e8f0'
   }
 }
 
@@ -1260,7 +1279,16 @@ export async function GET(
                         }}
                       />
                     )}
-                    <span style={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>{item.name}</span>
+                    <span
+                      style={{
+                        display: 'block',
+                        whiteSpace: 'normal',
+                        wordBreak: 'break-word',
+                        color: item.factionTextColor,
+                      }}
+                    >
+                      {item.name}
+                    </span>
                   </div>
                 )
               })}
