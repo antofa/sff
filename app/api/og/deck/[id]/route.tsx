@@ -1077,7 +1077,7 @@ export async function GET(
       cardColumns.flatMap((column) => [
         ...(column.factionIconPath ? [column.factionIconPath] : []),
         ...column.sections.flatMap((section) =>
-          section.items.flatMap((item) => [item.factionIconPath, item.rarityIconPath]).filter(Boolean)
+          section.items.flatMap((item) => [item.rarityIconPath]).filter(Boolean)
         ),
       ])
     )
@@ -1278,9 +1278,6 @@ export async function GET(
               }}
             >
               {section.items.map((item, idx) => {
-                const factionIconSrc = item.factionIconPath
-                  ? cardIconMap.get(item.factionIconPath) || resolveAssetUrl(item.factionIconPath)
-                  : null
                 const rarityIconSrc = item.rarityIconPath
                   ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
                   : null
@@ -1289,19 +1286,6 @@ export async function GET(
                     key={`${columnIndex}-${section.label}-${idx}`}
                     style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', minWidth: 0 }}
                   >
-                    {factionIconSrc ? (
-                      <img src={factionIconSrc} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
-                    ) : (
-                      <span
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          borderRadius: '999px',
-                          backgroundColor: item.factionColor,
-                          opacity: 0.8,
-                        }}
-                      />
-                    )}
                     {rarityIconSrc ? (
                       <img src={rarityIconSrc} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
                     ) : (

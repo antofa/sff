@@ -80,6 +80,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Increase all OG image typography by 10% for better readability.
 - Color OG card names by faction with high-contrast shades so all four factions remain readable on the dark background.
 - Color the forgeborn name in OG using the forgeborn faction color with the same high-contrast palette.
+- Remove per-card faction icons from OG card rows, keeping only rarity icons and colored card names.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
