@@ -466,6 +466,10 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
       }
       if (lower.includes('darkforge') && lower.includes('rare')) {
         normalizedRarity = 'Darkforge Rare'
+      } else if (lower.includes('darkforge') && lower.includes('common')) {
+        normalizedRarity = 'Darkforge Common'
+      } else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) {
+        normalizedRarity = 'Darkforge LS'
       } else if (lower.includes('common common')) {
         normalizedRarity = 'Common Common'
       } else if (lower.includes('rare rare')) {
