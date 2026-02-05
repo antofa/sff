@@ -164,6 +164,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 8b731b4
   Request: Revert the latest change so OG previews do not pull forgeborn from another deck.
   Date: 2026-02-05
+- Commit: f75fd28
+  Request: Ensure OG ability stat icons do not replace letters inside words (e.g., \"Damage\") for Fused_4bhmw2mkebmvfd.
+  Date: 2026-02-05
 - Commit: 5623c88
   Request: Reduce empty space in narrow card frames and ensure level buttons are fully visible.
   Date: 2026-01-28
