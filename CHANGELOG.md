@@ -3,39 +3,15 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
-## [0.0.8] - 2026-02-05
+## [0.0.2] - 2026-02-05
 
 ### Changed
 - Stop pluralizing rarity labels in deck list rarity tags.
-
-## [0.0.7] - 2026-02-05
-
-### Changed
 - Add a "Rarity (Words)" filter that matches decks by rarity tokens (e.g., Common matches Common Rare).
-
-## [0.0.6] - 2026-02-05
-
-### Changed
 - Rename the rarity filter to "Rarity (Specific)" and add comparison operators for rarity counts.
-
-## [0.0.5] - 2026-02-05
-
-### Changed
 - Allow typing to filter the "Add filter" dropdown list.
-
-## [0.0.4] - 2026-02-05
-
-### Changed
 - Derive filter blocks from URL order and use `_1` suffixes for repeated filters without `activeFilters`.
-
-## [0.0.3] - 2026-02-05
-
-### Changed
 - Shorten filter URLs by omitting per-filter instance IDs when only one block is active.
-
-## [0.0.2] - 2026-02-04
-
-### Changed
 - Round ELO values in OG deck previews to whole numbers.
 - Rename the OG label from "Creature Tags" to "Creature Types".
 - Set the site changelog date manually and format it using the viewer's locale.
