@@ -796,14 +796,19 @@ const renderAbilityText = (
   }
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', width: '100%', minWidth: 0, maxWidth: '100%' }}>
+    <span
+      style={{
+        display: 'block',
+        flex: 1,
+        minWidth: 0,
+        maxWidth: '100%',
+        whiteSpace: 'normal',
+        wordBreak: 'break-word',
+      }}
+    >
       {parts.map((part, idx) => {
         if (part.type === 'text') {
-          return (
-            <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-              {part.value}
-            </span>
-          )
+          return <span key={`text-${idx}`}>{part.value}</span>
         }
         if (part.type === 'level') {
           return (
@@ -821,7 +826,7 @@ const renderAbilityText = (
           )
         }
         return (
-          <div key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', marginRight: '4px' }}>
+          <span key={`stat-${idx}`} style={{ whiteSpace: 'nowrap' }}>
             <span>{part.number}</span>
             <img
               src={part.src}
@@ -833,10 +838,10 @@ const renderAbilityText = (
                 transform: 'translateY(1px)',
               }}
             />
-          </div>
+          </span>
         )
       })}
-    </div>
+    </span>
   )
 }
 
