@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.7] - 2026-02-05
+
+### Changed
+- Add a "Rarity (Words)" filter that matches decks by rarity tokens (e.g., Common matches Common Rare).
+
 ## [0.0.6] - 2026-02-05
 
 ### Changed

@@ -1978,6 +1978,10 @@ interface FilterState {
   rarityOperator: '>=' | '<=' | '='
   rarityCount: number | null
   rarityMode: 'include' | 'exclude'
+  rarityWord: string
+  rarityWordOperator: '>=' | '<=' | '='
+  rarityWordCount: number | null
+  rarityWordMode: 'include' | 'exclude'
   expiryFilter: 'all' | 'active' | 'expiring' | 'expired'
   sortBy: string
   deckNameMode: 'include' | 'exclude'
@@ -2026,6 +2030,10 @@ const createDefaultFilters = (): FilterState => ({
   rarityOperator: '>=',
   rarityCount: null,
   rarityMode: 'include',
+  rarityWord: '',
+  rarityWordOperator: '>=',
+  rarityWordCount: null,
+  rarityWordMode: 'include',
   expiryFilter: 'active', // Default: show active decks (no dates + expiring)
   sortBy: 'date-desc', // Default: newest first
   deckNameMode: 'include',
@@ -2076,6 +2084,7 @@ type FilterBlockKey =
   | 'elo'
   | 'score'
   | 'rarity'
+  | 'rarity-words'
   | 'sort'
   | 'deck-status'
 
@@ -2096,6 +2105,7 @@ const FILTER_BLOCK_LABELS: Record<FilterBlockKey, string> = {
   elo: 'ELO',
   score: 'Score',
   rarity: 'Rarity (Specific)',
+  'rarity-words': 'Rarity (Words)',
   sort: 'Sort',
   'deck-status': 'Deck Status',
 }
@@ -2117,6 +2127,7 @@ const FILTER_BLOCK_FIELDS: Record<FilterBlockKey, (keyof FilterState)[]> = {
   elo: ['eloOperator', 'eloValue', 'eloMode'],
   score: ['scoreOperator', 'scoreValue', 'scoreMode'],
   rarity: ['rarityType', 'rarityOperator', 'rarityCount', 'rarityMode'],
+  'rarity-words': ['rarityWord', 'rarityWordOperator', 'rarityWordCount', 'rarityWordMode'],
   sort: ['sortBy'],
   'deck-status': ['expiryFilter'],
 }
@@ -2137,6 +2148,7 @@ const FILTER_BLOCK_OPTIONS: { value: FilterBlockKey; label: string }[] = [
   { value: 'elo', label: FILTER_BLOCK_LABELS.elo },
   { value: 'score', label: FILTER_BLOCK_LABELS.score },
   { value: 'rarity', label: FILTER_BLOCK_LABELS.rarity },
+  { value: 'rarity-words', label: FILTER_BLOCK_LABELS['rarity-words'] },
 ]
 const SORT_OPTIONS = [
   { value: 'date-desc', label: 'Date (Newest first)' },
@@ -2147,6 +2159,13 @@ const SORT_OPTIONS = [
   { value: 'score-asc', label: 'Score (Lowest first)' },
   { value: 'elo-desc', label: 'ELO (Highest first)' },
   { value: 'elo-asc', label: 'ELO (Lowest first)' },
+]
+const RARITY_WORD_OPTIONS = [
+  { value: 'Common', label: 'Common' },
+  { value: 'Rare', label: 'Rare' },
+  { value: 'Darkforge', label: 'Darkforge' },
+  { value: 'Solbind', label: 'Solbind' },
+  { value: 'LS', label: 'LS' },
 ]
 const FACTION_BUTTONS = [
   { value: 'Alloyin', label: 'ALLOYIN', color: 'cyan' },
@@ -2194,6 +2213,10 @@ const FILTER_QUERY_KEYS = [
   'rarityOperator',
   'rarityCount',
   'rarityMode',
+  'rarityWord',
+  'rarityWordOperator',
+  'rarityWordCount',
+  'rarityWordMode',
   'eloOperator',
   'eloValue',
   'eloMode',
@@ -2262,6 +2285,7 @@ const NUMBER_FIELDS = new Set<keyof FilterState>([
   'freeSpellsValue',
   'spellTypeCount',
   'rarityCount',
+  'rarityWordCount',
   'eloValue',
   'scoreValue',
 ])
@@ -2341,6 +2365,13 @@ const getDefaultsForKey = (key: FilterBlockKey): FilterInstanceState => {
         rarityOperator: defaults.rarityOperator,
         rarityCount: defaults.rarityCount,
         rarityMode: defaults.rarityMode,
+      }
+    case 'rarity-words':
+      return {
+        rarityWord: defaults.rarityWord,
+        rarityWordOperator: defaults.rarityWordOperator,
+        rarityWordCount: defaults.rarityWordCount,
+        rarityWordMode: defaults.rarityWordMode,
       }
     case 'sort':
       return { sortBy: defaults.sortBy }
@@ -2442,6 +2473,11 @@ const parseFiltersFromSearch = (
   next.rarityOperator = (params.get('rarityOperator') as FilterState['rarityOperator']) || next.rarityOperator
   next.rarityCount = getNumber('rarityCount')
   next.rarityMode = (params.get('rarityMode') as FilterState['rarityMode']) || 'include'
+  next.rarityWord = params.get('rarityWord') || ''
+  next.rarityWordOperator =
+    (params.get('rarityWordOperator') as FilterState['rarityWordOperator']) || next.rarityWordOperator
+  next.rarityWordCount = getNumber('rarityWordCount')
+  next.rarityWordMode = (params.get('rarityWordMode') as FilterState['rarityWordMode']) || 'include'
 
   const eloValue = getNumber('eloValue')
   if (eloValue !== null) {
@@ -3205,6 +3241,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         case 'rarity':
           if ((state.rarityType as string)?.length && state.rarityCount !== null && state.rarityCount !== undefined) return true
           break
+        case 'rarity-words':
+          if ((state.rarityWord as string)?.length && state.rarityWordCount !== null && state.rarityWordCount !== undefined) return true
+          break
         case 'card-set': {
           const override = cardSetInstances[block.id]
           if (override && override.cardSetNo.length > 0) return true
@@ -3547,6 +3586,81 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
 
         deckTagsCache = deckTags
         return deckTagsCache
+      }
+
+      const normalizeRarityLabel = (rarity: string): string => {
+        let normalized = rarity.trim()
+        const lower = normalized.toLowerCase()
+        if (lower.includes('solbind')) normalized = 'Solbind'
+        if (lower.includes('darkforge') && lower.includes('rare')) {
+          normalized = 'Darkforge Rare'
+        } else if (lower.includes('common common')) {
+          normalized = 'Common Common'
+        } else if (lower.includes('rare rare')) {
+          normalized = 'Rare Rare'
+        } else if (lower.includes('rare') && lower.includes('common')) {
+          normalized = 'Rare Common'
+        } else if (lower.includes('common') && lower.includes('rare')) {
+          normalized = 'Common Rare'
+        } else if (lower.includes('darkforge')) {
+          normalized = 'Darkforge'
+        } else if (lower.includes('common')) {
+          normalized = 'Common'
+        } else if (lower.includes('rare')) {
+          normalized = 'Rare'
+        } else if (lower.includes('ls') || lower.includes('legendary')) {
+          normalized = 'LS'
+        }
+        return normalized
+      }
+
+      const countRarityWordFromBaseCards = (wordLower: string) => {
+        const baseCards = Array.isArray(deck.cardList)
+          ? deck.cardList
+          : Array.isArray(deck.cards)
+            ? deck.cards
+            : Array.isArray((deck as any).cardIds) && (deck as any).cards && typeof (deck as any).cards === 'object'
+              ? (deck as any).cardIds.map((id: string, idx: number) => {
+                  const data = Object.values((deck as any).cards as any)[idx] as any
+                  return {
+                    ...((typeof data === 'object' && data) || {}),
+                    id,
+                    cardId: id,
+                    name: (data as any)?.name || (data as any)?.title || id,
+                  }
+                })
+              : []
+
+        const normalizedBaseCards: CardInfo[] = baseCards.map((card: any, idx: number) => {
+          if (typeof card === 'string') return getCardInfo(card)
+          if (card && typeof card === 'object') {
+            const cardId = card.id || card.cardId || card.name || `card-${idx}`
+            return getCardInfo(cardId, card)
+          }
+          return getCardInfo(`card-${idx}`)
+        })
+
+        const forgebornIds = new Set<string>()
+        if (deck.forgebornId) forgebornIds.add(deck.forgebornId)
+        normalizedBaseCards.forEach((c: CardInfo) => {
+          const typeLower = (c.cardType || c.type || '').toLowerCase()
+          if (typeLower.includes('forgeborn') && c.id) forgebornIds.add(c.id)
+        })
+
+        let count = 0
+        normalizedBaseCards.forEach((card) => {
+          if (forgebornIds.has(card.id)) return
+          const rarity = (card as any).rarity
+          if (rarity && typeof rarity === 'string') {
+            const normalized = normalizeRarityLabel(rarity)
+            const tokens = normalized.toLowerCase().split(/\s+/).filter(Boolean)
+            if (tokens.includes(wordLower)) {
+              count += 1
+            }
+          }
+        })
+
+        return count
       }
 
       for (const { block, state } of blockStates) {
@@ -4334,6 +4448,45 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                 break
             }
             if (!applyMode(matches, (state.rarityMode as FilterState['rarityMode']) || 'include')) {
+              return false
+            }
+          }
+          break
+        }
+        case 'rarity-words': {
+          const rarityWord = (state.rarityWord as string) || ''
+          const rarityCount = state.rarityWordCount as number | null | undefined
+          if (rarityWord && rarityCount !== null && rarityCount !== undefined) {
+            const wordLower = rarityWord.toLowerCase()
+            let deckWordCount = 0
+
+            if (deck.computed?.rarityCounts) {
+              Object.entries(deck.computed.rarityCounts).forEach(([rarityLabel, count]) => {
+                const normalized = normalizeRarityLabel(String(rarityLabel))
+                const tokens = normalized.toLowerCase().split(/\s+/).filter(Boolean)
+                if (tokens.includes(wordLower)) {
+                  const num = Number(count)
+                  deckWordCount += Number.isFinite(num) ? num : 0
+                }
+              })
+            } else {
+              deckWordCount = countRarityWordFromBaseCards(wordLower)
+            }
+
+            let matches = false
+            switch (state.rarityWordOperator as FilterState['rarityWordOperator']) {
+              case '<=':
+                matches = deckWordCount <= rarityCount
+                break
+              case '=':
+                matches = deckWordCount === rarityCount
+                break
+              case '>=':
+              default:
+                matches = deckWordCount >= rarityCount
+                break
+            }
+            if (!applyMode(matches, (state.rarityWordMode as FilterState['rarityWordMode']) || 'include')) {
               return false
             }
           }
@@ -6014,6 +6167,119 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         </Stack>,
                         { header, actions: modeControl }
                       )
+                      }
+                    case 'rarity-words':
+                      {
+                        const currentMode = (state.rarityWordMode as FilterState['rarityWordMode']) || 'include'
+                        const currentWord = (state.rarityWord as string) || ''
+                        const currentCount = state.rarityWordCount as number | null | undefined
+                        const currentOperator = (state.rarityWordOperator as FilterState['rarityWordOperator']) || '>='
+                        const header = (
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            Rarity (Words)
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ rarityWordMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                        return renderFilterCol(
+                          block,
+                          <Stack gap={6}>
+                            <Group gap="xs" align="flex-end">
+                              <Select
+                                placeholder="Select word..."
+                                value={currentWord}
+                                onChange={(value) =>
+                                  update({
+                                    rarityWord: value || '',
+                                    rarityWordCount: value ? (currentCount ?? 1) : null,
+                                    rarityWordOperator: currentOperator,
+                                  })
+                                }
+                                data={RARITY_WORD_OPTIONS}
+                                clearable
+                                style={{ flex: 1 }}
+                                styles={{
+                                  input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                }}
+                              />
+                              <Select
+                                value={currentOperator}
+                                onChange={(value) => update({ rarityWordOperator: value as FilterState['rarityWordOperator'] })}
+                                data={[
+                                  { value: '>=', label: '≥' },
+                                  { value: '<=', label: '≤' },
+                                  { value: '=', label: '=' },
+                                ]}
+                                style={{ flex: '0 0 80px' }}
+                                disabled={!currentWord}
+                                styles={{
+                                  input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                }}
+                              />
+                              <div style={{ position: 'relative', flex: '0 0 120px' }}>
+                                <NumberInput
+                                  placeholder="Count"
+                                  value={currentCount ?? ''}
+                                  onChange={(value) =>
+                                    update({
+                                      rarityWordCount: typeof value === 'number' ? value : null,
+                                    })
+                                  }
+                                  min={0}
+                                  style={{ width: '100%' }}
+                                  disabled={!currentWord}
+                                  styles={{
+                                    input: {
+                                      backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                      color: 'white',
+                                      borderColor: 'rgba(74, 144, 226, 0.3)',
+                                      paddingRight: '46px',
+                                    },
+                                  }}
+                                />
+                                {currentCount !== null && currentCount !== undefined ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      update({ rarityWordCount: null })
+                                    }}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                    }}
+                                    style={{
+                                      position: 'absolute',
+                                      right: 28,
+                                      top: '50%',
+                                      transform: 'translateY(-50%)',
+                                      background: 'none',
+                                      border: 'none',
+                                      padding: 0,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                  >
+                                    <IconX
+                                      size={16}
+                                      style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                    />
+                                  </button>
+                                ) : null}
+                              </div>
+                            </Group>
+                          </Stack>,
+                          { header, actions: modeControl }
+                        )
                       }
                     case 'sort':
                       {
