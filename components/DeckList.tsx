@@ -2104,8 +2104,8 @@ const FILTER_BLOCK_LABELS: Record<FilterBlockKey, string> = {
   'card-set': 'Card Set',
   elo: 'ELO',
   score: 'Score',
-  rarity: 'Rarity (Specific)',
-  'rarity-words': 'Rarity (Words)',
+  rarity: 'Rarity (Exact)',
+  'rarity-words': 'Rarity (Word)',
   sort: 'Sort',
   'deck-status': 'Deck Status',
 }
@@ -6052,7 +6052,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         const currentOperator = (state.rarityOperator as FilterState['rarityOperator']) || '>='
                         const header = (
                           <Text size="sm" fw={500} style={{ color: 'white' }}>
-                            Rarity (Specific)
+                            Rarity (Exact)
                           </Text>
                         )
                         const modeControl = (
@@ -6176,7 +6176,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         const currentOperator = (state.rarityWordOperator as FilterState['rarityWordOperator']) || '>='
                         const header = (
                           <Text size="sm" fw={500} style={{ color: 'white' }}>
-                            Rarity (Words)
+                            Rarity (Word)
                           </Text>
                         )
                         const modeControl = (
