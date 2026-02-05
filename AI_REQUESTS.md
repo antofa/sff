@@ -161,9 +161,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 9ab4355
   Request: Add the alternate forgeborn form name and abilities to OG deck images when a second form exists.
   Date: 2026-02-05
-- Commit: 9c587a2
-  Request: Fix OG previews so the alternate forgeborn form shows up for fused decks like Fused_1d4jjh2mkpba06f.
-  Date: 2026-02-05
 - Commit: 5623c88
   Request: Reduce empty space in narrow card frames and ensure level buttons are fully visible.
   Date: 2026-01-28
