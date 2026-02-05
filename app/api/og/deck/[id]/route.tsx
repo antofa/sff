@@ -1043,20 +1043,6 @@ const collectForgebornAbilities = (deck: any) => collectForgebornAbilitiesFromFo
 const resolveSecondaryForgeborn = (deck: any) => {
   const primaryId = deck?.forgeborn?.id || deck?.forgebornId || null
   const primaryIdLower = primaryId ? String(primaryId).toLowerCase() : null
-  const sourceDecks =
-    (Array.isArray(deck?.myDecks) && deck.myDecks.filter(Boolean)) ||
-    (Array.isArray(deck?.decks) && deck.decks.filter(Boolean)) ||
-    []
-  for (const source of sourceDecks) {
-    const candidate = source?.forgeborn
-    if (!candidate || typeof candidate !== 'object') continue
-    const candidateId = candidate?.id || candidate?.cardId || candidate?.card_id || null
-    if (candidateId && primaryIdLower && String(candidateId).toLowerCase() === primaryIdLower) {
-      continue
-    }
-    return candidate
-  }
-
   const cardLookup = new Map<string, any>()
   const deckCards = Array.isArray(deck?.cards)
     ? deck.cards
