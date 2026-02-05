@@ -524,6 +524,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 6129a0a
   Request: Keep CHANGELOG.md on version 0.0.2 instead of auto-incrementing versions.
   Date: 2026-02-05
+- Commit: aae59a3
+  Request: Remove pluralization of rarity labels in deck details.
+  Date: 2026-02-05
 - Commit: 1db867d
   Request: Explain why the ELO filter adds long query parameters and reduce the number of URL parameters.
   Date: 2026-02-05
