@@ -3676,11 +3676,11 @@ const originalCardMeta = useMemo(() => {
     else if (lowerRarity.includes('darkforge') && lowerRarity.includes('rare')) {
       normalizedRarity = 'DarkforgeRare'
     }
-    // Handle Darkforge Common / Darkforge LS -> use Darkforge icon
+    // Handle Darkforge Common / Darkforge LS
     else if (lowerRarity.includes('darkforge') && lowerRarity.includes('common')) {
-      normalizedRarity = 'Darkforge'
+      normalizedRarity = 'DarkforgeCommon'
     } else if (lowerRarity.includes('darkforge') && (lowerRarity.includes('ls') || lowerRarity.includes('legendary'))) {
-      normalizedRarity = 'Darkforge'
+      normalizedRarity = 'Darkforge_LS'
     }
     // Handle "Rare Common" or "rare common" -> "RareCommon" (order matters: Rare first, then Common)
     else if (lowerRarity.match(/^rare\s+common$/i) || (lowerRarity.startsWith('rare') && lowerRarity.includes('common') && !lowerRarity.startsWith('common'))) {
