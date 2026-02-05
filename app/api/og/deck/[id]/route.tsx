@@ -797,13 +797,16 @@ const renderAbilityText = (
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', width: '100%', minWidth: 0, maxWidth: '100%' }}>
-      {parts.map((part, idx) => {
+      {parts.flatMap((part, idx) => {
         if (part.type === 'text') {
-          return (
-            <span key={`text-${idx}`} style={{ whiteSpace: 'normal' }}>
-              {part.value}
-            </span>
-          )
+          return part.value
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((word, wordIdx) => (
+              <span key={`text-${idx}-${wordIdx}`} style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>
+                {word}
+              </span>
+            ))
         }
         if (part.type === 'level') {
           return (
@@ -821,7 +824,7 @@ const renderAbilityText = (
           )
         }
         return (
-          <span key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', marginRight: '3px' }}>
+          <span key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', marginRight: '4px' }}>
             <span>{part.number}</span>
             <img
               src={part.src}
