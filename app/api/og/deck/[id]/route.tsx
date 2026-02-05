@@ -782,7 +782,7 @@ const renderAbilityText = (
     | { type: 'stat'; src: string; number: string }
     | { type: 'level'; src: string }
   > = []
-  const pattern = /(\[(?:l)?([1-4])\]|([+-]?\d+)\s*([ADH]))/gi
+  const pattern = /(\[(?:l)?([1-4])\]|([+-]?\d+)\s*([ADH])\b(?![A-Za-z]))/gi
   let lastIndex = 0
   let match: RegExpExecArray | null
 
