@@ -20,6 +20,7 @@ const OG_ICON_CACHE_MAX_ENTRIES = 500
 type OgPayload = {
   cardColumns: CardColumn[]
   forgebornName: string | null
+  forgebornFaction: string | null
   deckName: string | null
   forgebornAbilities: AbilityEntry[]
 }
@@ -549,6 +550,7 @@ const buildCardColumns = (deck: any): CardColumn[] => {
 const buildOgPayload = (deck: any): OgPayload => ({
   cardColumns: buildCardColumns(deck),
   forgebornName: resolveForgebornName(deck),
+  forgebornFaction: resolveForgebornFaction(deck),
   deckName: typeof deck?.name === 'string' && deck.name.trim() ? deck.name.trim() : null,
   forgebornAbilities: collectForgebornAbilities(deck).slice(0, 3),
 })
@@ -568,7 +570,9 @@ const getOgPayload = async (deckId: string, options?: { forceRefresh?: boolean }
 
   const promise = (async () => {
     const deck = await getDeckFromUpstream(deckId)
-    const payload = deck ? buildOgPayload(deck) : { cardColumns: [], forgebornName: null, deckName: null, forgebornAbilities: [] }
+    const payload = deck
+      ? buildOgPayload(deck)
+      : { cardColumns: [], forgebornName: null, forgebornFaction: null, deckName: null, forgebornAbilities: [] }
     setCachedOgPayload(cacheKey, payload)
     return payload
   })().finally(() => {
@@ -825,6 +829,35 @@ const resolveForgebornName = (deck: any) => {
   return toTitleCase(String(fallback).replace(/[_-]+/g, ' ').trim())
 }
 
+const resolveForgebornFaction = (deck: any): string | null => {
+  const forgeborn = deck?.forgeborn
+  const direct =
+    forgeborn?.faction ||
+    forgeborn?.Faction ||
+    deck?.faction ||
+    deck?.Faction ||
+    null
+  if (typeof direct === 'string' && direct.trim()) {
+    return direct.trim()
+  }
+
+  const sourceDecks = Array.isArray(deck?.myDecks) ? deck.myDecks : []
+  for (const source of sourceDecks) {
+    const sourceForgeborn = source?.forgeborn
+    const sourceFaction =
+      sourceForgeborn?.faction ||
+      sourceForgeborn?.Faction ||
+      source?.faction ||
+      source?.Faction ||
+      null
+    if (typeof sourceFaction === 'string' && sourceFaction.trim()) {
+      return sourceFaction.trim()
+    }
+  }
+
+  return null
+}
+
 const formatAbilityEntry = (ability: any): AbilityEntry | null => {
   if (!ability) return null
   if (typeof ability === 'string') {
@@ -972,6 +1005,7 @@ export async function GET(
   const payload = await getOgPayload(deckId, { forceRefresh })
   const cardColumns = payload.cardColumns
   const forgebornName = payload.forgebornName
+  const forgebornTitleColor = getFactionTextColor(payload.forgebornFaction || undefined)
   const forgebornAbilities = payload.forgebornAbilities.map((ability, index) => ({
     ...ability,
     level: ability.level ?? (index < 3 ? index + 2 : null),
@@ -1123,7 +1157,9 @@ export async function GET(
         paddingRight: showFusedColumns ? '6px' : '0',
       }}
     >
-      <div style={{ fontSize: forgebornTitleFont, fontWeight: 700, lineHeight: 1.1 }}>{forgebornName || 'Forgeborn'}</div>
+      <div style={{ fontSize: forgebornTitleFont, fontWeight: 700, lineHeight: 1.1, color: forgebornTitleColor }}>
+        {forgebornName || 'Forgeborn'}
+      </div>
       <div
         style={{
           display: 'flex',

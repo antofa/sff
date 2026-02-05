@@ -79,6 +79,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Move OG rendering to Node runtime and keep Satori-safe `display:flex` wrappers to avoid hidden 500 failures.
 - Increase all OG image typography by 10% for better readability.
 - Color OG card names by faction with high-contrast shades so all four factions remain readable on the dark background.
+- Color the forgeborn name in OG using the forgeborn faction color with the same high-contrast palette.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
