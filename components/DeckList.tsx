@@ -4741,6 +4741,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     onChange={(value) => addFilterBlock((value as FilterBlockKey) || null)}
                     clearable
                     allowDeselect
+                    searchable
+                    nothingFoundMessage="No matching filters"
                     styles={{
                       input: {
                         backgroundColor: 'rgba(30, 41, 59, 0.8)',

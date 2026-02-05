@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.5] - 2026-02-05
+
+### Changed
+- Allow typing to filter the "Add filter" dropdown list.
+
 ## [0.0.4] - 2026-02-05
 
 ### Changed
