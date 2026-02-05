@@ -470,3 +470,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a5da6cc
   Request: `/api/og/deck/Fused_4bu6z8m0h1nq0m?refresh=1` stopped loading; fix OG route so it returns reliably while keeping third-column icons and bounds.
   Date: 2026-02-04
+- Commit: ca91027
+  Request: Increase OG image font size everywhere by 10%.
+  Date: 2026-02-05
