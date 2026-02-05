@@ -545,3 +545,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 846e185
   Request: Rename Darkforge_LS to Darkforge LS everywhere and treat it as two words in rarity word filtering.
   Date: 2026-02-05
+- Commit: 4218bc2
+  Request: Fix the Darkforge Common exact rarity filter returning zero results.
+  Date: 2026-02-05
