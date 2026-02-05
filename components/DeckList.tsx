@@ -1829,7 +1829,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
                       size="sm"
                       style={{ backgroundColor: getRarityColor(rarity), color: 'white', border: 'none' }}
                     >
-                      {pluralize(count, rarity)}
+                      {count} {rarity}
                     </Badge>
                   ))}
               </Group>

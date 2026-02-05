@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.8] - 2026-02-05
+
+### Changed
+- Stop pluralizing rarity labels in deck list rarity tags.
+
 ## [0.0.7] - 2026-02-05
 
 ### Changed
