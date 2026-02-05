@@ -485,3 +485,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 03ef7d1
   Request: Increase all OG image font sizes by another 5%.
   Date: 2026-02-05
+- Commit: 9d9ced3
+  Request: For `Fused_1d4jjh2mkpba06f`, render `[l1]-[l4]` forgeborn ability tokens as level icons in OG text.
+  Date: 2026-02-05
