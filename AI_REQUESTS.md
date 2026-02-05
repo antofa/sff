@@ -494,3 +494,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 43deab7
   Request: Improve fused OG forgeborn ability wrapping so lines do not end too early.
   Date: 2026-02-05
+- Commit: a96332a
+  Request: Fix fused OG third-column forgeborn ability wrapping so line breaks are more natural.
+  Date: 2026-02-05
