@@ -308,6 +308,36 @@ const normalizeSetLabel = (value?: string | number | null): string | null => {
   return text
 }
 
+const normalizeRarityLabel = (rarity: string): string => {
+  const normalized = rarity.trim()
+  const lower = normalized.toLowerCase()
+  if (lower.includes('solbind')) return 'Solbind'
+  if (lower.includes('darkforge') && lower.includes('rare')) return 'Darkforge Rare'
+  if (lower.includes('darkforge') && lower.includes('common')) return 'Darkforge Common'
+  if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) return 'Darkforge LS'
+  if (lower.includes('common common')) return 'Common Common'
+  if (lower.includes('rare rare')) return 'Rare Rare'
+  if (lower.includes('rare') && lower.includes('common')) return 'Rare Common'
+  if (lower.includes('common') && lower.includes('rare')) return 'Common Rare'
+  if (lower.includes('darkforge')) return 'Darkforge'
+  if (lower.includes('common')) return 'Common'
+  if (lower.includes('rare')) return 'Rare'
+  if (lower.includes('ls') || lower.includes('legendary')) return 'LS'
+  return normalized
+}
+
+const normalizeRarityCounts = (counts: Record<string, unknown> | null | undefined): Map<string, number> => {
+  const normalized = new Map<string, number>()
+  if (!counts || typeof counts !== 'object') return normalized
+  Object.entries(counts).forEach(([label, count]) => {
+    const normalizedLabel = normalizeRarityLabel(String(label))
+    const num = Number(count)
+    if (!Number.isFinite(num)) return
+    normalized.set(normalizedLabel, (normalized.get(normalizedLabel) || 0) + num)
+  })
+  return normalized
+}
+
 function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null {
   if (!deck) return null
   const allDecks = options?.allDecks || []
@@ -975,7 +1005,9 @@ const RegularDeckCard = memo(function RegularDeckCard({
 
           {(() => {
             const counts = computedCounts || displayCounts
-            const rarityEntries = deck.computed?.rarityCounts ? Object.entries(deck.computed.rarityCounts) : []
+            const rarityEntries = deck.computed?.rarityCounts
+              ? Array.from(normalizeRarityCounts(deck.computed.rarityCounts).entries())
+              : []
             if (!counts && rarityEntries.length === 0) return null
             return (
               <Stack gap="xs">
@@ -1011,7 +1043,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
                           'Darkforge Common': 7,
                           'Darkforge Rare': 8,
                           Darkforge: 9,
-                          Darkforge_LS: 10,
+                          'Darkforge LS': 10,
                           LS: 11,
                         }
                         return (order[a] || 99) - (order[b] || 99)
@@ -1527,7 +1559,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
 
   const rarityCounts = useMemo(() => {
     if (deck.computed?.rarityCounts) {
-      return new Map(Object.entries(deck.computed.rarityCounts))
+      return normalizeRarityCounts(deck.computed.rarityCounts)
     }
 
     const cards = aggregatedCards
@@ -1592,21 +1624,9 @@ const FusedDeckCard = memo(function FusedDeckCard({
       }
 
       if (rarity && typeof rarity === 'string') {
-        let normalized = rarity.trim()
-        const lower = normalized.toLowerCase()
+        const lower = rarity.toLowerCase()
         if (lower.includes('n/a')) return
-        if (lower.includes('darkforge') && lower.includes('rare')) normalized = 'Darkforge Rare'
-        else if (lower.includes('darkforge') && lower.includes('common')) normalized = 'Darkforge Common'
-        else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) normalized = 'Darkforge_LS'
-        else if (lower.includes('common common')) normalized = 'Common Common'
-        else if (lower.includes('rare rare')) normalized = 'Rare Rare'
-        else if (lower.includes('rare') && lower.includes('common')) normalized = 'Rare Common'
-        else if (lower.includes('common') && lower.includes('rare')) normalized = 'Common Rare'
-        else if (lower.includes('darkforge')) normalized = 'Darkforge'
-        else if (lower.includes('common')) normalized = 'Common'
-        else if (lower.includes('rare')) normalized = 'Rare'
-        else if (lower.includes('ls') || lower.includes('legendary')) normalized = 'LS'
-        else if (lower.includes('solbind')) normalized = 'Solbind'
+        const normalized = normalizeRarityLabel(rarity)
         counts.set(normalized, (counts.get(normalized) || 0) + 1)
       }
     })
@@ -1827,7 +1847,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
                       'Darkforge Common': 7,
                       'Darkforge Rare': 8,
                       Darkforge: 9,
-                      Darkforge_LS: 10,
+                      'Darkforge LS': 10,
                       LS: 11,
                     }
                     return (order[a] || 99) - (order[b] || 99)
@@ -2479,7 +2499,8 @@ const parseFiltersFromSearch = (
     next.spellTypeMode = (params.get('spellTypeMode') as FilterState['spellTypeMode']) || 'include'
   }
 
-  next.rarityType = params.get('rarityType') || ''
+  const rarityTypeRaw = params.get('rarityType') || ''
+  next.rarityType = rarityTypeRaw ? normalizeRarityLabel(rarityTypeRaw) : ''
   next.rarityOperator = (params.get('rarityOperator') as FilterState['rarityOperator']) || next.rarityOperator
   next.rarityCount = getNumber('rarityCount')
   next.rarityMode = (params.get('rarityMode') as FilterState['rarityMode']) || 'include'
@@ -3598,36 +3619,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         return deckTagsCache
       }
 
-      const normalizeRarityLabel = (rarity: string): string => {
-        let normalized = rarity.trim()
-        const lower = normalized.toLowerCase()
-        if (lower.includes('solbind')) normalized = 'Solbind'
-        if (lower.includes('darkforge') && lower.includes('rare')) {
-          normalized = 'Darkforge Rare'
-        } else if (lower.includes('darkforge') && lower.includes('common')) {
-          normalized = 'Darkforge Common'
-        } else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) {
-          normalized = 'Darkforge_LS'
-        } else if (lower.includes('common common')) {
-          normalized = 'Common Common'
-        } else if (lower.includes('rare rare')) {
-          normalized = 'Rare Rare'
-        } else if (lower.includes('rare') && lower.includes('common')) {
-          normalized = 'Rare Common'
-        } else if (lower.includes('common') && lower.includes('rare')) {
-          normalized = 'Common Rare'
-        } else if (lower.includes('darkforge')) {
-          normalized = 'Darkforge'
-        } else if (lower.includes('common')) {
-          normalized = 'Common'
-        } else if (lower.includes('rare')) {
-          normalized = 'Rare'
-        } else if (lower.includes('ls') || lower.includes('legendary')) {
-          normalized = 'LS'
-        }
-        return normalized
-      }
-
       const countRarityWordFromBaseCards = (wordLower: string) => {
         const baseCards = Array.isArray(deck.cardList)
           ? deck.cardList
@@ -4378,8 +4369,11 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
           const rarityType = (state.rarityType as string) || ''
           const rarityCount = state.rarityCount as number | null | undefined
           if (rarityType && rarityCount !== null && rarityCount !== undefined) {
+            const normalizedRarityType = normalizeRarityLabel(rarityType)
             // Prefer precomputed rarity counts (base deck only)
-            let deckRarityCount = (deck.computed?.rarityCounts || {})[rarityType] ?? 0
+            let deckRarityCount = deck.computed?.rarityCounts
+              ? normalizeRarityCounts(deck.computed.rarityCounts).get(normalizedRarityType) || 0
+              : 0
 
             // Fallback lightweight count on base cards if computed missing
             if (!deck.computed?.rarityCounts) {
@@ -4420,36 +4414,11 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                 if (forgebornIds.has(card.id)) return
                 const rarity = (card as any).rarity
                 if (rarity && typeof rarity === 'string') {
-                  let normalizedRarity = rarity.trim()
-                  const lower = normalizedRarity.toLowerCase()
-                  if (lower.includes('solbind')) normalizedRarity = 'Solbind'
-                  if (lower.includes('darkforge') && lower.includes('rare')) {
-                    normalizedRarity = 'Darkforge Rare'
-                  } else if (lower.includes('darkforge') && lower.includes('common')) {
-                    normalizedRarity = 'Darkforge Common'
-                  } else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) {
-                    normalizedRarity = 'Darkforge_LS'
-                  } else if (lower.includes('common common')) {
-                    normalizedRarity = 'Common Common'
-                  } else if (lower.includes('rare rare')) {
-                    normalizedRarity = 'Rare Rare'
-                  } else if (lower.includes('rare') && lower.includes('common')) {
-                    normalizedRarity = 'Rare Common'
-                  } else if (lower.includes('common') && lower.includes('rare')) {
-                    normalizedRarity = 'Common Rare'
-                  } else if (lower.includes('darkforge')) {
-                    normalizedRarity = 'Darkforge'
-                  } else if (lower.includes('common')) {
-                    normalizedRarity = 'Common'
-                  } else if (lower.includes('rare')) {
-                    normalizedRarity = 'Rare'
-                  } else if (lower.includes('ls') || lower.includes('legendary')) {
-                    normalizedRarity = 'LS'
-                  }
+                  const normalizedRarity = normalizeRarityLabel(rarity)
                   counts.set(normalizedRarity, (counts.get(normalizedRarity) || 0) + 1)
                 }
               })
-              deckRarityCount = counts.get(rarityType) || 0
+              deckRarityCount = counts.get(normalizedRarityType) || 0
             }
 
             let matches = false
@@ -6101,7 +6070,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 { value: 'Common Rare', label: 'Common Rare' },
                                 { value: 'Darkforge Rare', label: 'Darkforge Rare' },
                                 { value: 'Darkforge Common', label: 'Darkforge Common' },
-                                { value: 'Darkforge_LS', label: 'Darkforge_LS' },
+                                { value: 'Darkforge LS', label: 'Darkforge LS' },
                                 { value: 'Darkforge', label: 'Darkforge' },
                                 { value: 'Rare Common', label: 'Rare Common' },
                                 { value: 'Rare Rare', label: 'Rare Rare' },

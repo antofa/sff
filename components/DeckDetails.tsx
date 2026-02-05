@@ -1441,7 +1441,7 @@ const originalCardMeta = useMemo(() => {
         } else if (lower.includes('darkforge') && lower.includes('common')) {
           normalizedRarity = 'Darkforge Common'
         } else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) {
-          normalizedRarity = 'Darkforge_LS'
+          normalizedRarity = 'Darkforge LS'
         } else if (lower.includes('common common')) {
           normalizedRarity = 'Common Common'
         } else if (lower.includes('rare rare')) {
@@ -3680,7 +3680,7 @@ const originalCardMeta = useMemo(() => {
     else if (lowerRarity.includes('darkforge') && lowerRarity.includes('common')) {
       normalizedRarity = 'DarkforgeCommon'
     } else if (lowerRarity.includes('darkforge') && (lowerRarity.includes('ls') || lowerRarity.includes('legendary'))) {
-      normalizedRarity = 'Darkforge_LS'
+      normalizedRarity = 'Darkforge LS'
     }
     // Handle "Rare Common" or "rare common" -> "RareCommon" (order matters: Rare first, then Common)
     else if (lowerRarity.match(/^rare\s+common$/i) || (lowerRarity.startsWith('rare') && lowerRarity.includes('common') && !lowerRarity.startsWith('common'))) {
@@ -3751,14 +3751,16 @@ const originalCardMeta = useMemo(() => {
       (cardSet && (cardSet.toUpperCase() === 'B1' || cardSet === 'b1')) ||
       (cardId && /^b1_/i.test(cardId))
     
+    const iconRarity = normalizedRarity === 'Darkforge LS' ? 'Darkforge_LS' : normalizedRarity
+
     if (isB3Set) {
-      return `/images/icons/rarity/B3_${normalizedRarity}.png`
+      return `/images/icons/rarity/B3_${iconRarity}.png`
     }
     if (isB2Set) {
-      return `/images/icons/rarity/B2_${normalizedRarity}.png`
+      return `/images/icons/rarity/B2_${iconRarity}.png`
     }
     if (isB1Set) {
-      return `/images/icons/rarity/B1_${normalizedRarity}.png`
+      return `/images/icons/rarity/B1_${iconRarity}.png`
     }
     
     // Get set number for S sets: extract number from cardSet (e.g., "s3" -> "3", "3" -> "3")
@@ -3780,7 +3782,7 @@ const originalCardMeta = useMemo(() => {
     }
     
     // Return local path for all rarities (including CommonCommon and RareRare)
-    return `/images/icons/rarity/S${setNo}_${normalizedRarity}.png`
+    return `/images/icons/rarity/S${setNo}_${iconRarity}.png`
   }, [])
 
   // Determine deck set (B1 if any card is from B1, otherwise deck.cardSetNo)
@@ -4527,7 +4529,7 @@ const originalCardMeta = useMemo(() => {
                             'Darkforge Common': 7,
                             'Darkforge Rare': 8,
                             Darkforge: 9,
-                            Darkforge_LS: 10,
+                            'Darkforge LS': 10,
                             LS: 11,
                           }
                           return (order[a] ?? 99) - (order[b] ?? 99)
@@ -4622,7 +4624,7 @@ const originalCardMeta = useMemo(() => {
             'Darkforge Common': 7,
             'Darkforge Rare': 8,
             Darkforge: 9,
-            Darkforge_LS: 10,
+            'Darkforge LS': 10,
             LS: 11,
           }
                           return (order[a] ?? 99) - (order[b] ?? 99)
