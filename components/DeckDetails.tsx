@@ -4525,7 +4525,7 @@ const originalCardMeta = useMemo(() => {
                             size="sm"
                             style={{ backgroundColor: getRarityBadgeColor(rarity), color: 'white', border: 'none' }}
                           >
-                            {pluralize(count, rarity)}
+                            {count} {rarity}
                           </Badge>
                         ))}
                     </Group>
@@ -4618,7 +4618,7 @@ const originalCardMeta = useMemo(() => {
                             size="sm"
                             style={{ backgroundColor: getRarityBadgeColor(rarity), color: 'white', border: 'none' }}
                           >
-                            {pluralize(count, rarity)}
+                            {count} {rarity}
                           </Badge>
                         ))}
                     </Group>
