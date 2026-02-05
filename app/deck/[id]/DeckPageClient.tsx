@@ -131,7 +131,7 @@ export default function DeckPageClient() {
 
   const handleClose = () => {
     if (typeof window === 'undefined') {
-      router.push('/all-decks')
+      router.push('/')
       return
     }
 
@@ -143,7 +143,7 @@ export default function DeckPageClient() {
       return
     }
 
-    router.push('/all-decks')
+    router.push('/')
   }
 
   return (
