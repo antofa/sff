@@ -527,6 +527,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: aae59a3
   Request: Remove pluralization of rarity labels in deck details.
   Date: 2026-02-05
+- Commit: 5bd785f
+  Request: Pick better names for rarity filters (Exact/Word).
+  Date: 2026-02-05
 - Commit: 1db867d
   Request: Explain why the ELO filter adds long query parameters and reduce the number of URL parameters.
   Date: 2026-02-05
