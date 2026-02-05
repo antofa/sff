@@ -476,3 +476,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: c2bafa6
   Request: Color card names in OG by faction so all four faction colors remain readable and do not blend into the OG background.
   Date: 2026-02-05
+- Commit: 5b018f3
+  Request: Color the forgeborn name in OG image with the forgeborn faction color.
+  Date: 2026-02-05
