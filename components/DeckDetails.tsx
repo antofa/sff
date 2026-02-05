@@ -269,14 +269,16 @@ const RARITY_BADGE_COLORS: Record<string, string> = {
   rare: '#f0c320',
   rarerare: '#d9a600',
   darkforge: '#1a1a1a',
+  darkforgecommon: '#1a1a1a',
   darkforgerare: '#101010',
+  darkforgels: '#b00008',
   ls: '#b00008',
   solbind: '#2fcad0',
 }
 
 function normalizeRarityKey(rarity?: string | null): string {
   if (!rarity) return ''
-  return rarity.replace(/\s+/g, '').toLowerCase()
+  return rarity.replace(/[\s_]+/g, '').toLowerCase()
 }
 
 function getRarityBadgeColor(rarity?: string): string {
@@ -1436,6 +1438,10 @@ const originalCardMeta = useMemo(() => {
 
         if (lower.includes('darkforge') && lower.includes('rare')) {
           normalizedRarity = 'Darkforge Rare'
+        } else if (lower.includes('darkforge') && lower.includes('common')) {
+          normalizedRarity = 'Darkforge Common'
+        } else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) {
+          normalizedRarity = 'Darkforge_LS'
         } else if (lower.includes('common common')) {
           normalizedRarity = 'Common Common'
         } else if (lower.includes('rare rare')) {
@@ -3670,6 +3676,12 @@ const originalCardMeta = useMemo(() => {
     else if (lowerRarity.includes('darkforge') && lowerRarity.includes('rare')) {
       normalizedRarity = 'DarkforgeRare'
     }
+    // Handle Darkforge Common / Darkforge LS -> use Darkforge icon
+    else if (lowerRarity.includes('darkforge') && lowerRarity.includes('common')) {
+      normalizedRarity = 'Darkforge'
+    } else if (lowerRarity.includes('darkforge') && (lowerRarity.includes('ls') || lowerRarity.includes('legendary'))) {
+      normalizedRarity = 'Darkforge'
+    }
     // Handle "Rare Common" or "rare common" -> "RareCommon" (order matters: Rare first, then Common)
     else if (lowerRarity.match(/^rare\s+common$/i) || (lowerRarity.startsWith('rare') && lowerRarity.includes('common') && !lowerRarity.startsWith('common'))) {
       normalizedRarity = 'RareCommon'
@@ -4512,9 +4524,11 @@ const originalCardMeta = useMemo(() => {
                             Rare: 4,
                             'Rare Common': 5,
                             'Rare Rare': 6,
-                            'Darkforge Rare': 7,
-                            Darkforge: 8,
-                            LS: 9,
+                            'Darkforge Common': 7,
+                            'Darkforge Rare': 8,
+                            Darkforge: 9,
+                            Darkforge_LS: 10,
+                            LS: 11,
                           }
                           return (order[a] ?? 99) - (order[b] ?? 99)
                         })
@@ -4605,9 +4619,11 @@ const originalCardMeta = useMemo(() => {
             Rare: 4,
             'Rare Common': 5,
             'Rare Rare': 6,
-            'Darkforge Rare': 7,
-            Darkforge: 8,
-            LS: 9,
+            'Darkforge Common': 7,
+            'Darkforge Rare': 8,
+            Darkforge: 9,
+            Darkforge_LS: 10,
+            LS: 11,
           }
                           return (order[a] ?? 99) - (order[b] ?? 99)
                         })

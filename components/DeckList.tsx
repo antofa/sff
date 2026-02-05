@@ -1008,27 +1008,31 @@ const RegularDeckCard = memo(function RegularDeckCard({
                           Rare: 4,
                           'Rare Common': 5,
                           'Rare Rare': 6,
-                          'Darkforge Rare': 7,
-                          Darkforge: 8,
-                          LS: 9,
+                          'Darkforge Common': 7,
+                          'Darkforge Rare': 8,
+                          Darkforge: 9,
+                          Darkforge_LS: 10,
+                          LS: 11,
                         }
                         return (order[a] || 99) - (order[b] || 99)
                       })
                       .map(([rarity, count]) => {
                         const getRarityColor = (rarityName: string): string => {
-                          const key = rarityName.replace(/\s+/g, '').toLowerCase()
-                          const map: Record<string, string> = {
-                            commoncommon: '#2f92d0',
-                            common: '#1096e1',
-                            commonrare: '#e5b522',
-                            rarecommon: '#6a5320',
-                            rare: '#f0c320',
-                            rarerare: '#d9a600',
-                            darkforge: '#1a1a1a',
-                            darkforgerare: '#101010',
-                            ls: '#b00008',
-                            solbind: '#2fcad0',
-                          }
+                const key = rarityName.replace(/[\s_]+/g, '').toLowerCase()
+                const map: Record<string, string> = {
+                  commoncommon: '#2f92d0',
+                  common: '#1096e1',
+                  commonrare: '#e5b522',
+                  rarecommon: '#6a5320',
+                  rare: '#f0c320',
+                  rarerare: '#d9a600',
+                  darkforge: '#1a1a1a',
+                  darkforgecommon: '#1a1a1a',
+                  darkforgerare: '#101010',
+                  darkforgels: '#b00008',
+                  ls: '#b00008',
+                  solbind: '#2fcad0',
+                }
                           return map[key] || '#1199e3'
                         }
                         return (
@@ -1592,6 +1596,8 @@ const FusedDeckCard = memo(function FusedDeckCard({
         const lower = normalized.toLowerCase()
         if (lower.includes('n/a')) return
         if (lower.includes('darkforge') && lower.includes('rare')) normalized = 'Darkforge Rare'
+        else if (lower.includes('darkforge') && lower.includes('common')) normalized = 'Darkforge Common'
+        else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) normalized = 'Darkforge_LS'
         else if (lower.includes('common common')) normalized = 'Common Common'
         else if (lower.includes('rare rare')) normalized = 'Rare Rare'
         else if (lower.includes('rare') && lower.includes('common')) normalized = 'Rare Common'
@@ -1789,19 +1795,21 @@ const FusedDeckCard = memo(function FusedDeckCard({
           {(() => {
             if (rarityCounts.size === 0) return null
             const getRarityColor = (rarityName: string): string => {
-              const key = rarityName.replace(/\s+/g, '').toLowerCase()
-              const map: Record<string, string> = {
-                commoncommon: '#2f92d0',
-                common: '#1096e1',
-                commonrare: '#e5b522',
-                rarecommon: '#6a5320',
-                rare: '#f0c320',
-                rarerare: '#d9a600',
-                darkforge: '#1a1a1a',
-                darkforgerare: '#101010',
-                ls: '#b00008',
-                solbind: '#2fcad0',
-              }
+                          const key = rarityName.replace(/[\s_]+/g, '').toLowerCase()
+                          const map: Record<string, string> = {
+                            commoncommon: '#2f92d0',
+                            common: '#1096e1',
+                            commonrare: '#e5b522',
+                            rarecommon: '#6a5320',
+                            rare: '#f0c320',
+                            rarerare: '#d9a600',
+                            darkforge: '#1a1a1a',
+                            darkforgecommon: '#1a1a1a',
+                            darkforgerare: '#101010',
+                            darkforgels: '#b00008',
+                            ls: '#b00008',
+                            solbind: '#2fcad0',
+                          }
               return map[key] || '#1199e3'
             }
             return (
@@ -1816,9 +1824,11 @@ const FusedDeckCard = memo(function FusedDeckCard({
                       Rare: 4,
                       'Rare Common': 5,
                       'Rare Rare': 6,
-                      'Darkforge Rare': 7,
-                      Darkforge: 8,
-                      LS: 9,
+                      'Darkforge Common': 7,
+                      'Darkforge Rare': 8,
+                      Darkforge: 9,
+                      Darkforge_LS: 10,
+                      LS: 11,
                     }
                     return (order[a] || 99) - (order[b] || 99)
                   })
@@ -3594,6 +3604,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         if (lower.includes('solbind')) normalized = 'Solbind'
         if (lower.includes('darkforge') && lower.includes('rare')) {
           normalized = 'Darkforge Rare'
+        } else if (lower.includes('darkforge') && lower.includes('common')) {
+          normalized = 'Darkforge Common'
+        } else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) {
+          normalized = 'Darkforge_LS'
         } else if (lower.includes('common common')) {
           normalized = 'Common Common'
         } else if (lower.includes('rare rare')) {
@@ -3653,7 +3667,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
           const rarity = (card as any).rarity
           if (rarity && typeof rarity === 'string') {
             const normalized = normalizeRarityLabel(rarity)
-            const tokens = normalized.toLowerCase().split(/\s+/).filter(Boolean)
+            const tokens = normalized.toLowerCase().replace(/_/g, ' ').split(/\s+/).filter(Boolean)
             if (tokens.includes(wordLower)) {
               count += 1
             }
@@ -4411,6 +4425,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                   if (lower.includes('solbind')) normalizedRarity = 'Solbind'
                   if (lower.includes('darkforge') && lower.includes('rare')) {
                     normalizedRarity = 'Darkforge Rare'
+                  } else if (lower.includes('darkforge') && lower.includes('common')) {
+                    normalizedRarity = 'Darkforge Common'
+                  } else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) {
+                    normalizedRarity = 'Darkforge_LS'
                   } else if (lower.includes('common common')) {
                     normalizedRarity = 'Common Common'
                   } else if (lower.includes('rare rare')) {
@@ -4463,7 +4481,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             if (deck.computed?.rarityCounts) {
               Object.entries(deck.computed.rarityCounts).forEach(([rarityLabel, count]) => {
                 const normalized = normalizeRarityLabel(String(rarityLabel))
-                const tokens = normalized.toLowerCase().split(/\s+/).filter(Boolean)
+                const tokens = normalized.toLowerCase().replace(/_/g, ' ').split(/\s+/).filter(Boolean)
                 if (tokens.includes(wordLower)) {
                   const num = Number(count)
                   deckWordCount += Number.isFinite(num) ? num : 0
@@ -6082,6 +6100,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 { value: 'Common Common', label: 'Common Common' },
                                 { value: 'Common Rare', label: 'Common Rare' },
                                 { value: 'Darkforge Rare', label: 'Darkforge Rare' },
+                                { value: 'Darkforge Common', label: 'Darkforge Common' },
+                                { value: 'Darkforge_LS', label: 'Darkforge_LS' },
                                 { value: 'Darkforge', label: 'Darkforge' },
                                 { value: 'Rare Common', label: 'Rare Common' },
                                 { value: 'Rare Rare', label: 'Rare Rare' },

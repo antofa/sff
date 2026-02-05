@@ -10,6 +10,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Stop pluralizing rarity labels in deck detail rarity tags.
 - Add a "Rarity (Word)" filter that matches decks by rarity tokens (e.g., Common matches Common Rare).
 - Rename the rarity filter to "Rarity (Exact)" and add comparison operators for rarity counts.
+- Add Darkforge Common and Darkforge_LS to rarity tags and filters.
 - Allow typing to filter the "Add filter" dropdown list.
 - Derive filter blocks from URL order and use `_1` suffixes for repeated filters without `activeFilters`.
 - Shorten filter URLs by omitting per-filter instance IDs when only one block is active.
