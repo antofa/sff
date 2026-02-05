@@ -82,6 +82,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Color the forgeborn name in OG using the forgeborn faction color with the same high-contrast palette.
 - Remove per-card faction icons from OG card rows, keeping only rarity icons and colored card names.
 - Increase OG image typography by an additional 5%.
+- Restore inline forgeborn `[l1]-[l4]` ability token rendering as level icons in OG text.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

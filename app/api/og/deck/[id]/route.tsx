@@ -604,7 +604,6 @@ const stripMarkup = (value: string) => {
 
 const normalizeForgebornAbilityText = (value: string) =>
   value
-    .replace(/\[(?:l)?[1-4]\]/gi, '')
     .replace(/([^\s])([+-])(?=\d)/g, '$1 $2')
     .replace(/([.!?])([A-Za-z])/g, '$1 $2')
     .replace(/\s+/g, ' ')
@@ -752,31 +751,42 @@ const getRarityIconPath = (
 const renderAbilityText = (
   text: string,
   statIconMap: Map<string, string | null>,
-  _levelIconMap: Map<number, string | null>
+  levelIconMap: Map<number, string | null>
 ) => {
   const normalizedText = normalizeForgebornAbilityText(String(text || ''))
   if (!normalizedText) return null
   const parts: Array<
     | { type: 'text'; value: string }
     | { type: 'stat'; src: string; number: string }
+    | { type: 'level'; src: string }
   > = []
-  const pattern = /([+-]?\d+)\s*([ADH])/gi
+  const pattern = /(\[(?:l)?([1-4])\]|([+-]?\d+)\s*([ADH]))/gi
   let lastIndex = 0
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(normalizedText)) !== null) {
-    const [full, numberValue, statValue] = match
+    const [full, _token, levelValue, numberValue, statValue] = match
     const start = match.index
     if (start > lastIndex) {
       parts.push({ type: 'text', value: normalizedText.slice(lastIndex, start) })
     }
-    const number = numberValue || ''
-    const stat = (statValue || '').toUpperCase()
-    const iconSrc = statIconMap.get(stat) || null
-    if (!iconSrc || !number) {
-      parts.push({ type: 'text', value: full })
+    if (levelValue) {
+      const level = Number(levelValue)
+      const iconSrc = Number.isFinite(level) ? levelIconMap.get(level) || null : null
+      if (!iconSrc) {
+        parts.push({ type: 'text', value: full })
+      } else {
+        parts.push({ type: 'level', src: iconSrc })
+      }
     } else {
-      parts.push({ type: 'stat', src: iconSrc, number })
+      const number = numberValue || ''
+      const stat = (statValue || '').toUpperCase()
+      const iconSrc = statIconMap.get(stat) || null
+      if (!iconSrc || !number) {
+        parts.push({ type: 'text', value: full })
+      } else {
+        parts.push({ type: 'stat', src: iconSrc, number })
+      }
     }
     lastIndex = start + full.length
   }
@@ -793,6 +803,21 @@ const renderAbilityText = (
             <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {part.value}
             </span>
+          )
+        }
+        if (part.type === 'level') {
+          return (
+            <img
+              key={`level-${idx}`}
+              src={part.src}
+              style={{
+                width: '18px',
+                height: '18px',
+                objectFit: 'contain',
+                margin: '0 2px',
+                transform: 'translateY(2px)',
+              }}
+            />
           )
         }
         return (
