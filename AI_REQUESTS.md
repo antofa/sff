@@ -473,3 +473,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ca91027
   Request: Increase OG image font size everywhere by 10%.
   Date: 2026-02-05
+- Commit: c2bafa6
+  Request: Color card names in OG by faction so all four faction colors remain readable and do not blend into the OG background.
+  Date: 2026-02-05
