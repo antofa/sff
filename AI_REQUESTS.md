@@ -539,3 +539,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 1db867d
   Request: Explain why the ELO filter adds long query parameters and reduce the number of URL parameters.
   Date: 2026-02-05
+- Commit: 0ac35aa
+  Request: Add Darkforge_LS rarity icons for all sets and use them in the deck details modal.
+  Date: 2026-02-05
