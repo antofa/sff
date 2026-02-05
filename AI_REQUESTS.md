@@ -482,3 +482,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 132e8f8
   Request: Remove faction icons from all cards in OG image.
   Date: 2026-02-05
+- Commit: 03ef7d1
+  Request: Increase all OG image font sizes by another 5%.
+  Date: 2026-02-05
