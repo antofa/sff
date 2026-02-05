@@ -1975,6 +1975,7 @@ interface FilterState {
   tags: string[]
   tagsMode: 'include' | 'exclude'
   rarityType: string
+  rarityOperator: '>=' | '<=' | '='
   rarityCount: number | null
   rarityMode: 'include' | 'exclude'
   expiryFilter: 'all' | 'active' | 'expiring' | 'expired'
@@ -2022,6 +2023,7 @@ const createDefaultFilters = (): FilterState => ({
   tags: [],
   tagsMode: 'include',
   rarityType: '',
+  rarityOperator: '>=',
   rarityCount: null,
   rarityMode: 'include',
   expiryFilter: 'active', // Default: show active decks (no dates + expiring)
@@ -2093,7 +2095,7 @@ const FILTER_BLOCK_LABELS: Record<FilterBlockKey, string> = {
   'card-set': 'Card Set',
   elo: 'ELO',
   score: 'Score',
-  rarity: 'Rarity',
+  rarity: 'Rarity (Specific)',
   sort: 'Sort',
   'deck-status': 'Deck Status',
 }
@@ -2114,7 +2116,7 @@ const FILTER_BLOCK_FIELDS: Record<FilterBlockKey, (keyof FilterState)[]> = {
   'card-set': ['cardSetNo', 'cardSetNoMode'],
   elo: ['eloOperator', 'eloValue', 'eloMode'],
   score: ['scoreOperator', 'scoreValue', 'scoreMode'],
-  rarity: ['rarityType', 'rarityCount', 'rarityMode'],
+  rarity: ['rarityType', 'rarityOperator', 'rarityCount', 'rarityMode'],
   sort: ['sortBy'],
   'deck-status': ['expiryFilter'],
 }
@@ -2189,6 +2191,7 @@ const FILTER_QUERY_KEYS = [
   'spellTypeCount',
   'spellTypeMode',
   'rarityType',
+  'rarityOperator',
   'rarityCount',
   'rarityMode',
   'eloOperator',
@@ -2335,6 +2338,7 @@ const getDefaultsForKey = (key: FilterBlockKey): FilterInstanceState => {
     case 'rarity':
       return {
         rarityType: defaults.rarityType,
+        rarityOperator: defaults.rarityOperator,
         rarityCount: defaults.rarityCount,
         rarityMode: defaults.rarityMode,
       }
@@ -2435,6 +2439,7 @@ const parseFiltersFromSearch = (
   }
 
   next.rarityType = params.get('rarityType') || ''
+  next.rarityOperator = (params.get('rarityOperator') as FilterState['rarityOperator']) || next.rarityOperator
   next.rarityCount = getNumber('rarityCount')
   next.rarityMode = (params.get('rarityMode') as FilterState['rarityMode']) || 'include'
 
@@ -4315,8 +4320,20 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               deckRarityCount = counts.get(rarityType) || 0
             }
 
-            const rarityMatch = !(deckRarityCount < rarityCount)
-            if (!applyMode(rarityMatch, (state.rarityMode as FilterState['rarityMode']) || 'include')) {
+            let matches = false
+            switch (state.rarityOperator as FilterState['rarityOperator']) {
+              case '<=':
+                matches = deckRarityCount <= rarityCount
+                break
+              case '=':
+                matches = deckRarityCount === rarityCount
+                break
+              case '>=':
+              default:
+                matches = deckRarityCount >= rarityCount
+                break
+            }
+            if (!applyMode(matches, (state.rarityMode as FilterState['rarityMode']) || 'include')) {
               return false
             }
           }
@@ -5879,9 +5896,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         const currentMode = (state.rarityMode as FilterState['rarityMode']) || 'include'
                         const currentType = (state.rarityType as string) || ''
                         const currentCount = state.rarityCount as number | null | undefined
+                        const currentOperator = (state.rarityOperator as FilterState['rarityOperator']) || '>='
                         const header = (
                           <Text size="sm" fw={500} style={{ color: 'white' }}>
-                            Rarity
+                            Rarity (Specific)
                           </Text>
                         )
                         const modeControl = (
@@ -5903,6 +5921,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 update({
                                   rarityType: value || '',
                                   rarityCount: value ? (currentCount ?? 1) : null,
+                                  rarityOperator: currentOperator,
                                 })
                               }
                               data={[
@@ -5923,9 +5942,23 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
+                            <Select
+                              value={currentOperator}
+                              onChange={(value) => update({ rarityOperator: value as FilterState['rarityOperator'] })}
+                              data={[
+                                { value: '>=', label: '≥' },
+                                { value: '<=', label: '≤' },
+                                { value: '=', label: '=' },
+                              ]}
+                              style={{ flex: '0 0 80px' }}
+                              disabled={!currentType}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
                             <div style={{ position: 'relative', flex: '0 0 120px' }}>
                               <NumberInput
-                                placeholder="Min count"
+                                placeholder="Count"
                                 value={currentCount ?? ''}
                                 onChange={(value) =>
                                   update({

@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.6] - 2026-02-05
+
+### Changed
+- Rename the rarity filter to "Rarity (Specific)" and add comparison operators for rarity counts.
+
 ## [0.0.5] - 2026-02-05
 
 ### Changed
