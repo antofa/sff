@@ -479,3 +479,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 5b018f3
   Request: Color the forgeborn name in OG image with the forgeborn faction color.
   Date: 2026-02-05
+- Commit: 132e8f8
+  Request: Remove faction icons from all cards in OG image.
+  Date: 2026-02-05
