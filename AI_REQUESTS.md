@@ -506,6 +506,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a96332a
   Request: Fix fused OG third-column forgeborn ability wrapping so line breaks are more natural.
   Date: 2026-02-05
+- Commit: 1b9265e
+  Request: Implement the plan to remove activeFilters, derive filter order from URL, and use _1 suffixes for repeated filters.
+  Date: 2026-02-05
 - Commit: 1db867d
   Request: Explain why the ELO filter adds long query parameters and reduce the number of URL parameters.
   Date: 2026-02-05
