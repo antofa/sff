@@ -509,6 +509,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 1b9265e
   Request: Implement the plan to remove activeFilters, derive filter order from URL, and use _1 suffixes for repeated filters.
   Date: 2026-02-05
+- Commit: 74e50d3
+  Request: Make the filter picker searchable so typing filters the available filters.
+  Date: 2026-02-05
 - Commit: 1db867d
   Request: Explain why the ELO filter adds long query parameters and reduce the number of URL parameters.
   Date: 2026-02-05
