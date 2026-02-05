@@ -86,6 +86,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Improve fused forgeborn ability text wrapping to reduce premature line breaks around inline icons.
 - Fix fused OG generation stalls by using a Satori-safe flex wrapper for forgeborn ability text tokens.
 - (2026-02-05 UTC) Improve fused forgeborn third-column wrapping by rendering ability tokens in inline flow instead of flex-wrapped items.
+- (2026-02-05 UTC) Show alternate forgeborn form names and abilities in OG previews when available.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.

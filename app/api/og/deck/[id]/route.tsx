@@ -21,8 +21,11 @@ type OgPayload = {
   cardColumns: CardColumn[]
   forgebornName: string | null
   forgebornFaction: string | null
+  secondaryForgebornName: string | null
+  secondaryForgebornFaction: string | null
   deckName: string | null
   forgebornAbilities: AbilityEntry[]
+  secondaryForgebornAbilities: AbilityEntry[]
 }
 
 type OgPayloadCacheEntry = {
@@ -547,13 +550,23 @@ const buildCardColumns = (deck: any): CardColumn[] => {
   ]
 }
 
-const buildOgPayload = (deck: any): OgPayload => ({
-  cardColumns: buildCardColumns(deck),
-  forgebornName: resolveForgebornName(deck),
-  forgebornFaction: resolveForgebornFaction(deck),
-  deckName: typeof deck?.name === 'string' && deck.name.trim() ? deck.name.trim() : null,
-  forgebornAbilities: collectForgebornAbilities(deck).slice(0, 3),
-})
+const buildOgPayload = (deck: any): OgPayload => {
+  const secondaryForgeborn = resolveSecondaryForgeborn(deck)
+  return {
+    cardColumns: buildCardColumns(deck),
+    forgebornName: resolveForgebornName(deck),
+    forgebornFaction: resolveForgebornFaction(deck),
+    secondaryForgebornName: secondaryForgeborn ? resolveForgebornNameFromForgeborn(secondaryForgeborn) : null,
+    secondaryForgebornFaction: secondaryForgeborn
+      ? resolveForgebornFactionFromForgeborn(secondaryForgeborn, deck)
+      : null,
+    deckName: typeof deck?.name === 'string' && deck.name.trim() ? deck.name.trim() : null,
+    forgebornAbilities: collectForgebornAbilities(deck).slice(0, 3),
+    secondaryForgebornAbilities: secondaryForgeborn
+      ? collectForgebornAbilitiesFromForgeborn(secondaryForgeborn).slice(0, 3)
+      : [],
+  }
+}
 
 const getOgPayload = async (deckId: string, options?: { forceRefresh?: boolean }): Promise<OgPayload> => {
   const forceRefresh = options?.forceRefresh === true
@@ -572,7 +585,16 @@ const getOgPayload = async (deckId: string, options?: { forceRefresh?: boolean }
     const deck = await getDeckFromUpstream(deckId)
     const payload = deck
       ? buildOgPayload(deck)
-      : { cardColumns: [], forgebornName: null, forgebornFaction: null, deckName: null, forgebornAbilities: [] }
+      : {
+          cardColumns: [],
+          forgebornName: null,
+          forgebornFaction: null,
+          secondaryForgebornName: null,
+          secondaryForgebornFaction: null,
+          deckName: null,
+          forgebornAbilities: [],
+          secondaryForgebornAbilities: [],
+        }
     setCachedOgPayload(cacheKey, payload)
     return payload
   })().finally(() => {
@@ -843,8 +865,7 @@ const renderAbilityText = (
   )
 }
 
-const resolveForgebornName = (deck: any) => {
-  const forgeborn = deck?.forgeborn
+const resolveForgebornNameFromForgeborn = (forgeborn: any) => {
   const named =
     forgeborn?.name ||
     forgeborn?.Name ||
@@ -852,22 +873,34 @@ const resolveForgebornName = (deck: any) => {
     forgeborn?.cardName ||
     null
   if (named) return String(named).trim()
-  const fallback = deck?.forgebornName || deck?.forgebornId || forgeborn?.id || null
+  const fallback = forgeborn?.id || forgeborn?.cardId || forgeborn?.card_id || null
   if (!fallback) return null
   return toTitleCase(String(fallback).replace(/[_-]+/g, ' ').trim())
 }
 
-const resolveForgebornFaction = (deck: any): string | null => {
-  const forgeborn = deck?.forgeborn
-  const direct =
-    forgeborn?.faction ||
-    forgeborn?.Faction ||
-    deck?.faction ||
-    deck?.Faction ||
-    null
+const resolveForgebornName = (deck: any) => {
+  const fromForgeborn = resolveForgebornNameFromForgeborn(deck?.forgeborn)
+  if (fromForgeborn) return fromForgeborn
+  const fallback = deck?.forgebornName || deck?.forgebornId || deck?.forgeborn?.id || null
+  if (!fallback) return null
+  return toTitleCase(String(fallback).replace(/[_-]+/g, ' ').trim())
+}
+
+const resolveForgebornFactionFromForgeborn = (forgeborn: any, deck?: any): string | null => {
+  const direct = forgeborn?.faction || forgeborn?.Faction || null
   if (typeof direct === 'string' && direct.trim()) {
     return direct.trim()
   }
+  const fallback = deck?.faction || deck?.Faction || null
+  if (typeof fallback === 'string' && fallback.trim()) {
+    return fallback.trim()
+  }
+  return null
+}
+
+const resolveForgebornFaction = (deck: any): string | null => {
+  const direct = resolveForgebornFactionFromForgeborn(deck?.forgeborn, deck)
+  if (direct) return direct
 
   const sourceDecks = Array.isArray(deck?.myDecks) ? deck.myDecks : []
   for (const source of sourceDecks) {
@@ -917,8 +950,7 @@ const formatAbilityEntry = (ability: any): AbilityEntry | null => {
   return { title: title ? String(title).trim() : null, text, level }
 }
 
-const collectForgebornAbilities = (deck: any) => {
-  const forgeborn = deck?.forgeborn
+const collectForgebornAbilitiesFromForgeborn = (forgeborn: any) => {
   const entries: AbilityEntry[] = []
   const pushAbility = (ability: any, levelOverride?: number | null) => {
     const entry = formatAbilityEntry(ability)
@@ -1006,6 +1038,61 @@ const collectForgebornAbilities = (deck: any) => {
   return entries
 }
 
+const collectForgebornAbilities = (deck: any) => collectForgebornAbilitiesFromForgeborn(deck?.forgeborn)
+
+const resolveSecondaryForgeborn = (deck: any) => {
+  const primaryId = deck?.forgeborn?.id || deck?.forgebornId || null
+  const primaryIdLower = primaryId ? String(primaryId).toLowerCase() : null
+  const cardLookup = new Map<string, any>()
+  const deckCards = Array.isArray(deck?.cards)
+    ? deck.cards
+    : Array.isArray(deck?.cardList)
+      ? deck.cardList
+      : Array.isArray(deck?.cardIds)
+        ? deck.cardIds
+        : []
+  deckCards.forEach((card: any) => {
+    if (!card || typeof card !== 'object') return
+    const cardId = card?.id || card?.cardId || card?.card_id || null
+    if (!cardId) return
+    cardLookup.set(String(cardId).toLowerCase(), card)
+  })
+  const normalizeCandidate = (card: any) => {
+    if (!card) return null
+    if (typeof card === 'string') {
+      return cardLookup.get(card.toLowerCase()) || null
+    }
+    return card
+  }
+  const candidateSources = [
+    deck?.forgeborn?.solbindCards,
+    deck?.forgeborn?.solbind_cards,
+    deck?.forgeborn?.solbinds,
+    deck?.solbindCards,
+    deck?.solbind_cards,
+    deck?.solbinds,
+  ]
+
+  for (const source of candidateSources) {
+    if (!Array.isArray(source)) continue
+    for (const rawCard of source) {
+      const card = normalizeCandidate(rawCard)
+      if (!card || typeof card !== 'object') continue
+      const cardId = card?.id || card?.cardId || card?.card_id || null
+      if (cardId && primaryIdLower && String(cardId).toLowerCase() === primaryIdLower) continue
+      const typeValue = card?.cardType || card?.card_type || card?.type || card?.Type || ''
+      const typeLower = String(typeValue).toLowerCase()
+      if (!typeLower.includes('forgeborn')) continue
+      const rarityValue = card?.rarity || card?.Rarity || ''
+      const rarityLower = String(rarityValue).toLowerCase()
+      if (rarityLower.includes('solbind')) continue
+      return card
+    }
+  }
+
+  return null
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id?: string }> }
@@ -1038,6 +1125,16 @@ export async function GET(
     ...ability,
     level: ability.level ?? (index < 3 ? index + 2 : null),
   }))
+  const secondaryForgebornName = payload.secondaryForgebornName
+  const secondaryForgebornTitleColor = getFactionTextColor(
+    payload.secondaryForgebornFaction || payload.forgebornFaction || undefined
+  )
+  const secondaryForgebornAbilities = payload.secondaryForgebornAbilities.map((ability, index) => ({
+    ...ability,
+    level: ability.level ?? (index < 3 ? index + 2 : null),
+  }))
+  const hasSecondaryForgeborn =
+    !!secondaryForgebornName || secondaryForgebornAbilities.some((ability) => !!ability?.text?.trim())
 
   const resolveAssetUrl = (url: string | null) => {
     if (!url) return null
@@ -1135,7 +1232,23 @@ export async function GET(
       }
     }
   })
+  secondaryForgebornAbilities.forEach((ability) => {
+    const level = ability.level
+    if (level && level >= 1 && level <= 4) {
+      abilityLevels.add(level)
+    }
+    if (ability.text) {
+      let match: RegExpExecArray | null
+      while ((match = levelTokenPattern.exec(ability.text)) !== null) {
+        const tokenLevel = Number(match[1])
+        if (Number.isFinite(tokenLevel)) {
+          abilityLevels.add(tokenLevel)
+        }
+      }
+    }
+  })
   forgebornAbilities.slice(0, 3).forEach((_, idx) => abilityLevels.add(idx + 2))
+  secondaryForgebornAbilities.slice(0, 3).forEach((_, idx) => abilityLevels.add(idx + 2))
   const levelIconEntries = Array.from(abilityLevels)
     .sort((a, b) => a - b)
     .map((level) => ({ level, url: `${origin}/images/icons/levels/lv${level}-icon.png` }))
@@ -1166,10 +1279,78 @@ export async function GET(
   const globalFontScale = 1.155
   const fusedFontScale = showFusedColumns ? 1.44 : 1
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * globalFontScale * 10) / 10
-  const forgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
-  const forgebornAbilityFont = showFusedColumns ? scaleFont(14) : scaleFont(20)
-  const forgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
-  const forgebornLevelIconSize = showFusedColumns ? '18px' : '20px'
+  const baseForgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
+  const baseForgebornAbilityFont = showFusedColumns ? scaleFont(14) : scaleFont(20)
+  const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
+  const primaryTitleScale = hasSecondaryForgeborn ? 0.9 : 1
+  const primaryAbilityScale = hasSecondaryForgeborn ? 0.88 : 1
+  const forgebornTitleFont = Math.round(baseForgebornTitleFont * primaryTitleScale * 10) / 10
+  const forgebornAbilityFont = Math.round(baseForgebornAbilityFont * primaryAbilityScale * 10) / 10
+  const forgebornAbilityLineHeight = hasSecondaryForgeborn
+    ? Math.max(1.08, baseForgebornAbilityLineHeight - 0.05)
+    : baseForgebornAbilityLineHeight
+  const baseForgebornLevelIconSize = showFusedColumns ? 18 : 20
+  const forgebornLevelIconSize = `${Math.round(baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1))}px`
+  const secondaryForgebornTitleFont = Math.max(12, Math.round(forgebornTitleFont * 0.7))
+  const secondaryForgebornAbilityFont = Math.max(10, Math.round(forgebornAbilityFont * 0.85))
+  const secondaryForgebornAbilityLineHeight = Math.max(1.05, forgebornAbilityLineHeight - 0.05)
+  const secondaryForgebornLevelIconSize = `${Math.max(14, Math.round(baseForgebornLevelIconSize * 0.8))}px`
+
+  const renderAbilityList = (
+    abilities: AbilityEntry[],
+    options: { fontSize: number; lineHeight: number; levelIconSize: string; gap?: string }
+  ) => {
+    const visibleAbilities = abilities.filter((ability) => !!ability?.text?.trim())
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: options.gap ?? '8px',
+          fontSize: options.fontSize,
+          lineHeight: options.lineHeight,
+          width: '100%',
+        }}
+      >
+        {visibleAbilities.length > 0 ? (
+          visibleAbilities.map((ability, idx) => {
+            const level =
+              ability.level && ability.level >= 1 && ability.level <= 4 ? ability.level : idx < 3 ? idx + 2 : null
+            const levelIconSrc =
+              level !== null ? levelIconMap.get(level) || resolveAssetUrl(`/images/icons/levels/lv${level}-icon.png`) : null
+            return (
+              <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', gap: '8px' }}>
+                {levelIconSrc ? (
+                  <img
+                    src={levelIconSrc}
+                    style={{
+                      width: options.levelIconSize,
+                      height: options.levelIconSize,
+                      objectFit: 'contain',
+                      transform: 'translateY(3px)',
+                    }}
+                  />
+                ) : null}
+                <div
+                  style={{
+                    display: 'flex',
+                    flex: 1,
+                    minWidth: 0,
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {renderAbilityText(ability.text || '', statIconMap, levelIconMap)}
+                </div>
+              </div>
+            )
+          })
+        ) : (
+          <div style={{ color: '#94a3b8', fontSize: options.fontSize }}>Abilities unavailable</div>
+        )}
+      </div>
+    )
+  }
 
   const renderForgebornBlock = () => (
     <div
@@ -1188,55 +1369,33 @@ export async function GET(
       <div style={{ fontSize: forgebornTitleFont, fontWeight: 700, lineHeight: 1.1, color: forgebornTitleColor }}>
         {forgebornName || 'Forgeborn'}
       </div>
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          fontSize: forgebornAbilityFont,
-          lineHeight: forgebornAbilityLineHeight,
-          width: '100%',
-        }}
-      >
-        {forgebornAbilities.length > 0 ? (
-          forgebornAbilities.map((ability, idx) => {
-            const level =
-              ability.level && ability.level >= 1 && ability.level <= 4 ? ability.level : idx < 3 ? idx + 2 : null
-            const levelIconSrc =
-              level !== null ? levelIconMap.get(level) || resolveAssetUrl(`/images/icons/levels/lv${level}-icon.png`) : null
-            return (
-              <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', gap: '8px' }}>
-                {levelIconSrc ? (
-                  <img
-                    src={levelIconSrc}
-                    style={{
-                      width: forgebornLevelIconSize,
-                      height: forgebornLevelIconSize,
-                      objectFit: 'contain',
-                      transform: 'translateY(3px)',
-                    }}
-                  />
-                ) : null}
-                {ability.text ? (
-                  <div
-                    style={{
-                      display: 'flex',
-                      flex: 1,
-                      minWidth: 0,
-                      maxWidth: '100%',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {renderAbilityText(ability.text, statIconMap, levelIconMap)}
-                  </div>
-                ) : null}
-              </div>
-            )
-          })
-        ) : (
-          <div style={{ color: '#94a3b8', fontSize: scaleFont(20) }}>Abilities unavailable</div>
-        )}
-      </div>
+      {renderAbilityList(forgebornAbilities, {
+        fontSize: forgebornAbilityFont,
+        lineHeight: forgebornAbilityLineHeight,
+        levelIconSize: forgebornLevelIconSize,
+        gap: hasSecondaryForgeborn ? '6px' : '8px',
+      })}
+      {hasSecondaryForgeborn ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+          <div style={{ height: '1px', backgroundColor: '#1f2937', opacity: 0.85 }} />
+          <div
+            style={{
+              fontSize: secondaryForgebornTitleFont,
+              fontWeight: 700,
+              lineHeight: 1.15,
+              color: secondaryForgebornTitleColor,
+            }}
+          >
+            {secondaryForgebornName || 'Alternate Forgeborn'}
+          </div>
+          {renderAbilityList(secondaryForgebornAbilities, {
+            fontSize: secondaryForgebornAbilityFont,
+            lineHeight: secondaryForgebornAbilityLineHeight,
+            levelIconSize: secondaryForgebornLevelIconSize,
+            gap: '6px',
+          })}
+        </div>
+      ) : null}
     </div>
   )
 
