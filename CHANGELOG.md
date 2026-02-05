@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.4] - 2026-02-05
+
+### Changed
+- Derive filter blocks from URL order and use `_1` suffixes for repeated filters without `activeFilters`.
+
 ## [0.0.3] - 2026-02-05
 
 ### Changed

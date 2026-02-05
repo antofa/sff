@@ -2136,7 +2136,6 @@ const FILTER_BLOCK_OPTIONS: { value: FilterBlockKey; label: string }[] = [
   { value: 'score', label: FILTER_BLOCK_LABELS.score },
   { value: 'rarity', label: FILTER_BLOCK_LABELS.rarity },
 ]
-const FILTER_BLOCK_VALUES = FILTER_BLOCK_OPTIONS.map((opt) => opt.value)
 const SORT_OPTIONS = [
   { value: 'date-desc', label: 'Date (Newest first)' },
   { value: 'date-asc', label: 'Date (Oldest first)' },
@@ -2160,6 +2159,7 @@ const FILTER_QUERY_KEYS = [
   'faction',
   'factionMode',
   'forgeborn',
+  'forgebornName',
   'forgebornMode',
   'cardName',
   'cardNameMode',
@@ -2200,6 +2200,36 @@ const FILTER_QUERY_KEYS = [
   'sortBy',
   'expiryFilter',
 ]
+
+const FILTER_QUERY_KEY_SET = new Set(FILTER_QUERY_KEYS)
+
+const FIELD_TO_BLOCK: Record<string, FilterBlockKey> = Object.entries(FILTER_BLOCK_FIELDS).reduce(
+  (acc, [blockKey, fields]) => {
+    fields.forEach((field) => {
+      acc[String(field)] = blockKey as FilterBlockKey
+    })
+    return acc
+  },
+  {} as Record<string, FilterBlockKey>
+)
+
+const parseFieldKey = (name: string): { baseName: string; index: number } => {
+  const match = name.match(/^(.*)_([0-9]+)$/)
+  if (!match) {
+    return { baseName: name, index: 0 }
+  }
+  const baseName = match[1]
+  const index = Number(match[2])
+  if (!baseName || !Number.isFinite(index) || index < 1) {
+    return { baseName: name, index: 0 }
+  }
+  return { baseName, index }
+}
+
+const getParamName = (field: keyof FilterState, index: number) => {
+  const baseName = String(field)
+  return index > 0 ? `${baseName}_${index}` : baseName
+}
 
 type FilterBlockInstance = {
   id: string
@@ -2317,9 +2347,6 @@ const getDefaultsForKey = (key: FilterBlockKey): FilterInstanceState => {
   }
 }
 
-const isFilterBlockKey = (value: string): value is FilterBlockKey =>
-  FILTER_BLOCK_VALUES.includes(value as FilterBlockKey)
-
 const parseFiltersFromSearch = (
   params: URLSearchParams
 ): {
@@ -2348,7 +2375,7 @@ const parseFiltersFromSearch = (
   next.deckNameMode = (params.get('deckNameMode') as FilterState['deckNameMode']) || 'include'
   next.faction = getArray('faction')
   next.factionMode = (params.get('factionMode') as FilterState['factionMode']) || 'include'
-  next.forgebornName = getArray('forgeborn')
+  next.forgebornName = getArray('forgebornName')
   next.forgebornMode = (params.get('forgebornMode') as FilterState['forgebornMode']) || 'include'
   next.cardName = getArray('cardName')
   next.cardNameMode = (params.get('cardNameMode') as FilterState['cardNameMode']) || 'include'
@@ -2425,31 +2452,25 @@ const parseFiltersFromSearch = (
     next.scoreMode = (params.get('scoreMode') as FilterState['scoreMode']) || 'include'
   }
 
-  // Active filter blocks (allow duplicates)
-  const activeRaw = params.get('activeFilters')
-  let entries = activeRaw
-    ? activeRaw
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-    : []
-  if (entries.length === 0) {
-    if (params.get('cardSetNo')) {
-      entries.push('card-set')
-    }
+  // Active filter blocks (derived from URL order)
+  const orderedBlocks: Array<{ key: FilterBlockKey; index: number }> = []
+  const seenBlocks = new Set<string>()
+  for (const [rawKey] of params.entries()) {
+    const { baseName, index } = parseFieldKey(rawKey)
+    const blockKey = FIELD_TO_BLOCK[baseName]
+    if (!blockKey) continue
+    if (blockKey === 'faction' || blockKey === 'sort' || blockKey === 'deck-status') continue
+    const signature = `${blockKey}:${index}`
+    if (seenBlocks.has(signature)) continue
+    seenBlocks.add(signature)
+    orderedBlocks.push({ key: blockKey, index })
   }
 
-  const activeFilterBlocks: FilterBlockInstance[] = []
-  const activeCountsByKey = new Map<FilterBlockKey, number>()
-  entries.forEach((entry) => {
-    const [rawKey, rawId] = entry.split('@')
-    const key = rawKey as FilterBlockKey
-    if (!isFilterBlockKey(key)) return
-    const nextCount = (activeCountsByKey.get(key) || 0) + 1
-    activeCountsByKey.set(key, nextCount)
-    const trimmedId = rawId?.trim()
-    const id = trimmedId && trimmedId.length > 0 ? trimmedId : nextCount === 1 ? key : `${key}-${nextCount}`
-    activeFilterBlocks.push({ key, id })
+  const blockIndices = new Map<string, number>()
+  const activeFilterBlocks: FilterBlockInstance[] = orderedBlocks.map((block) => {
+    const id = block.index === 0 ? block.key : `${block.key}-${block.index}`
+    blockIndices.set(id, block.index)
+    return { key: block.key, id }
   })
 
   const sanitizedBlocks = activeFilterBlocks.filter(
@@ -2463,23 +2484,16 @@ const parseFiltersFromSearch = (
     sanitizedBlocks.push({ key: 'deck-status', id: 'deck-status' })
   }
 
-  const firstByKey = new Map<FilterBlockKey, string>()
-  sanitizedBlocks.forEach((block) => {
-    if (!firstByKey.has(block.key)) {
-      firstByKey.set(block.key, block.id)
-    }
-  })
-
   const instanceFilters: Record<string, FilterInstanceState> = {}
 
   const cardSetInstances: Record<string, CardSetInstanceState> = {}
   const cardSetBlocks = sanitizedBlocks.filter((block) => block.key === 'card-set')
-  cardSetBlocks.forEach((block, idx) => {
-    const valuesById = getArray(`cardSetNo@${block.id}`)
-    const values = valuesById.length > 0 ? valuesById : idx === 0 ? getArray('cardSetNo') : []
+  cardSetBlocks.forEach((block) => {
+    const blockIndex = blockIndices.get(block.id) || 0
+    const values = getArray(getParamName('cardSetNo', blockIndex))
     const mode =
-      (params.get(`cardSetNoMode@${block.id}`) as CardSetInstanceState['cardSetNoMode']) ||
-      (idx === 0 ? ((params.get('cardSetNoMode') as CardSetInstanceState['cardSetNoMode']) || 'include') : 'include')
+      (params.get(getParamName('cardSetNoMode', blockIndex)) as CardSetInstanceState['cardSetNoMode']) ||
+      'include'
     cardSetInstances[block.id] = {
       cardSetNo: values,
       cardSetNoMode: mode || 'include',
@@ -2492,30 +2506,23 @@ const parseFiltersFromSearch = (
 
   sanitizedBlocks.forEach((block) => {
     if (block.key === 'card-set') return // already handled
+    const blockIndex = blockIndices.get(block.id) || 0
     const defaults = getDefaultsForKey(block.key)
     const state: FilterInstanceState = { ...defaults }
     FILTER_BLOCK_FIELDS[block.key]?.forEach((field) => {
       if (field === 'cardSetNo' || field === 'cardSetNoMode') return
-      const withId = params.get(`${String(field)}@${block.id}`)
-      const base = params.get(String(field))
-      const isFirstForKey = firstByKey.get(block.key) === block.id
       if (ARRAY_FIELDS.has(field as keyof FilterState)) {
-        const arr = withId ? getArray(`${String(field)}@${block.id}`) : isFirstForKey ? getArray(String(field)) : []
+        const arr = getArray(getParamName(field, blockIndex))
         if (arr.length > 0) {
           (state as any)[field] = arr
         }
       } else if (NUMBER_FIELDS.has(field as keyof FilterState)) {
-        const num = (() => {
-          const raw = withId ?? (isFirstForKey ? base : null)
-          if (raw === null || raw === undefined || raw === '') return null
-          const n = Number(raw)
-          return Number.isFinite(n) ? n : null
-        })()
+        const num = getNumber(getParamName(field, blockIndex))
         if (num !== null) {
           (state as any)[field] = num
         }
       } else {
-        const val = withId !== null && withId !== undefined ? withId : isFirstForKey ? base : null
+        const val = params.get(getParamName(field, blockIndex))
         if (val !== null && val !== undefined && val !== '') {
           (state as any)[field] = val
         }
@@ -2537,24 +2544,17 @@ const buildSearchParamsFromState = (
   const defaults = createDefaultFilters()
   const params = baseParams ? new URLSearchParams(baseParams) : new URLSearchParams()
 
-  FILTER_QUERY_KEYS.forEach((key) => params.delete(key))
-  // Clean any old instance-scoped params
+  // Clean old filter params (including legacy instance params and suffixed keys)
   Array.from(params.keys()).forEach((key) => {
     if (key.includes('@')) {
       params.delete(key)
+      return
+    }
+    const { baseName } = parseFieldKey(key)
+    if (FILTER_QUERY_KEY_SET.has(baseName)) {
+      params.delete(key)
     }
   })
-
-  const countsByKey = new Map<FilterBlockKey, number>()
-  activeBlocks.forEach((block) => {
-    countsByKey.set(block.key, (countsByKey.get(block.key) || 0) + 1)
-  })
-  const activeEntries = activeBlocks
-    .filter((block) => block.key !== 'deck-status')
-    .map((block) => ((countsByKey.get(block.key) || 0) === 1 ? block.key : `${block.key}@${block.id}`))
-  if (activeEntries.length > 0) {
-    params.set('activeFilters', activeEntries.join(','))
-  }
 
   const setArray = (name: string, value: string[]) => {
     if (value && value.length > 0) {
@@ -2568,15 +2568,17 @@ const buildSearchParamsFromState = (
     if (value !== null && value !== undefined && Number.isFinite(value)) params.set(name, String(value))
   }
 
+  const nextIndexByKey = new Map<FilterBlockKey, number>()
   activeBlocks.forEach((block) => {
     if (block.key === 'deck-status') return
     const defaultsForKey = getDefaultsForKey(block.key)
     const state = instanceFilters[block.id] || defaultsForKey
-    const useBaseKeys = (countsByKey.get(block.key) || 0) === 1
+    const index = nextIndexByKey.get(block.key) || 0
+    nextIndexByKey.set(block.key, index + 1)
     FILTER_BLOCK_FIELDS[block.key]?.forEach((field) => {
       const value = (state as any)[field]
       const defaultValue = (defaultsForKey as any)[field]
-      const keyName = useBaseKeys ? String(field) : `${String(field)}@${block.id}`
+      const keyName = getParamName(field, index)
       if (ARRAY_FIELDS.has(field as keyof FilterState)) {
         if (Array.isArray(value) && value.length > 0) {
           params.set(keyName, value.join(','))
