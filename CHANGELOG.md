@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.3] - 2026-02-05
+
+### Changed
+- Shorten filter URLs by omitting per-filter instance IDs when only one block is active.
+
 ## [0.0.2] - 2026-02-04
 
 ### Changed

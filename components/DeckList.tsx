@@ -2440,11 +2440,15 @@ const parseFiltersFromSearch = (
   }
 
   const activeFilterBlocks: FilterBlockInstance[] = []
-  entries.forEach((entry, idx) => {
+  const activeCountsByKey = new Map<FilterBlockKey, number>()
+  entries.forEach((entry) => {
     const [rawKey, rawId] = entry.split('@')
     const key = rawKey as FilterBlockKey
     if (!isFilterBlockKey(key)) return
-    const id = rawId || `${key}-${idx}`
+    const nextCount = (activeCountsByKey.get(key) || 0) + 1
+    activeCountsByKey.set(key, nextCount)
+    const trimmedId = rawId?.trim()
+    const id = trimmedId && trimmedId.length > 0 ? trimmedId : nextCount === 1 ? key : `${key}-${nextCount}`
     activeFilterBlocks.push({ key, id })
   })
 
@@ -2541,12 +2545,15 @@ const buildSearchParamsFromState = (
     }
   })
 
-  const activeKeysWithId = activeBlocks.map((b) => `${b.key}@${b.id}`)
-  const activeKeys = activeBlocks.map((b) => b.key)
-  if (!activeKeys.includes('deck-status')) activeKeys.unshift('deck-status')
-  const hasExtraBlocks = activeKeys.some((key) => key !== 'deck-status')
-  if (hasExtraBlocks) {
-    params.set('activeFilters', activeKeysWithId.join(','))
+  const countsByKey = new Map<FilterBlockKey, number>()
+  activeBlocks.forEach((block) => {
+    countsByKey.set(block.key, (countsByKey.get(block.key) || 0) + 1)
+  })
+  const activeEntries = activeBlocks
+    .filter((block) => block.key !== 'deck-status')
+    .map((block) => ((countsByKey.get(block.key) || 0) === 1 ? block.key : `${block.key}@${block.id}`))
+  if (activeEntries.length > 0) {
+    params.set('activeFilters', activeEntries.join(','))
   }
 
   const setArray = (name: string, value: string[]) => {
@@ -2561,40 +2568,26 @@ const buildSearchParamsFromState = (
     if (value !== null && value !== undefined && Number.isFinite(value)) params.set(name, String(value))
   }
 
-  const firstByKey = new Map<FilterBlockKey, string>()
   activeBlocks.forEach((block) => {
-    if (!firstByKey.has(block.key)) {
-      firstByKey.set(block.key, block.id)
-    }
-  })
-
-  activeBlocks.forEach((block) => {
+    if (block.key === 'deck-status') return
     const defaultsForKey = getDefaultsForKey(block.key)
     const state = instanceFilters[block.id] || defaultsForKey
+    const useBaseKeys = (countsByKey.get(block.key) || 0) === 1
     FILTER_BLOCK_FIELDS[block.key]?.forEach((field) => {
       const value = (state as any)[field]
       const defaultValue = (defaultsForKey as any)[field]
-      const keyName = `${String(field)}@${block.id}`
+      const keyName = useBaseKeys ? String(field) : `${String(field)}@${block.id}`
       if (ARRAY_FIELDS.has(field as keyof FilterState)) {
         if (Array.isArray(value) && value.length > 0) {
           params.set(keyName, value.join(','))
-          if (firstByKey.get(block.key) === block.id) {
-            params.set(String(field), value.join(','))
-          }
         }
       } else if (NUMBER_FIELDS.has(field as keyof FilterState)) {
         if (value !== null && value !== undefined && Number.isFinite(value)) {
           params.set(keyName, String(value))
-          if (firstByKey.get(block.key) === block.id) {
-            params.set(String(field), String(value))
-          }
         }
       } else {
         if (value !== undefined && value !== null && value !== '' && value !== defaultValue) {
           params.set(keyName, String(value))
-          if (firstByKey.get(block.key) === block.id) {
-            params.set(String(field), String(value))
-          }
         }
       }
     })
