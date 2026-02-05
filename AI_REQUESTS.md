@@ -533,6 +533,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 4b0941f
   Request: Add Darkforge Common and Darkforge_LS rarities to decks and filters.
   Date: 2026-02-05
+- Commit: 2cc9d62
+  Request: Directly opened deck modal should return to the home page when closed.
+  Date: 2026-02-05
 - Commit: 1db867d
   Request: Explain why the ELO filter adds long query parameters and reduce the number of URL parameters.
   Date: 2026-02-05
