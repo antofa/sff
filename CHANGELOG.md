@@ -77,6 +77,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Ensure fused forgeborn abilities always show level icons, render `[1-4]` inline level tokens as icons, and wrap third-column text in block flow to prevent right-edge clipping.
 - Fix OG route stalls by resolving local `/images/*` assets to data URLs and returning a fully buffered PNG response.
 - Move OG rendering to Node runtime and keep Satori-safe `display:flex` wrappers to avoid hidden 500 failures.
+- Increase all OG image typography by 10% for better readability.
 
 ### Fixed
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
