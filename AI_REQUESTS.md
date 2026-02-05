@@ -542,3 +542,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 0ac35aa
   Request: Add Darkforge_LS rarity icons for all sets and use them in the deck details modal.
   Date: 2026-02-05
+- Commit: 846e185
+  Request: Rename Darkforge_LS to Darkforge LS everywhere and treat it as two words in rarity word filtering.
+  Date: 2026-02-05
