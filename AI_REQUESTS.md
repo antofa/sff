@@ -632,3 +632,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: bf029a4
   Request: Fix OG renderer error requiring explicit `display: flex` on multi-child ability row containers.
   Date: 2026-02-06
+- Commit: ce39265
+  Request: Prevent wrapped lines in the fused OG third column from starting with punctuation such as a period or closing quote.
+  Date: 2026-02-06
