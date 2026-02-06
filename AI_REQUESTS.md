@@ -605,3 +605,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: f53b8c9
   Request: Remove the forgeborn name from the third column.
   Date: 2026-02-06
+- Commit: e76c2ab
+  Request: Increase the maximum fused OG auto-fit scale to 1.3.
+  Date: 2026-02-06
