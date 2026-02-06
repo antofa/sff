@@ -566,3 +566,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: b06d962
   Request: Move the Too Many Decks logo assets into a dedicated logo folder.
   Date: 2026-02-06
+- Commit: 63e4506
+  Request: Move solforge-logo.png into the logo folder.
+  Date: 2026-02-06
