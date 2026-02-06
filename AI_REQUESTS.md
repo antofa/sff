@@ -614,3 +614,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: df2a1b5
   Request: Reduce fused OG empty bottom space by relaxing auto-fit spacing.
   Date: 2026-02-06
+- Commit: c5b6dc0
+  Request: Raise fused OG auto-fit max scale to 1.35, use full height, and reduce vertical padding.
+  Date: 2026-02-06
