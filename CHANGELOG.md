@@ -6,6 +6,8 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Add a site favicon based on the three-card logo mark and wire it through root metadata icons.
+- Keep homepage OG/Twitter preview image pinned to the smaller header logo variant instead of the full-size logo asset.
 - Update homepage OG metadata title to `Too Many Decks` and use the site logo as the Open Graph/Twitter preview image.
 - Fix slight descender clipping in fused OG third-column forgeborn ability text by removing row-level `overflow: hidden`.
 - Improve OG text clarity in Discord previews by replacing blur-based text shadow with crisp edge shadowing and a heavier body font weight.
