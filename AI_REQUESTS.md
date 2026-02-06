@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: f12cc61
+  Request: PLEASE IMPLEMENT THIS PLAN: Updated `player_fused_decks` schema without `api_created_at`/`api_updated_at`, with `synced_at`, source deck IDs, check/indexes, and upsert behavior.
+  Date: 2026-02-06
 - Commit: 5703412
   Request: Make the homepage OG image use the same logo size as in the header.
   Date: 2026-02-06
