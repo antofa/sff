@@ -1504,7 +1504,16 @@ export async function GET(
               level !== null && !hasLeadingLevelToken ? `[l${level}] ${rawText}` : rawText
             const parsedLevelIconSize = Number.parseFloat(options.levelIconSize)
             return (
-              <div key={`ability-${idx}`} style={{ width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
+              <div
+                key={`ability-${idx}`}
+                style={{
+                  display: 'flex',
+                  width: '100%',
+                  minWidth: 0,
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                }}
+              >
                 {renderAbilityText(textWithLevel, statIconMap, levelIconMap, {
                   inline: true,
                   levelIconSize: Number.isFinite(parsedLevelIconSize) ? parsedLevelIconSize : 18,
