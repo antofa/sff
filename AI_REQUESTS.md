@@ -590,3 +590,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ab111f7
   Request: откати последнее изменение
   Date: 2026-02-06
+- Commit: 8d1d24a
+  Request: увеличь размер шрифта способностей forgeborn до размера шрифта списка карт
+  Date: 2026-02-06
