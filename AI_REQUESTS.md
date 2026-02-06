@@ -554,3 +554,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: da75b41
   Request: Add clear buttons for Min/Max inputs and make filter scrollbars three times wider.
   Date: 2026-02-06
+- Commit: 1f2f91e
+  Request: Swap the site logo to the Too Many Decks transparent mark and size it appropriately.
+  Date: 2026-02-06
