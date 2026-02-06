@@ -297,6 +297,19 @@ const normalizeRarityLabel = (value: unknown): string | null => {
   return raw
 }
 
+const abbreviateRarityLabel = (label: string): string => {
+  const tokens = label
+    .split(/[^a-zA-Z0-9]+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+
+  if (tokens.length === 0) return label
+
+  return tokens
+    .map((token) => token.charAt(0).toUpperCase())
+    .join('')
+}
+
 const extractCreatureTypes = (card: any): string[] => {
   if (!card || typeof card !== 'object') return []
   const rawValue =
@@ -462,14 +475,27 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
 
   const formatCounts = (counts: Map<string, number>, fallback: string) => {
     if (counts.size === 0) return fallback
+
     return Array.from(counts.entries())
       .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
       .map(([label, count]) => `${label} ${count}`)
       .join(', ')
   }
 
+  const formatRarityCounts = (counts: Map<string, number>, fallback: string) =>
+    Array.from(
+      Array.from(counts.entries()).reduce((acc, [label, count]) => {
+        const shortLabel = abbreviateRarityLabel(label)
+        acc.set(shortLabel, (acc.get(shortLabel) || 0) + count)
+        return acc
+      }, new Map<string, number>()).entries()
+    )
+      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+      .map(([label, count]) => `${label} ${count}`)
+      .join(', ') || fallback
+
   const countsPart = `Creatures: ${creatures}, Spells: ${spells}, Solbind: ${solbind}`
-  const rarityPart = `Rarities: ${formatCounts(rarityCounts, 'none')}`
+  const rarityPart = `Rarities: ${formatRarityCounts(rarityCounts, 'none')}`
   const creatureTypesPart = `Creature Types: ${formatCounts(creatureTypeCounts, 'none')}`
   return `${countsPart}\n${rarityPart}\n${creatureTypesPart}`
 }
