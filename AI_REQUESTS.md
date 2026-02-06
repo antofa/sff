@@ -557,3 +557,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 1f2f91e
   Request: Swap the site logo to the Too Many Decks transparent mark and size it appropriately.
   Date: 2026-02-06
+- Commit: ec646cb
+  Request: Replace the logo file and regenerate the resized header asset.
+  Date: 2026-02-06
