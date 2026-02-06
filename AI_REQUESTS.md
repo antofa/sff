@@ -629,3 +629,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 2228f33
   Request: Fix fused OG third-column abilities so text continues under Roman level icons (II-IV) instead of leaving an empty icon gutter.
   Date: 2026-02-06
+- Commit: bf029a4
+  Request: Fix OG renderer error requiring explicit `display: flex` on multi-child ability row containers.
+  Date: 2026-02-06
