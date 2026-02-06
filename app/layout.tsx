@@ -12,6 +12,7 @@ import './globals.css'
 installConsoleTimestamp()
 
 const headerLogoImage = '/images/logo/too-many-decks-logo.png'
+const headerLogoOgImage = '/images/logo/too-many-decks-og-256x130.png'
 const favicon32Image = '/favicon-32x32.png'
 const favicon192Image = '/favicon-192x192.png'
 const appleTouchIconImage = '/apple-touch-icon.png'
@@ -34,7 +35,9 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: headerLogoImage,
+        url: headerLogoOgImage,
+        width: 256,
+        height: 130,
         alt: 'Too Many Decks',
       },
     ],
@@ -43,7 +46,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Too Many Decks',
     description: 'SolForge Fusion Player Deck Viewer',
-    images: [headerLogoImage],
+    images: [headerLogoOgImage],
   },
 }
 
