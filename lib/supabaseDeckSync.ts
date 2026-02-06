@@ -8,7 +8,6 @@ type SyncSummary = {
   skippedRegular: number
   persistedFused: number
   skippedFused: number
-  profileUpdated: boolean
 }
 
 const ALLOWED_SET_IDS = new Set(['B1', 'B2', 'B3', 'S1', 'S2', 'S3', 'S4', 'D0'])
@@ -163,67 +162,6 @@ const extractFusedSourceIds = (deck: any): [string, string] | null => {
   return [ordered[0], ordered[1]]
 }
 
-const isDuplicateKeyError = (code?: string | null) => code === '23505'
-
-const ensurePlayerProfile = async (
-  client: SupabaseClient<Database>,
-  playerName: string
-): Promise<boolean> => {
-  const normalized = playerName.trim()
-  if (!normalized) return false
-
-  const nowIso = new Date().toISOString()
-
-  const { data: existing, error: existingError } = await client
-    .from('player_profiles')
-    .select('user_id, player_name')
-    .ilike('player_name', normalized)
-    .limit(1)
-
-  if (existingError) {
-    throw existingError
-  }
-
-  if (Array.isArray(existing) && existing.length > 0) {
-    const userId = existing[0].user_id
-    const { error: updateErr } = await client
-      .from('player_profiles')
-      .update({
-        player_name: normalized,
-        updated_at: nowIso,
-      })
-      .eq('user_id', userId)
-
-    if (updateErr) throw updateErr
-    return true
-  }
-
-  const { data: maxRows, error: maxErr } = await client
-    .from('player_profiles')
-    .select('user_id')
-    .order('user_id', { ascending: false })
-    .limit(1)
-
-  if (maxErr) throw maxErr
-
-  const baseUserId = ((Array.isArray(maxRows) && maxRows[0]?.user_id) || 0) + 1
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const userId = baseUserId + attempt
-    const { error: insertErr } = await client.from('player_profiles').insert({
-      user_id: userId,
-      discord_id: String(userId),
-      player_name: normalized,
-      updated_at: nowIso,
-    })
-
-    if (!insertErr) return true
-    if (!isDuplicateKeyError(insertErr.code)) throw insertErr
-  }
-
-  return false
-}
-
 const upsertCards = async (
   client: SupabaseClient<Database>,
   cardEntries: Array<{ card_id: string; card_name: string }>
@@ -251,21 +189,13 @@ export const syncDeckSearchToSupabase = async (
       skippedRegular: 0,
       persistedFused: 0,
       skippedFused: 0,
-      profileUpdated: false,
     }
   }
 
-  let profileUpdated = false
   let persistedRegular = 0
   let skippedRegular = 0
   let persistedFused = 0
   let skippedFused = 0
-
-  try {
-    profileUpdated = await ensurePlayerProfile(client, playerName)
-  } catch (err) {
-    logWithTimestamp(`[Supabase sync] player_profiles upsert failed for "${playerName}": ${err instanceof Error ? err.message : String(err)}`)
-  }
 
   const allCardEntriesMap = new Map<string, string>()
   const preparedRegular: Array<{
@@ -383,6 +313,5 @@ export const syncDeckSearchToSupabase = async (
     skippedRegular,
     persistedFused,
     skippedFused,
-    profileUpdated,
   }
 }
