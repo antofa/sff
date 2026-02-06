@@ -851,7 +851,6 @@ const renderAbilityText = (
               key={`level-${idx}`}
               src={part.src}
               style={{
-                display: 'inline-block',
                 verticalAlign: 'middle',
                 width: `${levelIconSize}px`,
                 height: `${levelIconSize}px`,
@@ -863,15 +862,11 @@ const renderAbilityText = (
           )
         }
         return (
-          <span
-            key={`stat-${idx}`}
-            style={{ display: 'inline-block', verticalAlign: 'middle', whiteSpace: 'nowrap' }}
-          >
+          <span key={`stat-${idx}`} style={{ verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
             <span>{part.number}</span>
             <img
               src={part.src}
               style={{
-                display: 'inline-block',
                 verticalAlign: 'middle',
                 width: '20px',
                 height: '20px',

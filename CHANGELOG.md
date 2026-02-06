@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Remove unsupported `inline-block` display styles from OG ability rendering.
 - Render OG ability text in an inline flow to improve natural line wrapping.
 - Stop splitting OG ability text into per-word nowrap spans to prevent punctuation-led wrapped lines.
 - Add explicit `display: flex` on OG ability rows to satisfy the renderer layout requirement.
