@@ -704,3 +704,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ae8fd32
   Request: Verify whether Solbind should be 2 for the same fused deck and align metadata counting logic with the modal behavior.
   Date: 2026-02-06
+- Commit: 9121606
+  Request: For http://hadoop21.click:3000/deck/Fused_93hi52mfig65sm, include half-deck expiry dates in metadata description when available.
+  Date: 2026-02-06
