@@ -1388,12 +1388,16 @@ export async function GET(
   const innerWidth = imageWidth - containerPaddingX * 2
   const innerHeight = imageHeight - containerPaddingY * 2
   const fusedColumnGap = 18
-  const fusedCardColumnFlex = 1.1
-  const fusedForgebornColumnFlex = 1.0
-  const fusedColumnTotalFlex = fusedCardColumnFlex * 2 + fusedForgebornColumnFlex
+  const defaultFusedCardColumnFlex = 1.1
+  const defaultFusedForgebornColumnFlex = 1.0
   const fusedAvailableWidth = innerWidth - fusedColumnGap * 2
-  const fusedCardColumnWidth = (fusedAvailableWidth * fusedCardColumnFlex) / fusedColumnTotalFlex
-  const fusedForgebornColumnWidth = (fusedAvailableWidth * fusedForgebornColumnFlex) / fusedColumnTotalFlex
+  const getFusedColumnWidths = (cardFlex: number, forgebornFlex: number) => {
+    const totalFlex = cardFlex * 2 + forgebornFlex
+    return {
+      cardColumnWidth: (fusedAvailableWidth * cardFlex) / totalFlex,
+      forgebornColumnWidth: (fusedAvailableWidth * forgebornFlex) / totalFlex,
+    }
+  }
   const globalFontScale = 1.155
   const fusedFontScale = showFusedColumns ? 1.44 : 1
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * globalFontScale * 10) / 10
@@ -1461,7 +1465,8 @@ export async function GET(
   const estimateCardColumnHeight = (
     column: CardColumn | undefined,
     scale: number,
-    columnWidth: number
+    columnWidth: number,
+    spacing?: { sectionGap?: number; listGap?: number }
   ) => {
     if (!column || column.sections.length === 0) {
       return baseNoCardsFontSize * scale * 1.2
@@ -1470,9 +1475,9 @@ export async function GET(
     const cardFontSize = baseCardFontSize * scale
     const iconSize = Math.round(18 * rarityIconScale * scale)
     const textWidth = Math.max(40, columnWidth - iconSize - 12)
-    const sectionGap = 8
+    const sectionGap = spacing?.sectionGap ?? 8
     const labelGap = 4
-    const listGap = 4
+    const listGap = spacing?.listGap ?? 4
     const lineHeight = 1.15
     const labelLineHeight = 1.1
 
@@ -1520,10 +1525,10 @@ export async function GET(
     return total + (visible.length - 1) * gap
   }
 
-  const estimateForgebornHeight = (scale: number) => {
+  const estimateForgebornHeight = (scale: number, forgebornWidth: number) => {
     const columnWidth = Math.max(
       40,
-      (showFusedColumns ? fusedForgebornColumnWidth : innerWidth) - (showFusedColumns ? 12 : 8)
+      forgebornWidth - (showFusedColumns ? 12 : 8)
     )
     const abilityFontSize = baseForgebornAbilityFont * primaryAbilityScale * scale
     const levelIconSize = Math.round(baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * scale)
@@ -1556,45 +1561,138 @@ export async function GET(
   }
 
   const fitMinScale = 0.75
-  const fitMaxScale = showFusedColumns ? 3.6 : 1.45
-  const maxVisualScale = showFusedColumns ? 4.2 : 2.4
+  const fitMaxScale = showFusedColumns ? 3.2 : 1.45
+  const maxVisualScale = showFusedColumns ? 3.6 : 2.4
   const heightBudget = innerHeight
   const safeHeightBudget = heightBudget
-  const fusedEstimateAllowance = showFusedColumns ? 0.95 : 1
+  const cardEstimateAllowance = showFusedColumns ? 0.93 : 1
+  const forgebornEstimateAllowance = showFusedColumns ? 1.02 : 1
 
-  const baseCardColumnScales = showFusedColumns
-    ? [
+  let fusedCardColumnFlex = defaultFusedCardColumnFlex
+  let fusedForgebornColumnFlex = defaultFusedForgebornColumnFlex
+  let selectedCardColumnWidth = getFusedColumnWidths(defaultFusedCardColumnFlex, defaultFusedForgebornColumnFlex).cardColumnWidth
+  let cardColumnScales: number[] = showFusedColumns ? [1, 1] : [1]
+  let forgebornColumnScale = 1
+
+  if (showFusedColumns) {
+    const cardFlexCandidates = [1.0, 1.1, 1.2, 1.3]
+    const forgebornFlexCandidates = [0.9, 1.0, 1.1, 1.2]
+
+    const evaluateCandidate = (cardFlex: number, forgebornFlex: number) => {
+      const { cardColumnWidth, forgebornColumnWidth } = getFusedColumnWidths(cardFlex, forgebornFlex)
+      const baseCardScales = [
         fitScale(fitMinScale, fitMaxScale, (scale) =>
-          estimateCardColumnHeight(cardColumns[0], scale, fusedCardColumnWidth) * fusedEstimateAllowance <= safeHeightBudget
+          estimateCardColumnHeight(cardColumns[0], scale, cardColumnWidth) * cardEstimateAllowance <= safeHeightBudget
         ),
         fitScale(fitMinScale, fitMaxScale, (scale) =>
-          estimateCardColumnHeight(cardColumns[1], scale, fusedCardColumnWidth) * fusedEstimateAllowance <= safeHeightBudget
+          estimateCardColumnHeight(cardColumns[1], scale, cardColumnWidth) * cardEstimateAllowance <= safeHeightBudget
         ),
       ]
-    : [1]
+      const baseForgebornScale = fitScale(fitMinScale, fitMaxScale, (scale) =>
+        estimateForgebornHeight(scale, forgebornColumnWidth) * forgebornEstimateAllowance <= safeHeightBudget
+      )
 
-  const baseForgebornColumnScale = showFusedColumns
-    ? fitScale(fitMinScale, fitMaxScale, (scale) => estimateForgebornHeight(scale) * fusedEstimateAllowance <= safeHeightBudget)
-    : 1
+      const estimateHeightsAtBoost = (boost: number) => [
+        estimateCardColumnHeight(cardColumns[0], baseCardScales[0] * boost, cardColumnWidth) * cardEstimateAllowance,
+        estimateCardColumnHeight(cardColumns[1], baseCardScales[1] * boost, cardColumnWidth) * cardEstimateAllowance,
+        estimateForgebornHeight(baseForgebornScale * boost, forgebornColumnWidth) * forgebornEstimateAllowance,
+      ]
+      const fillBoost = fitScale(1, maxVisualScale, (boost) =>
+        estimateHeightsAtBoost(boost).every((value) => value <= safeHeightBudget)
+      )
 
-  let fillBoost = 1
-  if (showFusedColumns) {
-    const estimateHeightsAtBoost = (boost: number) => [
-      estimateCardColumnHeight(cardColumns[0], baseCardColumnScales[0] * boost, fusedCardColumnWidth) * fusedEstimateAllowance,
-      estimateCardColumnHeight(cardColumns[1], baseCardColumnScales[1] * boost, fusedCardColumnWidth) * fusedEstimateAllowance,
-      estimateForgebornHeight(baseForgebornColumnScale * boost) * fusedEstimateAllowance,
-    ]
-    fillBoost = fitScale(1, maxVisualScale, (boost) =>
-      estimateHeightsAtBoost(boost).every((value) => value <= safeHeightBudget)
-    )
+      const candidateCardScales = baseCardScales.map((scale) => Math.min(maxVisualScale, scale * fillBoost))
+      const candidateForgebornScale = Math.min(maxVisualScale, baseForgebornScale * fillBoost)
+      const estimatedHeights = [
+        estimateCardColumnHeight(cardColumns[0], candidateCardScales[0], cardColumnWidth),
+        estimateCardColumnHeight(cardColumns[1], candidateCardScales[1], cardColumnWidth),
+        estimateForgebornHeight(candidateForgebornScale, forgebornColumnWidth),
+      ]
+      const fillRatios = [
+        Math.min(1.3, (estimatedHeights[0] * cardEstimateAllowance) / Math.max(1, safeHeightBudget)),
+        Math.min(1.3, (estimatedHeights[1] * cardEstimateAllowance) / Math.max(1, safeHeightBudget)),
+        Math.min(1.3, (estimatedHeights[2] * forgebornEstimateAllowance) / Math.max(1, safeHeightBudget)),
+      ]
+
+      const avgFill = (fillRatios[0] + fillRatios[1] + fillRatios[2]) / 3
+      const maxFill = Math.max(fillRatios[0], fillRatios[1], fillRatios[2])
+      const minFill = Math.min(fillRatios[0], fillRatios[1], fillRatios[2])
+      const spread = maxFill - minFill
+      const widthPenalty =
+        Math.abs(cardFlex - defaultFusedCardColumnFlex) * 1.6 +
+        Math.abs(forgebornFlex - defaultFusedForgebornColumnFlex) * 1.6
+      const score =
+        avgFill * 14 +
+        maxFill * 10 +
+        minFill * 6 -
+        spread * 2.5 -
+        widthPenalty
+
+      return {
+        cardFlex,
+        forgebornFlex,
+        cardColumnWidth,
+        cardScales: candidateCardScales,
+        forgebornScale: candidateForgebornScale,
+        score,
+      }
+    }
+
+    let bestCandidate = evaluateCandidate(defaultFusedCardColumnFlex, defaultFusedForgebornColumnFlex)
+    for (const cardFlex of cardFlexCandidates) {
+      for (const forgebornFlex of forgebornFlexCandidates) {
+        const candidate = evaluateCandidate(cardFlex, forgebornFlex)
+        if (candidate.score > bestCandidate.score) {
+          bestCandidate = candidate
+        }
+      }
+    }
+
+    fusedCardColumnFlex = bestCandidate.cardFlex
+    fusedForgebornColumnFlex = bestCandidate.forgebornFlex
+    selectedCardColumnWidth = bestCandidate.cardColumnWidth
+    cardColumnScales = bestCandidate.cardScales
+    forgebornColumnScale = bestCandidate.forgebornScale
   }
 
-  const cardColumnScales = showFusedColumns
-    ? baseCardColumnScales.map((scale) => Math.min(maxVisualScale, scale * fillBoost))
-    : baseCardColumnScales
-  const forgebornColumnScale = showFusedColumns
-    ? Math.min(maxVisualScale, baseForgebornColumnScale * fillBoost)
-    : baseForgebornColumnScale
+  const getCardColumnSpacing = (column: CardColumn | undefined, scale: number, columnWidth: number) => {
+    const defaults = { sectionGap: 8, listGap: 4 }
+    if (!showFusedColumns || !column || column.sections.length === 0) return defaults
+
+    const estimatedDefault = estimateCardColumnHeight(column, scale, columnWidth, defaults)
+    const targetHeight = safeHeightBudget * 0.985
+    const extraHeight = targetHeight - estimatedDefault
+    if (extraHeight <= 18) return defaults
+
+    const listSlots = column.sections.reduce((sum, section) => sum + Math.max(0, (section.items?.length || 0) - 1), 0)
+    const sectionSlots = Math.max(0, column.sections.length - 1)
+    const totalSlots = listSlots + sectionSlots
+    if (totalSlots <= 0) return defaults
+
+    const add = Math.min(12, extraHeight / totalSlots)
+    const candidate = {
+      sectionGap: defaults.sectionGap + add * 0.7,
+      listGap: defaults.listGap + add,
+    }
+    const estimatedCandidate = estimateCardColumnHeight(column, scale, columnWidth, candidate)
+    if (estimatedCandidate <= safeHeightBudget) return candidate
+
+    const denom = Math.max(1, estimatedCandidate - estimatedDefault)
+    const ratio = Math.max(0, Math.min(1, (safeHeightBudget - estimatedDefault) / denom))
+    const safeAdd = add * ratio
+    return {
+      sectionGap: defaults.sectionGap + safeAdd * 0.7,
+      listGap: defaults.listGap + safeAdd,
+    }
+  }
+
+  const cardColumnSpacings = showFusedColumns
+    ? [
+        getCardColumnSpacing(cardColumns[0], cardColumnScales[0], selectedCardColumnWidth),
+        getCardColumnSpacing(cardColumns[1], cardColumnScales[1], selectedCardColumnWidth),
+      ]
+    : [{ sectionGap: 8, listGap: 4 }]
+
   const forgebornAbilityFont = Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * 10) / 10
   const forgebornLevelIconSize = `${Math.round(
     baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * forgebornColumnScale
@@ -1693,14 +1791,15 @@ export async function GET(
   const renderCardColumn = (
     column: (typeof cardColumns)[number] | undefined,
     columnIndex: number,
-    columnScale = 1
+    columnScale = 1,
+    spacing: { sectionGap: number; listGap: number } = { sectionGap: 8, listGap: 4 }
   ) => (
     <div
       key={`column-${columnIndex}`}
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px',
+        gap: `${spacing.sectionGap}px`,
         flex: 1,
         minWidth: 0,
         color: '#e2e8f0',
@@ -1735,7 +1834,7 @@ export async function GET(
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '4px',
+                gap: `${spacing.listGap}px`,
                 fontSize: Math.round(baseCardFontSize * columnScale * 10) / 10,
                 lineHeight: 1.15,
                 fontWeight: ogBodyTextWeight,
@@ -1822,18 +1921,18 @@ export async function GET(
               minHeight: 0,
             }}
           >
-            <div style={{ display: 'flex', flex: 1.1, minWidth: 0 }}>
-              {renderCardColumn(cardColumns[0], 0, cardColumnScales[0])}
+            <div style={{ display: 'flex', flex: fusedCardColumnFlex, minWidth: 0 }}>
+              {renderCardColumn(cardColumns[0], 0, cardColumnScales[0], cardColumnSpacings[0])}
             </div>
-            <div style={{ display: 'flex', flex: 1.1, minWidth: 0 }}>
-              {renderCardColumn(cardColumns[1], 1, cardColumnScales[1])}
+            <div style={{ display: 'flex', flex: fusedCardColumnFlex, minWidth: 0 }}>
+              {renderCardColumn(cardColumns[1], 1, cardColumnScales[1], cardColumnSpacings[1])}
             </div>
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'stretch',
-                flex: 1.0,
+                flex: fusedForgebornColumnFlex,
                 minWidth: 0,
                 overflow: 'hidden',
               }}
