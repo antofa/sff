@@ -623,3 +623,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 883ad5f
   Request: Inline forgeborn level icons with the ability text in the third column.
   Date: 2026-02-06
+- Commit: 0c491f4
+  Request: Ensure forgeborn level icons do not create a separate column with no text beneath them.
+  Date: 2026-02-06
