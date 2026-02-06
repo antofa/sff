@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 03d3a79
+  Request: Create a separate `cards` table with `card_id` and `card_name`, and link `player_deck_cards` to it by `card_id`.
+  Date: 2026-02-06
 - Commit: 5e9239e
   Request: PLEASE IMPLEMENT THIS PLAN: Redesign `player_decks` to compact fields, move cards to `player_deck_cards`, enforce exactly 10 cards with deferred constraint trigger, add `upsert_player_deck` RPC, migrate data with hard cutover, and update types.
   Date: 2026-02-06
