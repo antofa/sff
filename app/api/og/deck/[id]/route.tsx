@@ -1275,7 +1275,7 @@ export async function GET(
   const imageWidth = 1200
   const imageHeight = 630
   const containerPaddingX = 24
-  const containerPaddingY = 20
+  const containerPaddingY = 16
   const innerWidth = imageWidth - containerPaddingX * 2
   const innerHeight = imageHeight - containerPaddingY * 2
   const fusedColumnGap = 18
@@ -1440,8 +1440,8 @@ export async function GET(
   }
 
   const fitMinScale = 0.75
-  const fitMaxScale = 1.3
-  const heightBudget = innerHeight * 0.98
+  const fitMaxScale = 1.35
+  const heightBudget = innerHeight
 
   const cardColumnScales = showFusedColumns
     ? [
