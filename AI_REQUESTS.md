@@ -563,3 +563,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 72e0d82
   Request: Replace the logo file again and regenerate the resized header asset.
   Date: 2026-02-06
+- Commit: b06d962
+  Request: Move the Too Many Decks logo assets into a dedicated logo folder.
+  Date: 2026-02-06
