@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-06 UTC) Tuned fused OG fill balancing to use a tighter estimate allowance so card and ability text scale up more aggressively while still staying inside image bounds.
 - (2026-02-06 UTC) Improved fused OG column auto-fit to maximize vertical fill (at least one column closely fills the frame) while keeping all column content within image bounds.
 - (2026-02-06 UTC) Tightened fused OG auto-fit sizing for card columns to prevent long second-column card names from overflowing beyond the image bounds.
 - (2026-02-06 UTC) Shortened fused deck OG rarity summary labels to compact initials (for example, `Common` -> `C`, `Darkforge LS` -> `DL`) to reduce description length.
