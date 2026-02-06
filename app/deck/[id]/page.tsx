@@ -490,7 +490,22 @@ const buildHalfSummary = (halfDeck: any): string | null => {
   return details.join(', ')
 }
 
-const buildFusedDescription = async (deckLike: any, normalizedDeck: any) => {
+const fetchHalfDeckFromInternalApi = async (halfId: string, baseUrl: string): Promise<any | null> => {
+  try {
+    const response = await fetch(`${baseUrl}/api/deck/${encodeURIComponent(halfId)}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'force-cache',
+      next: { revalidate: 86400 },
+    })
+    if (!response.ok) return null
+    const json = await response.json()
+    return json?.deck ?? null
+  } catch {
+    return null
+  }
+}
+
+const buildFusedDescription = async (deckLike: any, normalizedDeck: any, baseUrl: string | null) => {
   const halfCandidates = extractFusedHalfCandidates(deckLike)
   if (halfCandidates.length === 0) return 'SolForge Fusion fused deck overview.'
 
@@ -505,11 +520,23 @@ const buildFusedDescription = async (deckLike: any, normalizedDeck: any) => {
         getRoundedScore(halfDeck) === null ||
         getRoundedElo(halfDeck) === null ||
         !hasValue(getExpireLabel(halfDeck))
-      if (!halfId || !needsEnrichment) return halfDeck
+      let mergedHalf = halfDeck
 
-      const details = await fetchDeckDetails(halfId, { timeoutMs: 2500, revalidateSeconds: 86400 })
-      if (!details || typeof details !== 'object') return halfDeck
-      return mergeDeckLike(halfDeck, details)
+      if (halfId && needsEnrichment) {
+        const details = await fetchDeckDetails(halfId, { timeoutMs: 2500, revalidateSeconds: 86400 })
+        if (details && typeof details === 'object') {
+          mergedHalf = mergeDeckLike(mergedHalf, details)
+        }
+      }
+
+      if (baseUrl && halfId && !hasValue(getExpireLabel(mergedHalf))) {
+        const internalDetails = await fetchHalfDeckFromInternalApi(halfId, baseUrl)
+        if (internalDetails && typeof internalDetails === 'object') {
+          mergedHalf = mergeDeckLike(mergedHalf, internalDetails)
+        }
+      }
+
+      return mergedHalf
     })
   )
 
@@ -661,7 +688,7 @@ const buildDeckPreviewCore = async (
   const isFusedDeck = isFusedDeckLike(rawDeck) || isFusedDeckLike(deck)
   const cardNames = listDeckCards(deck)
   const baseDescription = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
-  const description = isFusedDeck ? await buildFusedDescription(rawDeck, deck) : baseDescription
+  const description = isFusedDeck ? await buildFusedDescription(rawDeck, deck, baseUrl) : baseDescription
   const baseTitle = deck?.name || titleFallback
   const ownerName = getDeckOwnerName(rawDeck) || getDeckOwnerName(deck)
   const title = isFusedDeck ? buildFusedTitle(baseTitle, forgebornName, ownerName) : baseTitle

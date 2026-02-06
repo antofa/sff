@@ -146,6 +146,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Ensure the deck modal list pane can scroll to the final items without clipping.
 - Fix fused deck metadata descriptions so Solbind counts reflect both halves.
 - Count nested Solbind references from card-level `solbindCards` and `solbindId*` fields in fused metadata descriptions.
+- Add an internal half-deck fallback in fused metadata generation so half expiry dates appear when upstream deck details omit expiry.
 - Show the earliest half-deck expiry date for fused decks in the card modal header.
 - Remove the extra modal scrollbar in deck card views when the content already fits.
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
