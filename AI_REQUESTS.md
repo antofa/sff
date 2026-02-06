@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 7832761
+  Request: Add a dedicated `180x180` apple-touch-icon and use square favicon assets for the site.
+  Date: 2026-02-06
 - Commit: 3ded23c
   Request: Add a favicon using the three-card mark from the site logo, and use the smaller header logo (not the full-size icon) for the homepage OG image.
   Date: 2026-02-06
