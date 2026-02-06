@@ -1282,7 +1282,7 @@ export async function GET(
   const baseForgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
   const baseForgebornAbilityFont = showFusedColumns ? scaleFont(14) : scaleFont(20)
   const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
-  const cardListFontScale = 1.05
+  const cardListFontScale = 1.1025
   const primaryTitleScale = hasSecondaryForgeborn ? 0.9 : 1
   const primaryAbilityScale = hasSecondaryForgeborn ? 0.88 : 1
   const forgebornTitleFont = Math.round(baseForgebornTitleFont * primaryTitleScale * 10) / 10
