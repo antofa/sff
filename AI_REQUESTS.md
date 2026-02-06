@@ -576,20 +576,20 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Request: Reduce empty spacing in the site header.
   Date: 2026-02-06
 - Commit: ef09182
-  Request: "в og image fused колод убери информацию о фракции, сете, score и elo половин колод, а также убери подписи creatures и spells, затем увеличь шрифт списка карт на 5%"
+  Request: "In fused OG images, remove faction/set/score/ELO details for the half decks, remove the Creatures/Spells labels, and increase the card list font size by 5%."
   Date: 2026-02-06
 - Commit: 07e6005
-  Request: увеличить размер шрифта списка карт ещё на 5%
+  Request: Increase the card list font size by another 5%.
   Date: 2026-02-06
 - Commit: 802a17d
-  Request: также увеличь иконки редкости на 30%
+  Request: Increase the rarity icons by 30%.
   Date: 2026-02-06
 - Commit: 16b67c9
-  Request: сделай scale всего шрифта во всех колонках og fused image 1.1
+  Request: Set the font scale for all columns in fused OG images to 1.1.
   Date: 2026-02-06
 - Commit: ab111f7
-  Request: откати последнее изменение
+  Request: Revert the last change.
   Date: 2026-02-06
 - Commit: 8d1d24a
-  Request: увеличь размер шрифта способностей forgeborn до размера шрифта списка карт
+  Request: Increase the forgeborn ability font size to match the card list font size.
   Date: 2026-02-06
