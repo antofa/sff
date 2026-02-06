@@ -659,6 +659,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a2c1894
   Request: Refine fused link preview formatting: in title use `owner: <nick>`, and in half descriptions remove half deck names, parentheses, and the `Faction` label.
   Date: 2026-02-06
+- Commit: cfd1675
+  Request: If available, append each half deck's expire date at the end of its description; then add a new description line with creatures/spells/solbind counts, deck rarity counts, and creature type counts.
+  Date: 2026-02-06
 - Commit: 9f171b7
   Request: Increase all icons in the OG image third column by 1.5x.
   Date: 2026-02-06
