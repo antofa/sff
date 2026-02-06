@@ -203,7 +203,6 @@ const mergeDeckLike = (primary: any, fallback: any) => {
 
 const hasHalfSummaryData = (deckLike: any) => {
   return (
-    hasValue(getHalfDeckName(deckLike)) ||
     hasValue(deckLike?.faction) ||
     hasValue(getSetLabel(deckLike)) ||
     getRoundedScore(deckLike) !== null ||
@@ -212,22 +211,17 @@ const hasHalfSummaryData = (deckLike: any) => {
 }
 
 const buildHalfSummary = (halfDeck: any): string | null => {
-  const halfName = getHalfDeckName(halfDeck)
-  const halfId = getHalfDeckId(halfDeck)
   const faction = hasValue(halfDeck?.faction) ? String(halfDeck.faction).trim() : null
   const setLabel = getSetLabel(halfDeck)
   const score = getRoundedScore(halfDeck)
   const elo = getRoundedElo(halfDeck)
   const details: string[] = []
-  if (faction) details.push(`Faction: ${faction}`)
+  if (faction) details.push(faction)
   if (setLabel) details.push(`Set: ${setLabel}`)
   if (score !== null) details.push(`Score: ${score}`)
   if (elo !== null) details.push(`ELO: ${elo}`)
-
-  const label = halfName || halfId
-  if (!label && details.length === 0) return null
-  if (!label) return details.join(', ')
-  return details.length > 0 ? `${label} (${details.join(', ')})` : label
+  if (details.length === 0) return null
+  return details.join(', ')
 }
 
 const buildFusedDescription = async (deckLike: any) => {
@@ -262,9 +256,12 @@ const buildFusedTitle = (baseTitle: string, forgebornName?: string | null, owner
   }
   if (hasValue(ownerName)) {
     const normalizedOwner = String(ownerName).trim()
-    const alreadyIncluded = parts.some((part) => part.toLowerCase() === normalizedOwner.toLowerCase())
+    const ownerLabel = `owner: ${normalizedOwner}`
+    const alreadyIncluded = parts.some(
+      (part) => part.toLowerCase() === normalizedOwner.toLowerCase() || part.toLowerCase() === ownerLabel.toLowerCase()
+    )
     if (!alreadyIncluded) {
-      parts.push(normalizedOwner)
+      parts.push(ownerLabel)
     }
   }
   if (parts.length === 0) return baseTitle
