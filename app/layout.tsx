@@ -12,8 +12,26 @@ import './globals.css'
 installConsoleTimestamp()
 
 export const metadata: Metadata = {
-  title: 'SolForge Fusion - Deck Viewer',
+  metadataBase: new URL('http://hadoop21.click:3000'),
+  title: 'Too Many Decks',
   description: 'SolForge Fusion Player Deck Viewer',
+  openGraph: {
+    title: 'Too Many Decks',
+    description: 'SolForge Fusion Player Deck Viewer',
+    type: 'website',
+    images: [
+      {
+        url: '/images/logo/too-many-decks-logo.png',
+        alt: 'Too Many Decks',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Too Many Decks',
+    description: 'SolForge Fusion Player Deck Viewer',
+    images: ['/images/logo/too-many-decks-logo.png'],
+  },
 }
 
 export default function RootLayout({

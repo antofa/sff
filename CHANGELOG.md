@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Update homepage OG metadata title to `Too Many Decks` and use the site logo as the Open Graph/Twitter preview image.
 - Fix slight descender clipping in fused OG third-column forgeborn ability text by removing row-level `overflow: hidden`.
 - Improve OG text clarity in Discord previews by replacing blur-based text shadow with crisp edge shadowing and a heavier body font weight.
 - Add an in-memory cache with in-flight deduplication for deck page Open Graph/Twitter metadata (title/description/alt), separate from OG image caching.
