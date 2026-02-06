@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-06 UTC) Redesigned Supabase `player_decks` to a compact schema and moved deck card IDs into a dedicated `player_deck_cards` table with strict 10-card validation and an upsert RPC.
 - (2026-02-06 UTC) Added a compact Supabase `player_fused_decks` model for fused decks with upsert support, case-insensitive owner lookup, and source-half indexes.
 - Set the homepage OG/Twitter image to a dedicated `256x130` logo asset so preview dimensions match the header logo size.
 - Add generated square site icons (`32x32`, `192x192`) and a dedicated `180x180` apple-touch icon from the three-card logo mark.
