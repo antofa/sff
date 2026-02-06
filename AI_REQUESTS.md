@@ -569,3 +569,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 63e4506
   Request: Move solforge-logo.png into the logo folder.
   Date: 2026-02-06
+- Commit: 9a7aab3
+  Request: Add a 1Y column to the crypto tracker with year-over-year percent change.
+  Date: 2026-02-06
