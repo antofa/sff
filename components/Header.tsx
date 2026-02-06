@@ -180,7 +180,7 @@ export function Header() {
   const [errorPrices, setErrorPrices] = useState<string | null>(null)
   const releaseDate = formatChangelogDate(CHANGELOG_SUMMARY.date)
   const [changelogOpened, setChangelogOpened] = useState(false)
-  const logoSrc = '/images/solforge-logo.png'
+  const logoSrc = '/images/icons/too-many-decks-logo.png'
 
   const handleDiscordLogin = () => {
     signIn('discord')
@@ -389,10 +389,10 @@ export function Header() {
                 {!logoError ? (
                   <Image
                     src={logoSrc}
-                    alt="SolForge Fusion"
-                    width={194}
-                    height={63}
-                    className="h-16 w-auto"
+                    alt="Too Many Decks"
+                    width={256}
+                    height={130}
+                    className="h-18 w-auto"
                     style={{ objectFit: 'contain' }}
                     onError={() => setLogoError(true)}
                     priority
@@ -406,7 +406,7 @@ export function Header() {
                       textShadow: '0 0 15px rgba(74, 144, 226, 0.4)',
                     }}
                   >
-                    SolForge Fusion
+                    Too Many Decks
                   </Text>
                 )}
               </Link>
