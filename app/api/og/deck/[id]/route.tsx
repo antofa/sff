@@ -1119,16 +1119,11 @@ export async function GET(
 
   const payload = await getOgPayload(deckId, { forceRefresh })
   const cardColumns = payload.cardColumns
-  const forgebornName = payload.forgebornName
-  const forgebornTitleColor = getFactionTextColor(payload.forgebornFaction || undefined)
   const forgebornAbilities = payload.forgebornAbilities.map((ability, index) => ({
     ...ability,
     level: ability.level ?? (index < 3 ? index + 2 : null),
   }))
   const secondaryForgebornName = payload.secondaryForgebornName
-  const secondaryForgebornTitleColor = getFactionTextColor(
-    payload.secondaryForgebornFaction || payload.forgebornFaction || undefined
-  )
   const secondaryForgebornAbilities = payload.secondaryForgebornAbilities.map((ability, index) => ({
     ...ability,
     level: ability.level ?? (index < 3 ? index + 2 : null),
@@ -1297,10 +1292,8 @@ export async function GET(
   const baseLabelFontSize = scaleFont(12)
   const baseNoCardsFontSize = scaleFont(18)
   const baseCardFontSize = scaleFont(20 * cardListFontScale)
-  const baseForgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
   const baseForgebornAbilityFont = baseCardFontSize
   const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
-  const primaryTitleScale = hasSecondaryForgeborn ? 0.9 : 1
   const primaryAbilityScale = 1
   const forgebornAbilityLineHeight = hasSecondaryForgeborn
     ? Math.max(1.08, baseForgebornAbilityLineHeight - 0.05)
@@ -1415,11 +1408,8 @@ export async function GET(
       40,
       (showFusedColumns ? fusedForgebornColumnWidth : innerWidth) - (showFusedColumns ? 18 : 12)
     )
-    const titleFontSize = baseForgebornTitleFont * primaryTitleScale * scale
     const abilityFontSize = baseForgebornAbilityFont * primaryAbilityScale * scale
     const levelIconSize = Math.round(baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * scale)
-    const titleLines = Math.max(1, estimateLinesForText(forgebornName || 'Forgeborn', titleFontSize, columnWidth))
-    const titleHeight = titleLines * titleFontSize * 1.1
     const primaryAbilityGap = hasSecondaryForgeborn ? 6 : 8
     const primaryAbilityHeight = estimateAbilityListHeight(
       forgebornAbilities,
@@ -1429,17 +1419,11 @@ export async function GET(
       columnWidth,
       primaryAbilityGap
     )
-    let totalHeight = titleHeight + 6 + primaryAbilityHeight
+    let totalHeight = primaryAbilityHeight
 
     if (hasSecondaryForgeborn) {
-      const secondaryTitleFontSize = titleFontSize * 0.7
       const secondaryAbilityFontSize = abilityFontSize * 0.85
       const secondaryLevelIconSize = Math.round(baseForgebornLevelIconSize * 0.8 * scale)
-      const secondaryTitleLines = Math.max(
-        1,
-        estimateLinesForText(secondaryForgebornName || 'Alternate Forgeborn', secondaryTitleFontSize, columnWidth)
-      )
-      const secondaryTitleHeight = secondaryTitleLines * secondaryTitleFontSize * 1.15
       const secondaryAbilityHeight = estimateAbilityListHeight(
         secondaryForgebornAbilities,
         secondaryAbilityFontSize,
@@ -1448,7 +1432,7 @@ export async function GET(
         columnWidth,
         6
       )
-      totalHeight += 4 + 1 + 6 + secondaryTitleHeight + 6 + secondaryAbilityHeight
+      totalHeight += 6 + 4 + 1 + 6 + secondaryAbilityHeight
     }
 
     return totalHeight
@@ -1473,12 +1457,10 @@ export async function GET(
     ? fitScale(fitMinScale, fitMaxScale, (scale) => estimateForgebornHeight(scale) <= heightBudget)
     : 1
 
-  const forgebornTitleFont = Math.round(baseForgebornTitleFont * primaryTitleScale * forgebornColumnScale * 10) / 10
   const forgebornAbilityFont = Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * 10) / 10
   const forgebornLevelIconSize = `${Math.round(
     baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * forgebornColumnScale
   )}px`
-  const secondaryForgebornTitleFont = Math.round(forgebornTitleFont * 0.7 * 10) / 10
   const secondaryForgebornAbilityFont = Math.round(forgebornAbilityFont * 0.85 * 10) / 10
   const secondaryForgebornLevelIconSize = `${Math.round(baseForgebornLevelIconSize * 0.8 * forgebornColumnScale)}px`
 
@@ -1552,9 +1534,6 @@ export async function GET(
         paddingRight: showFusedColumns ? '6px' : '0',
       }}
     >
-      <div style={{ fontSize: forgebornTitleFont, fontWeight: 700, lineHeight: 1.1, color: forgebornTitleColor }}>
-        {forgebornName || 'Forgeborn'}
-      </div>
       {renderAbilityList(forgebornAbilities, {
         fontSize: forgebornAbilityFont,
         lineHeight: forgebornAbilityLineHeight,
@@ -1564,16 +1543,6 @@ export async function GET(
       {hasSecondaryForgeborn ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
           <div style={{ height: '1px', backgroundColor: '#1f2937', opacity: 0.85 }} />
-          <div
-            style={{
-              fontSize: secondaryForgebornTitleFont,
-              fontWeight: 700,
-              lineHeight: 1.15,
-              color: secondaryForgebornTitleColor,
-            }}
-          >
-            {secondaryForgebornName || 'Alternate Forgeborn'}
-          </div>
           {renderAbilityList(secondaryForgebornAbilities, {
             fontSize: secondaryForgebornAbilityFont,
             lineHeight: secondaryForgebornAbilityLineHeight,

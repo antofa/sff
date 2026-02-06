@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Remove forgeborn names from the fused OG third column.
 - Make the fused OG auto-fit typography more conservative to prevent overflow.
 - Auto-fit OG fused column typography to maximize space without overflow.
 - Match OG forgeborn ability font size to the card list.
