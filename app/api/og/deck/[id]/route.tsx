@@ -1276,28 +1276,200 @@ export async function GET(
   }
   const hasCardSections = cardColumns.some((column) => column.sections.length > 0)
   const showFusedColumns = cardColumns.length > 1
+  const imageWidth = 1200
+  const imageHeight = 630
+  const containerPaddingX = 24
+  const containerPaddingY = 20
+  const innerWidth = imageWidth - containerPaddingX * 2
+  const innerHeight = imageHeight - containerPaddingY * 2
+  const fusedColumnGap = 18
+  const fusedCardColumnFlex = 1.1
+  const fusedForgebornColumnFlex = 1.0
+  const fusedColumnTotalFlex = fusedCardColumnFlex * 2 + fusedForgebornColumnFlex
+  const fusedAvailableWidth = innerWidth - fusedColumnGap * 2
+  const fusedCardColumnWidth = (fusedAvailableWidth * fusedCardColumnFlex) / fusedColumnTotalFlex
+  const fusedForgebornColumnWidth = (fusedAvailableWidth * fusedForgebornColumnFlex) / fusedColumnTotalFlex
   const globalFontScale = 1.155
   const fusedFontScale = showFusedColumns ? 1.44 : 1
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * globalFontScale * 10) / 10
-  const baseForgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
   const cardListFontScale = 1.1025
   const rarityIconScale = 1.3
-  const cardListFontSize = scaleFont(20 * cardListFontScale)
-  const baseForgebornAbilityFont = cardListFontSize
+  const baseLabelFontSize = scaleFont(12)
+  const baseNoCardsFontSize = scaleFont(18)
+  const baseCardFontSize = scaleFont(20 * cardListFontScale)
+  const baseForgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
+  const baseForgebornAbilityFont = baseCardFontSize
   const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
   const primaryTitleScale = hasSecondaryForgeborn ? 0.9 : 1
   const primaryAbilityScale = 1
-  const forgebornTitleFont = Math.round(baseForgebornTitleFont * primaryTitleScale * 10) / 10
-  const forgebornAbilityFont = Math.round(baseForgebornAbilityFont * primaryAbilityScale * 10) / 10
   const forgebornAbilityLineHeight = hasSecondaryForgeborn
     ? Math.max(1.08, baseForgebornAbilityLineHeight - 0.05)
     : baseForgebornAbilityLineHeight
-  const baseForgebornLevelIconSize = showFusedColumns ? 18 : 20
-  const forgebornLevelIconSize = `${Math.round(baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1))}px`
-  const secondaryForgebornTitleFont = Math.max(12, Math.round(forgebornTitleFont * 0.7))
-  const secondaryForgebornAbilityFont = Math.max(10, Math.round(forgebornAbilityFont * 0.85))
   const secondaryForgebornAbilityLineHeight = Math.max(1.05, forgebornAbilityLineHeight - 0.05)
-  const secondaryForgebornLevelIconSize = `${Math.max(14, Math.round(baseForgebornLevelIconSize * 0.8))}px`
+  const baseForgebornLevelIconSize = showFusedColumns ? 18 : 20
+
+  const estimateLinesForText = (text: string, fontSize: number, maxWidth: number) => {
+    const normalized = String(text || '').trim()
+    if (!normalized) return 0
+    const avgCharWidth = fontSize * 0.54
+    const capacity = Math.max(1, Math.floor(maxWidth / avgCharWidth))
+    const words = normalized.split(/\s+/)
+    let lines = 1
+    let lineLength = 0
+    for (const word of words) {
+      const wordLength = word.length
+      if (lineLength === 0) {
+        lineLength = wordLength
+        continue
+      }
+      if (lineLength + 1 + wordLength <= capacity) {
+        lineLength += 1 + wordLength
+      } else {
+        lines += 1
+        lineLength = wordLength
+      }
+    }
+    return lines
+  }
+
+  const fitScale = (minScale: number, maxScale: number, fits: (scale: number) => boolean) => {
+    let low = minScale
+    let high = maxScale
+    for (let i = 0; i < 12; i += 1) {
+      const mid = (low + high) / 2
+      if (fits(mid)) {
+        low = mid
+      } else {
+        high = mid
+      }
+    }
+    return Math.max(minScale, Math.min(maxScale, low))
+  }
+
+  const shouldShowSectionLabel = (label: string) =>
+    !(showFusedColumns && /^(creatures|spells)\b/i.test(label))
+
+  const estimateCardColumnHeight = (
+    column: CardColumn | undefined,
+    scale: number,
+    columnWidth: number
+  ) => {
+    if (!column || column.sections.length === 0) {
+      return baseNoCardsFontSize * scale * 1.2
+    }
+    const labelFontSize = baseLabelFontSize * scale
+    const cardFontSize = baseCardFontSize * scale
+    const iconSize = Math.round(18 * rarityIconScale * scale)
+    const textWidth = Math.max(40, columnWidth - iconSize - 6)
+    const sectionGap = 8
+    const labelGap = 4
+    const listGap = 4
+    const lineHeight = 1.15
+    const labelLineHeight = 1.1
+
+    let totalHeight = 0
+    column.sections.forEach((section, index) => {
+      const showLabel = shouldShowSectionLabel(section.label)
+      const labelHeight = showLabel ? labelFontSize * labelLineHeight + labelGap : 0
+      const items = section.items || []
+      const listHeight =
+        items.length > 0
+          ? items.reduce((sum, item) => {
+              const lines = Math.max(1, estimateLinesForText(item.name, cardFontSize, textWidth))
+              return sum + lines * cardFontSize * lineHeight
+            }, 0) +
+            (items.length - 1) * listGap
+          : cardFontSize * lineHeight
+      const sectionHeight = labelHeight + listHeight
+      totalHeight += sectionHeight
+      if (index < column.sections.length - 1) {
+        totalHeight += sectionGap
+      }
+    })
+    return totalHeight
+  }
+
+  const estimateAbilityListHeight = (
+    abilities: AbilityEntry[],
+    fontSize: number,
+    lineHeight: number,
+    levelIconSize: number,
+    maxWidth: number,
+    gap: number
+  ) => {
+    const visible = abilities.filter((ability) => !!ability?.text?.trim())
+    if (visible.length === 0) {
+      return fontSize * lineHeight
+    }
+    const textWidth = Math.max(40, maxWidth - levelIconSize - 8)
+    const total = visible.reduce((sum, ability) => {
+      const lines = Math.max(1, estimateLinesForText(ability.text || '', fontSize, textWidth))
+      const rowHeight = Math.max(levelIconSize, lines * fontSize * lineHeight)
+      return sum + rowHeight
+    }, 0)
+    return total + (visible.length - 1) * gap
+  }
+
+  const estimateForgebornHeight = (scale: number) => {
+    const columnWidth = Math.max(40, (showFusedColumns ? fusedForgebornColumnWidth : innerWidth) - (showFusedColumns ? 6 : 0))
+    const titleFontSize = baseForgebornTitleFont * primaryTitleScale * scale
+    const abilityFontSize = baseForgebornAbilityFont * primaryAbilityScale * scale
+    const levelIconSize = Math.round(baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * scale)
+    const titleLines = Math.max(1, estimateLinesForText(forgebornName || 'Forgeborn', titleFontSize, columnWidth))
+    const titleHeight = titleLines * titleFontSize * 1.1
+    const primaryAbilityGap = hasSecondaryForgeborn ? 6 : 8
+    const primaryAbilityHeight = estimateAbilityListHeight(
+      forgebornAbilities,
+      abilityFontSize,
+      forgebornAbilityLineHeight,
+      levelIconSize,
+      columnWidth,
+      primaryAbilityGap
+    )
+    let totalHeight = titleHeight + 6 + primaryAbilityHeight
+
+    if (hasSecondaryForgeborn) {
+      const secondaryTitleFontSize = titleFontSize * 0.7
+      const secondaryAbilityFontSize = abilityFontSize * 0.85
+      const secondaryLevelIconSize = Math.round(baseForgebornLevelIconSize * 0.8 * scale)
+      const secondaryTitleLines = Math.max(
+        1,
+        estimateLinesForText(secondaryForgebornName || 'Alternate Forgeborn', secondaryTitleFontSize, columnWidth)
+      )
+      const secondaryTitleHeight = secondaryTitleLines * secondaryTitleFontSize * 1.15
+      const secondaryAbilityHeight = estimateAbilityListHeight(
+        secondaryForgebornAbilities,
+        secondaryAbilityFontSize,
+        secondaryForgebornAbilityLineHeight,
+        secondaryLevelIconSize,
+        columnWidth,
+        6
+      )
+      totalHeight += 4 + 1 + 6 + secondaryTitleHeight + 6 + secondaryAbilityHeight
+    }
+
+    return totalHeight
+  }
+
+  const cardColumnScales = showFusedColumns
+    ? [
+        fitScale(0.85, 1.25, (scale) => estimateCardColumnHeight(cardColumns[0], scale, fusedCardColumnWidth) <= innerHeight),
+        fitScale(0.85, 1.25, (scale) => estimateCardColumnHeight(cardColumns[1], scale, fusedCardColumnWidth) <= innerHeight),
+      ]
+    : [1]
+
+  const forgebornColumnScale = showFusedColumns
+    ? fitScale(0.85, 1.25, (scale) => estimateForgebornHeight(scale) <= innerHeight)
+    : 1
+
+  const forgebornTitleFont = Math.round(baseForgebornTitleFont * primaryTitleScale * forgebornColumnScale * 10) / 10
+  const forgebornAbilityFont = Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * 10) / 10
+  const forgebornLevelIconSize = `${Math.round(
+    baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * forgebornColumnScale
+  )}px`
+  const secondaryForgebornTitleFont = Math.round(forgebornTitleFont * 0.7 * 10) / 10
+  const secondaryForgebornAbilityFont = Math.round(forgebornAbilityFont * 0.85 * 10) / 10
+  const secondaryForgebornLevelIconSize = `${Math.round(baseForgebornLevelIconSize * 0.8 * forgebornColumnScale)}px`
 
   const renderAbilityList = (
     abilities: AbilityEntry[],
@@ -1402,7 +1574,11 @@ export async function GET(
     </div>
   )
 
-  const renderCardColumn = (column: (typeof cardColumns)[number] | undefined, columnIndex: number) => (
+  const renderCardColumn = (
+    column: (typeof cardColumns)[number] | undefined,
+    columnIndex: number,
+    columnScale = 1
+  ) => (
     <div
       key={`column-${columnIndex}`}
       style={{
@@ -1422,7 +1598,7 @@ export async function GET(
               <span
                 style={{
                   color: '#94a3b8',
-                  fontSize: scaleFont(12),
+                  fontSize: Math.round(baseLabelFontSize * columnScale * 10) / 10,
                   fontWeight: 700,
                   letterSpacing: '0.04em',
                   textTransform: 'uppercase',
@@ -1437,7 +1613,7 @@ export async function GET(
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '4px',
-                fontSize: cardListFontSize,
+                fontSize: Math.round(baseCardFontSize * columnScale * 10) / 10,
                 lineHeight: 1.15,
               }}
             >
@@ -1445,7 +1621,7 @@ export async function GET(
                 const rarityIconSrc = item.rarityIconPath
                   ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
                   : null
-                const rarityIconSize = `${Math.round(18 * rarityIconScale)}px`
+                const rarityIconSize = `${Math.round(18 * rarityIconScale * columnScale)}px`
                 return (
                   <div
                     key={`${columnIndex}-${section.label}-${idx}`}
@@ -1488,7 +1664,9 @@ export async function GET(
           </div>
         ))
       ) : (
-        <div style={{ color: '#94a3b8', fontSize: scaleFont(18) }}>No cards available</div>
+        <div style={{ color: '#94a3b8', fontSize: Math.round(baseNoCardsFontSize * columnScale * 10) / 10 }}>
+          No cards available
+        </div>
       )}
     </div>
   )
@@ -1497,13 +1675,13 @@ export async function GET(
     (
       <div
         style={{
-          width: '1200px',
-          height: '630px',
+          width: `${imageWidth}px`,
+          height: `${imageHeight}px`,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'stretch',
           gap: '8px',
-          padding: '20px 24px',
+          padding: `${containerPaddingY}px ${containerPaddingX}px`,
           backgroundColor: '#0f172a',
         }}
       >
@@ -1513,17 +1691,17 @@ export async function GET(
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'stretch',
-              gap: '18px',
+              gap: `${fusedColumnGap}px`,
               width: '100%',
               height: '100%',
               minHeight: 0,
             }}
           >
             <div style={{ display: 'flex', flex: 1.1, minWidth: 0 }}>
-              {renderCardColumn(cardColumns[0], 0)}
+              {renderCardColumn(cardColumns[0], 0, cardColumnScales[0])}
             </div>
             <div style={{ display: 'flex', flex: 1.1, minWidth: 0 }}>
-              {renderCardColumn(cardColumns[1], 1)}
+              {renderCardColumn(cardColumns[1], 1, cardColumnScales[1])}
             </div>
             <div
               style={{
@@ -1545,20 +1723,24 @@ export async function GET(
               style={{
                 display: 'flex',
                 alignItems: 'stretch',
-                gap: '18px',
+                gap: `${fusedColumnGap}px`,
                 flex: 1,
                 minHeight: 0,
               }}
             >
-              {hasCardSections ? renderCardColumn(cardColumns[0], 0) : <div style={{ color: '#94a3b8', fontSize: scaleFont(18) }}>No cards available</div>}
+              {hasCardSections ? (
+                renderCardColumn(cardColumns[0], 0)
+              ) : (
+                <div style={{ color: '#94a3b8', fontSize: baseNoCardsFontSize }}>No cards available</div>
+              )}
             </div>
           </>
         )}
       </div>
     ),
     {
-      width: 1200,
-      height: 630,
+      width: imageWidth,
+      height: imageHeight,
       headers: {
         'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
       },
