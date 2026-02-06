@@ -581,3 +581,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 07e6005
   Request: увеличить размер шрифта списка карт ещё на 5%
   Date: 2026-02-06
+- Commit: 802a17d
+  Request: также увеличь иконки редкости на 30%
+  Date: 2026-02-06
