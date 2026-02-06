@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 4b20faf
+  Request: Fix fused OG auto-fit for multiple specific deck URLs, maximizing column fill across full height (or at least one column) without artifacts, and allow bounded automatic column-width adjustments if needed.
+  Date: 2026-02-06
 - Commit: 528db89
   Request: Review the whole fused OG image for anomalies, not just bottom spacing; detect and fix any strange layout artifacts.
   Date: 2026-02-06
