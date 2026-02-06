@@ -6,6 +6,8 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Use normal whitespace collapse for OG ability text segments to avoid exaggerated wraps.
+- Tighten OG ability punctuation normalization around commas/quotes.
 - Remove unsupported `inline-block` display styles from OG ability rendering.
 - Render OG ability text in an inline flow to improve natural line wrapping.
 - Stop splitting OG ability text into per-word nowrap spans to prevent punctuation-led wrapped lines.

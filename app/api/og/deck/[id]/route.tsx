@@ -628,7 +628,8 @@ const normalizeForgebornAbilityText = (value: string) =>
   value
     .replace(/([^\s])([+-])(?=\d)/g, '$1 $2')
     .replace(/([.!?])([A-Za-z])/g, '$1 $2')
-    .replace(/\s+\./g, '.')
+    .replace(/\s+([.,!?;:])/g, '$1')
+    .replace(/([.!?])\s+(["'])/g, '$1$2')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -838,7 +839,7 @@ const renderAbilityText = (
             <span
               key={`text-${idx}`}
               style={{
-                whiteSpace: 'pre-wrap',
+                whiteSpace: 'normal',
               }}
             >
               {part.value}
@@ -855,14 +856,14 @@ const renderAbilityText = (
                 width: `${levelIconSize}px`,
                 height: `${levelIconSize}px`,
                 objectFit: 'contain',
-                margin: '0',
+                margin: '0 1px',
                 transform: 'translateY(2px)',
               }}
             />
           )
         }
         return (
-          <span key={`stat-${idx}`} style={{ verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+          <span key={`stat-${idx}`} style={{ verticalAlign: 'middle', whiteSpace: 'nowrap', marginRight: '2px' }}>
             <span>{part.number}</span>
             <img
               src={part.src}
