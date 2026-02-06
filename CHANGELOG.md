@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-06 UTC) Removed a fused OG layout artifact that could create an unnatural large gap inside a card column, and switched back to natural section flow while raising fused auto-fit scale limits.
 - (2026-02-06 UTC) Improved sparse fused OG card layouts by anchoring the last section to the bottom in one card column, reducing visible empty space at the bottom edge.
 - (2026-02-06 UTC) Updated fused deck OG descriptions to omit the `Solbind` count from the card-type summary when the value is zero.
 - (2026-02-06 UTC) Tuned fused OG fill balancing to use a tighter estimate allowance so card and ability text scale up more aggressively while still staying inside image bounds.

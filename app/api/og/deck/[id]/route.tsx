@@ -1556,8 +1556,8 @@ export async function GET(
   }
 
   const fitMinScale = 0.75
-  const fitMaxScale = showFusedColumns ? 2.6 : 1.45
-  const maxVisualScale = showFusedColumns ? 3.2 : 2.4
+  const fitMaxScale = showFusedColumns ? 3.6 : 1.45
+  const maxVisualScale = showFusedColumns ? 4.2 : 2.4
   const heightBudget = innerHeight
   const safeHeightBudget = heightBudget
   const fusedEstimateAllowance = showFusedColumns ? 0.95 : 1
@@ -1595,26 +1595,6 @@ export async function GET(
   const forgebornColumnScale = showFusedColumns
     ? Math.min(maxVisualScale, baseForgebornColumnScale * fillBoost)
     : baseForgebornColumnScale
-  const estimatedColumnHeights = showFusedColumns
-    ? [
-        estimateCardColumnHeight(cardColumns[0], cardColumnScales[0], fusedCardColumnWidth),
-        estimateCardColumnHeight(cardColumns[1], cardColumnScales[1], fusedCardColumnWidth),
-        estimateForgebornHeight(forgebornColumnScale),
-      ]
-    : [estimateForgebornHeight(forgebornColumnScale)]
-  const stretchCardColumnIndex = showFusedColumns
-    ? (() => {
-        const leftSections = cardColumns[0]?.sections?.length || 0
-        const rightSections = cardColumns[1]?.sections?.length || 0
-        const leftCanStretch = leftSections > 1
-        const rightCanStretch = rightSections > 1
-        if (!leftCanStretch && !rightCanStretch) return null
-        if (leftCanStretch && !rightCanStretch) return 0
-        if (!leftCanStretch && rightCanStretch) return 1
-        return estimatedColumnHeights[0] >= estimatedColumnHeights[1] ? 0 : 1
-      })()
-    : null
-
   const forgebornAbilityFont = Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * 10) / 10
   const forgebornLevelIconSize = `${Math.round(
     baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * forgebornColumnScale
@@ -1713,32 +1693,28 @@ export async function GET(
   const renderCardColumn = (
     column: (typeof cardColumns)[number] | undefined,
     columnIndex: number,
-    columnScale = 1,
-    stretchVertically = false
+    columnScale = 1
   ) => (
     <div
       key={`column-${columnIndex}`}
       style={{
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: stretchVertically ? 'space-between' : 'flex-start',
-        gap: stretchVertically ? '0px' : '8px',
+        gap: '8px',
         flex: 1,
-        height: stretchVertically ? '100%' : 'auto',
         minWidth: 0,
         color: '#e2e8f0',
         fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
       }}
     >
       {column && column.sections.length > 0 ? (
-        column.sections.map((section, sectionIdx) => (
+        column.sections.map((section) => (
           <div
             key={`${columnIndex}-${section.label}`}
             style={{
               display: 'flex',
               flexDirection: 'column',
               gap: '4px',
-              marginTop: stretchVertically && sectionIdx === column.sections.length - 1 && sectionIdx > 0 ? 'auto' : '0',
             }}
           >
             {!(showFusedColumns && /^(creatures|spells)\b/i.test(section.label)) ? (
@@ -1847,10 +1823,10 @@ export async function GET(
             }}
           >
             <div style={{ display: 'flex', flex: 1.1, minWidth: 0 }}>
-              {renderCardColumn(cardColumns[0], 0, cardColumnScales[0], stretchCardColumnIndex === 0)}
+              {renderCardColumn(cardColumns[0], 0, cardColumnScales[0])}
             </div>
             <div style={{ display: 'flex', flex: 1.1, minWidth: 0 }}>
-              {renderCardColumn(cardColumns[1], 1, cardColumnScales[1], stretchCardColumnIndex === 1)}
+              {renderCardColumn(cardColumns[1], 1, cardColumnScales[1])}
             </div>
             <div
               style={{
