@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 0df8fff
+  Request: In fused OG descriptions, do not show the `Solbind` card-type count when it is 0.
+  Date: 2026-02-06
 - Commit: e15b918
   Request: Increase fused OG vertical fill because previous change still looked unchanged; keep text inside image bounds.
   Date: 2026-02-06
