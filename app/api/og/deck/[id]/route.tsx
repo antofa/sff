@@ -1280,12 +1280,13 @@ export async function GET(
   const fusedFontScale = showFusedColumns ? 1.44 : 1
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * globalFontScale * 10) / 10
   const baseForgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
-  const baseForgebornAbilityFont = showFusedColumns ? scaleFont(14) : scaleFont(20)
-  const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
   const cardListFontScale = 1.1025
   const rarityIconScale = 1.3
+  const cardListFontSize = scaleFont(20 * cardListFontScale)
+  const baseForgebornAbilityFont = cardListFontSize
+  const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
   const primaryTitleScale = hasSecondaryForgeborn ? 0.9 : 1
-  const primaryAbilityScale = hasSecondaryForgeborn ? 0.88 : 1
+  const primaryAbilityScale = 1
   const forgebornTitleFont = Math.round(baseForgebornTitleFont * primaryTitleScale * 10) / 10
   const forgebornAbilityFont = Math.round(baseForgebornAbilityFont * primaryAbilityScale * 10) / 10
   const forgebornAbilityLineHeight = hasSecondaryForgeborn
@@ -1436,7 +1437,7 @@ export async function GET(
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '4px',
-                fontSize: scaleFont(20 * cardListFontScale),
+                fontSize: cardListFontSize,
                 lineHeight: 1.15,
               }}
             >

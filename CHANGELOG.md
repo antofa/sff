@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Match OG forgeborn ability font size to the card list.
 - Increase OG rarity icons by 30% in the card list.
 - Increase OG card list font size by another 5%.
 - Remove fused half faction/set/score/ELO metadata and hide creatures/spells headers in OG images.
