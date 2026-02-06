@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 5703412
+  Request: Make the homepage OG image use the same logo size as in the header.
+  Date: 2026-02-06
 - Commit: 7832761
   Request: Add a dedicated `180x180` apple-touch-icon and use square favicon assets for the site.
   Date: 2026-02-06
