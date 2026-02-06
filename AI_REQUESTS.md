@@ -683,3 +683,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 7185ec3
   Request: Revert the latest OG icon-size tweak and find/fix why descenders like "g" are slightly clipped in the fused OG third column.
   Date: 2026-02-06
+- Commit: 6608b07
+  Request: The card modals show a window scrollbar even when it is not needed (example: http://hadoop21.click:3000/deck/Fused_u9912mkvb9mqm).
+  Date: 2026-02-06
