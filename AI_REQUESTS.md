@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: affc143
+  Request: Fix fused OG auto-fit inconsistency where `Fused_28e2ml15qmam` looked correct but `Fused_u9912mkvb9mqm` still left bottom empty space.
+  Date: 2026-02-06
 - Commit: 0df8fff
   Request: In fused OG descriptions, do not show the `Solbind` card-type count when it is 0.
   Date: 2026-02-06
