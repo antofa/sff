@@ -647,3 +647,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ccf87ee
   Request: Continue fixing fused OG third-column layout and verify rendered output until stable.
   Date: 2026-02-06
+- Commit: d7e72af
+  Request: Continue iterating and visually verifying the fused OG third column until wrapping and punctuation look correct.
+  Date: 2026-02-06
