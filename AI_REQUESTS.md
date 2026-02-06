@@ -686,3 +686,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 6608b07
   Request: The card modals show a window scrollbar even when it is not needed (example: http://hadoop21.click:3000/deck/Fused_u9912mkvb9mqm).
   Date: 2026-02-06
+- Commit: 23a6b14
+  Request: For fused decks, show the earliest expiry date from the two halves at the top if available (example: http://hadoop21.click:3000/deck/Fused_93hi52mfig65sm).
+  Date: 2026-02-06
