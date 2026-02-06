@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Add generated square site icons (`32x32`, `192x192`) and a dedicated `180x180` apple-touch icon from the three-card logo mark.
 - Add a site favicon based on the three-card logo mark and wire it through root metadata icons.
 - Keep homepage OG/Twitter preview image pinned to the smaller header logo variant instead of the full-size logo asset.
 - Update homepage OG metadata title to `Too Many Decks` and use the site logo as the Open Graph/Twitter preview image.

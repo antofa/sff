@@ -12,16 +12,21 @@ import './globals.css'
 installConsoleTimestamp()
 
 const headerLogoImage = '/images/logo/too-many-decks-logo.png'
-const faviconImage = '/images/logo/too-many-decks-favicon.png'
+const favicon32Image = '/favicon-32x32.png'
+const favicon192Image = '/favicon-192x192.png'
+const appleTouchIconImage = '/apple-touch-icon.png'
 
 export const metadata: Metadata = {
   metadataBase: new URL('http://hadoop21.click:3000'),
   title: 'Too Many Decks',
   description: 'SolForge Fusion Player Deck Viewer',
   icons: {
-    icon: faviconImage,
-    shortcut: faviconImage,
-    apple: faviconImage,
+    icon: [
+      { url: favicon32Image, sizes: '32x32', type: 'image/png' },
+      { url: favicon192Image, sizes: '192x192', type: 'image/png' },
+    ],
+    shortcut: favicon32Image,
+    apple: [{ url: appleTouchIconImage, sizes: '180x180', type: 'image/png' }],
   },
   openGraph: {
     title: 'Too Many Decks',
