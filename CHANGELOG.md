@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Reduce fused OG third-column forgeborn level-icon size by 5% (stat icons unchanged).
 - Improve OG text clarity in Discord previews by replacing blur-based text shadow with crisp edge shadowing and a heavier body font weight.
 - Add an in-memory cache with in-flight deduplication for deck page Open Graph/Twitter metadata (title/description/alt), separate from OG image caching.
 - Improve OG image text legibility under social preview compression by slightly increasing body text weight and adding a subtle text shadow for card and ability text.
