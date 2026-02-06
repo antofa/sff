@@ -95,6 +95,33 @@ export type Database = {
         }
         Relationships: []
       }
+      player_fused_decks: {
+        Row: {
+          deck_name: string
+          fused_deck_id: string
+          owner_name: string
+          source_deck_1_id: string
+          source_deck_2_id: string
+          synced_at: string
+        }
+        Insert: {
+          deck_name: string
+          fused_deck_id: string
+          owner_name: string
+          source_deck_1_id: string
+          source_deck_2_id: string
+          synced_at?: string
+        }
+        Update: {
+          deck_name?: string
+          fused_deck_id?: string
+          owner_name?: string
+          source_deck_1_id?: string
+          source_deck_2_id?: string
+          synced_at?: string
+        }
+        Relationships: []
+      }
       player_profiles: {
         Row: {
           user_id: number
@@ -130,7 +157,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      upsert_player_fused_deck: {
+        Args: {
+          p_fused_deck_id: string
+          p_deck_name: string
+          p_owner_name: string
+          p_source_deck_1_id: string
+          p_source_deck_2_id: string
+        }
+        Returns: Database['public']['Tables']['player_fused_decks']['Row']
+      }
     }
     Enums: {
       [_ in never]: never
@@ -145,6 +181,9 @@ export type Database = {
 export type PlayerDeckRow = Database['public']['Tables']['player_decks']['Row']
 export type PlayerDeckInsert = Database['public']['Tables']['player_decks']['Insert']
 export type PlayerDeckUpdate = Database['public']['Tables']['player_decks']['Update']
+export type PlayerFusedDeckRow = Database['public']['Tables']['player_fused_decks']['Row']
+export type PlayerFusedDeckInsert = Database['public']['Tables']['player_fused_decks']['Insert']
+export type PlayerFusedDeckUpdate = Database['public']['Tables']['player_fused_decks']['Update']
 export type PlayerProfileRow = Database['public']['Tables']['player_profiles']['Row']
 export type PlayerProfileInsert = Database['public']['Tables']['player_profiles']['Insert']
 export type PlayerProfileUpdate = Database['public']['Tables']['player_profiles']['Update']
