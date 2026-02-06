@@ -551,3 +551,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 24b1de5
   Request: Add Min/Max fields to multi-select filters so they require at least N of the selected values (default any-match).
   Date: 2026-02-06
+- Commit: da75b41
+  Request: Add clear buttons for Min/Max inputs and make filter scrollbars three times wider.
+  Date: 2026-02-06
