@@ -710,3 +710,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: fa7bc89
   Request: Change the half-deck metadata label from `Expires` to `Expire date`.
   Date: 2026-02-06
+- Commit: 8bac17c
+  Request: Improve fused OG auto-fit fill for underfilled columns and render attack/health/armor icons for standalone uppercase A/H/D tokens inside ability text.
+  Date: 2026-02-06
