@@ -668,3 +668,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: a4874f3
   Request: In fused preview descriptions, move `Rarities` and `Creature Types` to new lines.
   Date: 2026-02-06
+- Commit: 66304b8
+  Request: Improve OG image text sharpness/readability in social previews.
+  Date: 2026-02-06
