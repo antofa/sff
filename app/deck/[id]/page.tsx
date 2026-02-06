@@ -322,7 +322,7 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
   const countsPart = `Creatures: ${creatures}, Spells: ${spells}, Solbind: ${solbind}`
   const rarityPart = `Rarities: ${formatCounts(rarityCounts, 'none')}`
   const creatureTypesPart = `Creature Types: ${formatCounts(creatureTypeCounts, 'none')}`
-  return `${countsPart} | ${rarityPart} | ${creatureTypesPart}`
+  return `${countsPart}\n${rarityPart}\n${creatureTypesPart}`
 }
 
 const buildHalfSummary = (halfDeck: any): string | null => {
