@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- For fused deck link previews, set metadata title to `Deck Name (Forgeborn, Owner)` and description to half-deck summaries only (with newline separation when supported).
 - Prepend fused half-deck metadata (name, faction, set, score, ELO) to deck page Open Graph and Twitter descriptions.
 - Increase fused OG third-column ability icon sizes (level and stat icons) by 1.5x.
 - Preserve punctuation/quote attachment across OG ability text, level icons, and stat icons during wrapping.

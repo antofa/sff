@@ -127,6 +127,39 @@ const getHalfDeckName = (deckLike: any): string | null => {
   return name || null
 }
 
+const getDeckOwnerName = (deckLike: any): string | null => {
+  const direct =
+    deckLike?.username ??
+    deckLike?.playerName ??
+    deckLike?.owner ??
+    deckLike?.ownerName ??
+    deckLike?.userName ??
+    deckLike?.createdBy ??
+    deckLike?.pUsername ??
+    null
+  if (hasValue(direct)) return String(direct).trim()
+
+  const nestedUser = deckLike?.user
+  const nestedName =
+    nestedUser?.username ??
+    nestedUser?.playerName ??
+    nestedUser?.owner ??
+    nestedUser?.name ??
+    null
+  if (hasValue(nestedName)) return String(nestedName).trim()
+
+  const firstUser = Array.isArray(deckLike?.users) ? deckLike.users[0] : null
+  const firstUserName =
+    firstUser?.username ??
+    firstUser?.playerName ??
+    firstUser?.owner ??
+    firstUser?.name ??
+    null
+  if (hasValue(firstUserName)) return String(firstUserName).trim()
+
+  return null
+}
+
 const extractFusedHalfCandidates = (deckLike: any): any[] => {
   const candidates: any[] = []
   if (Array.isArray(deckLike?.myDecks)) {
@@ -178,8 +211,9 @@ const hasHalfSummaryData = (deckLike: any) => {
   )
 }
 
-const buildHalfSummary = (halfDeck: any, index: number): string | null => {
+const buildHalfSummary = (halfDeck: any): string | null => {
   const halfName = getHalfDeckName(halfDeck)
+  const halfId = getHalfDeckId(halfDeck)
   const faction = hasValue(halfDeck?.faction) ? String(halfDeck.faction).trim() : null
   const setLabel = getSetLabel(halfDeck)
   const score = getRoundedScore(halfDeck)
@@ -190,16 +224,15 @@ const buildHalfSummary = (halfDeck: any, index: number): string | null => {
   if (score !== null) details.push(`Score: ${score}`)
   if (elo !== null) details.push(`ELO: ${elo}`)
 
-  if (!halfName && details.length === 0) return null
-  const label = halfName || `Deck ${index + 1}`
-  return details.length > 0 ? `Half ${index + 1}: ${label} (${details.join(', ')})` : `Half ${index + 1}: ${label}`
+  const label = halfName || halfId
+  if (!label && details.length === 0) return null
+  if (!label) return details.join(', ')
+  return details.length > 0 ? `${label} (${details.join(', ')})` : label
 }
 
-const buildFusedDescription = async (deckLike: any, baseDescription: string) => {
-  if (!isFusedDeckLike(deckLike)) return baseDescription
-
+const buildFusedDescription = async (deckLike: any) => {
   const halfCandidates = extractFusedHalfCandidates(deckLike)
-  if (halfCandidates.length === 0) return baseDescription
+  if (halfCandidates.length === 0) return 'SolForge Fusion fused deck overview.'
 
   const enrichedHalves = await Promise.all(
     halfCandidates.map(async (halfDeck) => {
@@ -214,11 +247,28 @@ const buildFusedDescription = async (deckLike: any, baseDescription: string) => 
   )
 
   const summaries = enrichedHalves
-    .map((halfDeck, index) => buildHalfSummary(halfDeck, index))
+    .map((halfDeck) => buildHalfSummary(halfDeck))
     .filter((value): value is string => !!value)
 
-  if (summaries.length === 0) return baseDescription
-  return `${summaries.join(' + ')}. Cards: ${baseDescription}`
+  if (summaries.length === 0) return 'SolForge Fusion fused deck overview.'
+  // Newline is intentionally included to encourage two-line previews where supported.
+  return summaries.join('\n')
+}
+
+const buildFusedTitle = (baseTitle: string, forgebornName?: string | null, ownerName?: string | null) => {
+  const parts: string[] = []
+  if (hasValue(forgebornName)) {
+    parts.push(String(forgebornName).trim())
+  }
+  if (hasValue(ownerName)) {
+    const normalizedOwner = String(ownerName).trim()
+    const alreadyIncluded = parts.some((part) => part.toLowerCase() === normalizedOwner.toLowerCase())
+    if (!alreadyIncluded) {
+      parts.push(normalizedOwner)
+    }
+  }
+  if (parts.length === 0) return baseTitle
+  return `${baseTitle} (${parts.join(', ')})`
 }
 
 const listDeckCards = (deck: any) => {
@@ -340,10 +390,13 @@ export async function generateMetadata(
 
     const deck = normalizeDeck(rawDeck)
     const forgebornName = rawDeck?.forgeborn?.name || deck?.forgeborn?.name || deck?.forgebornId
+    const isFusedDeck = isFusedDeckLike(rawDeck) || isFusedDeckLike(deck)
     const cardNames = listDeckCards(deck)
     const baseDescription = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
-    const description = await buildFusedDescription(rawDeck, baseDescription)
-    const title = deck?.name || titleFallback
+    const description = isFusedDeck ? await buildFusedDescription(rawDeck) : baseDescription
+    const baseTitle = deck?.name || titleFallback
+    const ownerName = getDeckOwnerName(rawDeck) || getDeckOwnerName(deck)
+    const title = isFusedDeck ? buildFusedTitle(baseTitle, forgebornName, ownerName) : baseTitle
     const ogImageUrl = baseUrl ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}` : undefined
 
     return {
