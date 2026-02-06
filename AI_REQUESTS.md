@@ -677,3 +677,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ff2bbf6
   Request: Improve OG image text sharpness in compressed Discord previews.
   Date: 2026-02-06
+- Commit: 8b7182e
+  Request: Reduce forgeborn ability level icon size in the OG image third column by 5%.
+  Date: 2026-02-06
