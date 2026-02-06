@@ -1371,8 +1371,10 @@ export async function GET(
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * globalFontScale * 10) / 10
   const cardListFontScale = 1.1025
   const rarityIconScale = 1.3
-  const ogBodyTextWeight = 600
-  const ogBodyTextShadow = '0 0 1px rgba(2, 6, 23, 0.65)'
+  // Discord recompression softens thin glyph edges; use crisp (non-blur) edge shadows.
+  const ogBodyTextWeight = 700
+  const ogBodyTextShadow =
+    '0 1px 0 rgba(2, 6, 23, 0.75), 1px 0 0 rgba(2, 6, 23, 0.55), -1px 0 0 rgba(2, 6, 23, 0.55)'
   const baseLabelFontSize = scaleFont(12)
   const baseNoCardsFontSize = scaleFont(18)
   const baseCardFontSize = scaleFont(20 * cardListFontScale)
