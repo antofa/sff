@@ -786,12 +786,15 @@ const renderAbilityText = (
   text: string,
   statIconMap: Map<string, string | null>,
   levelIconMap: Map<number, string | null>,
-  options?: { inline?: boolean; levelIconSize?: number }
+  options?: { inline?: boolean; levelIconSize?: number; iconScale?: number }
 ) => {
   const normalizedText = normalizeForgebornAbilityText(String(text || ''))
   if (!normalizedText) return null
   const inlineMode = options?.inline === true
   const levelIconSize = options?.levelIconSize && options.levelIconSize > 0 ? options.levelIconSize : 18
+  const iconScale = options?.iconScale && options.iconScale > 0 ? options.iconScale : 1
+  const scaledLevelIconSize = levelIconSize * iconScale
+  const scaledStatIconSize = 20 * iconScale
   const parts: Array<
     | { type: 'text'; value: string }
     | { type: 'stat'; src: string; number: string }
@@ -907,8 +910,8 @@ const renderAbilityText = (
                 src={token.src}
                 style={{
                   verticalAlign: 'middle',
-                  width: `${levelIconSize}px`,
-                  height: `${levelIconSize}px`,
+                  width: `${scaledLevelIconSize}px`,
+                  height: `${scaledLevelIconSize}px`,
                   objectFit: 'contain',
                   margin: '0 2px 0 1px',
                   transform: 'translateY(2px)',
@@ -929,8 +932,8 @@ const renderAbilityText = (
               src={token.src}
               style={{
                 verticalAlign: 'middle',
-                width: '20px',
-                height: '20px',
+                width: `${scaledStatIconSize}px`,
+                height: `${scaledStatIconSize}px`,
                 objectFit: 'contain',
                 marginLeft: '2px',
                 transform: 'translateY(1px)',
@@ -1374,6 +1377,7 @@ export async function GET(
   const baseForgebornAbilityFont = baseCardFontSize
   const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
   const primaryAbilityScale = 1
+  const forgebornAbilityIconScale = 1.5
   const forgebornAbilityLineHeight = hasSecondaryForgeborn
     ? Math.max(1.08, baseForgebornAbilityLineHeight - 0.05)
     : baseForgebornAbilityLineHeight
@@ -1473,10 +1477,11 @@ export async function GET(
     if (visible.length === 0) {
       return fontSize * lineHeight
     }
-    const textWidth = Math.max(40, maxWidth - levelIconSize - 6)
+    const scaledLevelIconSize = levelIconSize * forgebornAbilityIconScale
+    const textWidth = Math.max(40, maxWidth - scaledLevelIconSize - 6)
     const total = visible.reduce((sum, ability) => {
       const lines = Math.max(1, estimateLinesForText(ability.text || '', fontSize, textWidth))
-      const rowHeight = Math.max(levelIconSize, lines * fontSize * lineHeight)
+      const rowHeight = Math.max(scaledLevelIconSize, lines * fontSize * lineHeight)
       return sum + rowHeight
     }, 0)
     return total + (visible.length - 1) * gap
@@ -1582,6 +1587,7 @@ export async function GET(
                 {renderAbilityText(textWithLevel, statIconMap, levelIconMap, {
                   inline: true,
                   levelIconSize: Number.isFinite(parsedLevelIconSize) ? parsedLevelIconSize : 18,
+                  iconScale: forgebornAbilityIconScale,
                 })}
               </div>
             )
