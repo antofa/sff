@@ -692,3 +692,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 5d01410
   Request: Fix fused deck card lists so Solbind cards from both halves appear (example: http://hadoop21.click:3000/deck/Fused_u9912mkvb9mqm).
   Date: 2026-02-06
+- Commit: 77fb157
+  Request: The fused deck modal still hides the second Solbind card; check and fix list scrolling (example: http://hadoop21.click:3000/deck/Fused_u9912mkvb9mqm).
+  Date: 2026-02-06
