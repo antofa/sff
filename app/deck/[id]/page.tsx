@@ -494,7 +494,11 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
       .map(([label, count]) => `${label} ${count}`)
       .join(', ') || fallback
 
-  const countsPart = `Creatures: ${creatures}, Spells: ${spells}, Solbind: ${solbind}`
+  const countParts = [`Creatures: ${creatures}`, `Spells: ${spells}`]
+  if (solbind > 0) {
+    countParts.push(`Solbind: ${solbind}`)
+  }
+  const countsPart = countParts.join(', ')
   const rarityPart = `Rarities: ${formatRarityCounts(rarityCounts, 'none')}`
   const creatureTypesPart = `Creature Types: ${formatCounts(creatureTypeCounts, 'none')}`
   return `${countsPart}\n${rarityPart}\n${creatureTypesPart}`
