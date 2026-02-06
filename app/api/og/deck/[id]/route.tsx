@@ -1277,9 +1277,8 @@ export async function GET(
   const hasCardSections = cardColumns.some((column) => column.sections.length > 0)
   const showFusedColumns = cardColumns.length > 1
   const globalFontScale = 1.155
-  const fusedFontScale = 1.1
-  const scaleFont = (size: number) =>
-    Math.round(size * (showFusedColumns ? fusedFontScale : globalFontScale) * 10) / 10
+  const fusedFontScale = showFusedColumns ? 1.44 : 1
+  const scaleFont = (size: number) => Math.round(size * fusedFontScale * globalFontScale * 10) / 10
   const baseForgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
   const baseForgebornAbilityFont = showFusedColumns ? scaleFont(14) : scaleFont(20)
   const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
