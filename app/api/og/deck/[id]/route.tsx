@@ -1545,15 +1545,12 @@ export async function GET(
     ? fitScale(fitMinScale, fitMaxScale, (scale) => estimateForgebornHeight(scale) <= heightBudget)
     : 1
 
-  const forgebornLevelIconScale = showFusedColumns ? 0.95 : 1
   const forgebornAbilityFont = Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * 10) / 10
   const forgebornLevelIconSize = `${Math.round(
-    baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * forgebornColumnScale * forgebornLevelIconScale
+    baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * forgebornColumnScale
   )}px`
   const secondaryForgebornAbilityFont = Math.round(forgebornAbilityFont * 0.85 * 10) / 10
-  const secondaryForgebornLevelIconSize = `${Math.round(
-    baseForgebornLevelIconSize * 0.8 * forgebornColumnScale * forgebornLevelIconScale
-  )}px`
+  const secondaryForgebornLevelIconSize = `${Math.round(baseForgebornLevelIconSize * 0.8 * forgebornColumnScale)}px`
 
   const renderAbilityList = (
     abilities: AbilityEntry[],
