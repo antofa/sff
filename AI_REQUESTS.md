@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 6308f02
+  Request: Do not touch `player_profiles` for now during deck search synchronization.
+  Date: 2026-02-06
 - Commit: f3c0479
   Request: Make all database tables populate automatically when searching decks by player nickname on the site.
   Date: 2026-02-06
