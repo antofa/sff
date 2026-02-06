@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 424c4de
+  Request: Reduce the `Rarities` block in fused OG descriptions by using short rarity initials (for example, `C 8`, `DL 1`).
+  Date: 2026-02-06
 - Commit: 41a4bd5
   Request: Add proactive handling for Supabase database-full/read-only mode so deck search does not fail when writes are blocked.
   Date: 2026-02-06
