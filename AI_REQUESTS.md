@@ -707,3 +707,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 9121606
   Request: For http://hadoop21.click:3000/deck/Fused_93hi52mfig65sm, include half-deck expiry dates in metadata description when available.
   Date: 2026-02-06
+- Commit: fa7bc89
+  Request: Change the half-deck metadata label from `Expires` to `Expire date`.
+  Date: 2026-02-06
