@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: f3c0479
+  Request: Make all database tables populate automatically when searching decks by player nickname on the site.
+  Date: 2026-02-06
 - Commit: 03d3a79
   Request: Create a separate `cards` table with `card_id` and `card_name`, and link `player_deck_cards` to it by `card_id`.
   Date: 2026-02-06
