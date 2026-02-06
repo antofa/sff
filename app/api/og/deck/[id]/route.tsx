@@ -775,11 +775,12 @@ const renderAbilityText = (
   text: string,
   statIconMap: Map<string, string | null>,
   levelIconMap: Map<number, string | null>,
-  options?: { inline?: boolean }
+  options?: { inline?: boolean; levelIconSize?: number }
 ) => {
   const normalizedText = normalizeForgebornAbilityText(String(text || ''))
   if (!normalizedText) return null
   const inlineMode = options?.inline === true
+  const levelIconSize = options?.levelIconSize && options.levelIconSize > 0 ? options.levelIconSize : 18
   const parts: Array<
     | { type: 'text'; value: string }
     | { type: 'stat'; src: string; number: string }
@@ -849,8 +850,8 @@ const renderAbilityText = (
               key={`level-${idx}`}
               src={part.src}
               style={{
-                width: '18px',
-                height: '18px',
+                width: `${levelIconSize}px`,
+                height: `${levelIconSize}px`,
                 objectFit: 'contain',
                 margin: '0 2px 0 1px',
                 transform: 'translateY(2px)',
@@ -1497,34 +1498,17 @@ export async function GET(
           visibleAbilities.map((ability, idx) => {
             const level =
               ability.level && ability.level >= 1 && ability.level <= 4 ? ability.level : idx < 3 ? idx + 2 : null
-            const levelIconSrc =
-              level !== null ? levelIconMap.get(level) || resolveAssetUrl(`/images/icons/levels/lv${level}-icon.png`) : null
+            const rawText = ability.text || ''
+            const hasLeadingLevelToken = /^\s*\[(?:l)?[1-4]\]/i.test(rawText)
+            const textWithLevel =
+              level !== null && !hasLeadingLevelToken ? `[l${level}] ${rawText}` : rawText
+            const parsedLevelIconSize = Number.parseFloat(options.levelIconSize)
             return (
-              <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    flex: 1,
-                    minWidth: 0,
-                    maxWidth: '100%',
-                    overflow: 'hidden',
-                    alignItems: 'flex-start',
-                  }}
-                >
-                  {levelIconSrc ? (
-                    <img
-                      src={levelIconSrc}
-                      style={{
-                        width: options.levelIconSize,
-                        height: options.levelIconSize,
-                        objectFit: 'contain',
-                        marginRight: '6px',
-                        transform: 'translateY(3px)',
-                      }}
-                    />
-                  ) : null}
-                  {renderAbilityText(ability.text || '', statIconMap, levelIconMap, { inline: true })}
-                </div>
+              <div key={`ability-${idx}`} style={{ width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
+                {renderAbilityText(textWithLevel, statIconMap, levelIconMap, {
+                  inline: true,
+                  levelIconSize: Number.isFinite(parsedLevelIconSize) ? parsedLevelIconSize : 18,
+                })}
               </div>
             )
           })
