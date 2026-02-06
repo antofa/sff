@@ -1395,7 +1395,7 @@ export async function GET(
     if (visible.length === 0) {
       return fontSize * lineHeight
     }
-    const textWidth = Math.max(40, maxWidth - levelIconSize - Math.round(fontSize * 0.85))
+    const textWidth = Math.max(40, maxWidth - levelIconSize - 6)
     const total = visible.reduce((sum, ability) => {
       const lines = Math.max(1, estimateLinesForText(ability.text || '', fontSize, textWidth))
       const rowHeight = Math.max(levelIconSize, lines * fontSize * lineHeight)
@@ -1488,18 +1488,7 @@ export async function GET(
             const levelIconSrc =
               level !== null ? levelIconMap.get(level) || resolveAssetUrl(`/images/icons/levels/lv${level}-icon.png`) : null
             return (
-              <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', gap: '8px' }}>
-                {levelIconSrc ? (
-                  <img
-                    src={levelIconSrc}
-                    style={{
-                      width: options.levelIconSize,
-                      height: options.levelIconSize,
-                      objectFit: 'contain',
-                      transform: 'translateY(3px)',
-                    }}
-                  />
-                ) : null}
+              <div key={`ability-${idx}`} style={{ display: 'flex', width: '100%', alignItems: 'flex-start' }}>
                 <div
                   style={{
                     display: 'flex',
@@ -1507,8 +1496,21 @@ export async function GET(
                     minWidth: 0,
                     maxWidth: '100%',
                     overflow: 'hidden',
+                    alignItems: 'flex-start',
                   }}
                 >
+                  {levelIconSrc ? (
+                    <img
+                      src={levelIconSrc}
+                      style={{
+                        width: options.levelIconSize,
+                        height: options.levelIconSize,
+                        objectFit: 'contain',
+                        marginRight: '6px',
+                        transform: 'translateY(3px)',
+                      }}
+                    />
+                  ) : null}
                   {renderAbilityText(ability.text || '', statIconMap, levelIconMap)}
                 </div>
               </div>
