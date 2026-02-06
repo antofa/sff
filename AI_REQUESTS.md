@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: ae88f70
+  Request: Fix fused OG image overflow where second-column card text goes beyond image bounds for `http://hadoop21.click:3000/api/og/deck/Fused_28e2ml15qmam?refresh=1`.
+  Date: 2026-02-06
 - Commit: 424c4de
   Request: Reduce the `Rarities` block in fused OG descriptions by using short rarity initials (for example, `C 8`, `DL 1`).
   Date: 2026-02-06
