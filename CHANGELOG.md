@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Stop splitting OG ability text into per-word nowrap spans to prevent punctuation-led wrapped lines.
 - Add explicit `display: flex` on OG ability rows to satisfy the renderer layout requirement.
 - Render forgeborn level icons from inline `[lN]` tokens so wrapped lines use full width.
 - Make OG forgeborn ability text truly inline with the level icons.
