@@ -8,12 +8,17 @@ type SyncSummary = {
   skippedRegular: number
   persistedFused: number
   skippedFused: number
+  writeBlocked: boolean
+  writeBlockedUntil: string | null
 }
 
 const ALLOWED_SET_IDS = new Set(['B1', 'B2', 'B3', 'S1', 'S2', 'S3', 'S4', 'D0'])
 const DEFAULT_SET_ID = 'D0'
+const WRITE_BLOCK_COOLDOWN_MS = 10 * 60 * 1000
+const WRITE_BLOCK_ERROR_CODES = new Set(['25006', '53100', '53200'])
 
 let supabaseClient: SupabaseClient<Database> | null | undefined
+let writesBlockedUntilMs = 0
 
 const getSupabaseClient = (): SupabaseClient<Database> | null => {
   if (supabaseClient !== undefined) {
@@ -37,6 +42,64 @@ const getSupabaseClient = (): SupabaseClient<Database> | null => {
   })
 
   return supabaseClient
+}
+
+const formatBlockedUntil = (timestampMs: number): string | null => {
+  if (!Number.isFinite(timestampMs) || timestampMs <= Date.now()) return null
+  return new Date(timestampMs).toISOString()
+}
+
+const getErrorText = (error: unknown): string => {
+  if (!error) return ''
+  if (typeof error === 'string') return error.toLowerCase()
+  if (typeof error === 'object') {
+    const candidate = error as Record<string, unknown>
+    return [candidate.message, candidate.details, candidate.hint]
+      .filter((value): value is string => typeof value === 'string')
+      .join(' ')
+      .toLowerCase()
+  }
+  return String(error).toLowerCase()
+}
+
+const getErrorCode = (error: unknown): string => {
+  if (!error || typeof error !== 'object') return ''
+  const candidate = error as Record<string, unknown>
+  if (typeof candidate.code === 'string') {
+    return candidate.code
+  }
+  return ''
+}
+
+const isWriteBlockedError = (error: unknown): boolean => {
+  const code = getErrorCode(error)
+  if (code && WRITE_BLOCK_ERROR_CODES.has(code)) {
+    return true
+  }
+
+  const text = getErrorText(error)
+  if (!text) return false
+
+  return (
+    text.includes('read-only') ||
+    text.includes('read only') ||
+    text.includes('disk full') ||
+    text.includes('database is full') ||
+    text.includes('cannot execute insert in a read-only transaction') ||
+    text.includes('cannot execute update in a read-only transaction') ||
+    text.includes('cannot execute delete in a read-only transaction')
+  )
+}
+
+const pauseWrites = (reason: unknown): string => {
+  writesBlockedUntilMs = Date.now() + WRITE_BLOCK_COOLDOWN_MS
+  const blockedUntil = formatBlockedUntil(writesBlockedUntilMs) || 'unknown time'
+  const code = getErrorCode(reason)
+  const detail = getErrorText(reason) || 'unknown write-block reason'
+  logWithTimestamp(
+    `[Supabase sync] write operations paused until ${blockedUntil} due to database write-block (${code || 'no-code'}): ${detail}`
+  )
+  return blockedUntil
 }
 
 const toStringOrNull = (value: unknown): string | null => {
@@ -181,6 +244,9 @@ export const syncDeckSearchToSupabase = async (
   regularDecks: any[],
   fusedDecks: any[]
 ): Promise<SyncSummary> => {
+  const normalizedRegularDecks = Array.isArray(regularDecks) ? regularDecks : []
+  const normalizedFusedDecks = Array.isArray(fusedDecks) ? fusedDecks : []
+
   const client = getSupabaseClient()
   if (!client) {
     return {
@@ -189,6 +255,20 @@ export const syncDeckSearchToSupabase = async (
       skippedRegular: 0,
       persistedFused: 0,
       skippedFused: 0,
+      writeBlocked: false,
+      writeBlockedUntil: null,
+    }
+  }
+
+  if (writesBlockedUntilMs > Date.now()) {
+    return {
+      enabled: true,
+      persistedRegular: 0,
+      skippedRegular: normalizedRegularDecks.length,
+      persistedFused: 0,
+      skippedFused: normalizedFusedDecks.length,
+      writeBlocked: true,
+      writeBlockedUntil: formatBlockedUntil(writesBlockedUntilMs),
     }
   }
 
@@ -210,7 +290,7 @@ export const syncDeckSearchToSupabase = async (
     cardIds: string[]
   }> = []
 
-  for (const deck of Array.isArray(regularDecks) ? regularDecks : []) {
+  for (const deck of normalizedRegularDecks) {
     const deckId = extractDeckId(deck)
     const deckName = extractDeckName(deck)
     if (!deckId || !deckName) {
@@ -255,10 +335,22 @@ export const syncDeckSearchToSupabase = async (
       }))
     )
   } catch (err) {
+    if (isWriteBlockedError(err)) {
+      const blockedUntil = pauseWrites(err)
+      return {
+        enabled: true,
+        persistedRegular: 0,
+        skippedRegular: skippedRegular + preparedRegular.length,
+        persistedFused: 0,
+        skippedFused: normalizedFusedDecks.length,
+        writeBlocked: true,
+        writeBlockedUntil: blockedUntil,
+      }
+    }
     logWithTimestamp(`[Supabase sync] cards upsert failed: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  for (const deck of preparedRegular) {
+  for (const [index, deck] of preparedRegular.entries()) {
     const { error } = await client.rpc('upsert_player_deck', {
       p_deck_id: deck.deckId,
       p_deck_name: deck.deckName,
@@ -273,6 +365,18 @@ export const syncDeckSearchToSupabase = async (
     })
 
     if (error) {
+      if (isWriteBlockedError(error)) {
+        const blockedUntil = pauseWrites(error)
+        return {
+          enabled: true,
+          persistedRegular,
+          skippedRegular: skippedRegular + (preparedRegular.length - index),
+          persistedFused,
+          skippedFused: skippedFused + normalizedFusedDecks.length,
+          writeBlocked: true,
+          writeBlockedUntil: blockedUntil,
+        }
+      }
       skippedRegular += 1
       logWithTimestamp(`[Supabase sync] regular deck upsert failed (${deck.deckId}): ${error.message}`)
       continue
@@ -280,7 +384,7 @@ export const syncDeckSearchToSupabase = async (
     persistedRegular += 1
   }
 
-  for (const deck of Array.isArray(fusedDecks) ? fusedDecks : []) {
+  for (const [index, deck] of normalizedFusedDecks.entries()) {
     const fusedDeckId = extractDeckId(deck)
     const fusedDeckName = extractDeckName(deck)
     const sourceIds = extractFusedSourceIds(deck)
@@ -299,6 +403,18 @@ export const syncDeckSearchToSupabase = async (
     })
 
     if (error) {
+      if (isWriteBlockedError(error)) {
+        const blockedUntil = pauseWrites(error)
+        return {
+          enabled: true,
+          persistedRegular,
+          skippedRegular,
+          persistedFused,
+          skippedFused: skippedFused + (normalizedFusedDecks.length - index),
+          writeBlocked: true,
+          writeBlockedUntil: blockedUntil,
+        }
+      }
       skippedFused += 1
       logWithTimestamp(`[Supabase sync] fused deck upsert failed (${fusedDeckId}): ${error.message}`)
       continue
@@ -313,5 +429,7 @@ export const syncDeckSearchToSupabase = async (
     skippedRegular,
     persistedFused,
     skippedFused,
+    writeBlocked: false,
+    writeBlockedUntil: null,
   }
 }

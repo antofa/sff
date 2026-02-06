@@ -527,9 +527,15 @@ const processDeckBatch = async (
         try {
           const sync = await syncDeckSearchToSupabase(playerName, regularWithTypes, fused)
           if (sync.enabled) {
-            logStage(
-              `supabase sync done regular=${sync.persistedRegular}/${regularWithTypes.length} fused=${sync.persistedFused}/${fused.length}`
-            )
+            if (sync.writeBlocked) {
+              logStage(
+                `supabase sync write-blocked until ${sync.writeBlockedUntil || 'unknown'} regular=${sync.persistedRegular}/${regularWithTypes.length} fused=${sync.persistedFused}/${fused.length}`
+              )
+            } else {
+              logStage(
+                `supabase sync done regular=${sync.persistedRegular}/${regularWithTypes.length} fused=${sync.persistedFused}/${fused.length}`
+              )
+            }
           } else {
             logStage('supabase sync skipped (env missing)')
           }

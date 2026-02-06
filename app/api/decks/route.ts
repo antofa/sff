@@ -7,9 +7,15 @@ const syncBestEffort = async (playerName: string, regularDecks: any[], fusedDeck
   try {
     const summary = await syncDeckSearchToSupabase(playerName, regularDecks, fusedDecks)
     if (summary.enabled) {
-      logWithTimestamp(
-        `[API Route] Supabase sync complete for ${playerName}: regular ${summary.persistedRegular}/${regularDecks.length}, fused ${summary.persistedFused}/${fusedDecks.length}`
-      )
+      if (summary.writeBlocked) {
+        logWithTimestamp(
+          `[API Route] Supabase sync write-blocked for ${playerName} until ${summary.writeBlockedUntil || 'unknown'}: regular ${summary.persistedRegular}/${regularDecks.length}, fused ${summary.persistedFused}/${fusedDecks.length}`
+        )
+      } else {
+        logWithTimestamp(
+          `[API Route] Supabase sync complete for ${playerName}: regular ${summary.persistedRegular}/${regularDecks.length}, fused ${summary.persistedFused}/${fusedDecks.length}`
+        )
+      }
     } else {
       logWithTimestamp(`[API Route] Supabase sync skipped for ${playerName}: missing env`)
     }

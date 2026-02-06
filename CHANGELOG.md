@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-06 UTC) Added write-block protection for Supabase deck sync: when database writes fail due to read-only/disk-full conditions, deck search responses continue normally and sync attempts are temporarily paused.
 - (2026-02-06 UTC) Stopped updating `player_profiles` during automatic deck search sync; profile data is now left untouched.
 - (2026-02-06 UTC) Automatically sync searched player decks into Supabase tables (`player_decks`, `player_deck_cards`, `cards`, and `player_fused_decks`) during `/api/decks` and `/api/decks/stream` requests.
 - (2026-02-06 UTC) Added a new `cards` table (`card_id`, `card_name`), linked `player_deck_cards.card_id` via foreign key, and updated `upsert_player_deck` to auto-register missing cards.
