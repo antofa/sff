@@ -653,6 +653,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 2613807
   Request: Update fused deck link preview text metadata (not OG image): prepend half-deck metadata (name, faction, set, score, ELO) to Open Graph and Twitter descriptions.
   Date: 2026-02-06
+- Commit: 9f5e237
+  Request: For fused deck link previews, set title to `Deck Name (Forgeborn, Owner if available)`, remove card list from description, remove `Half 1/Half 2` labels, and try a newline between first and second half descriptions.
+  Date: 2026-02-06
 - Commit: 9f171b7
   Request: Increase all icons in the OG image third column by 1.5x.
   Date: 2026-02-06
