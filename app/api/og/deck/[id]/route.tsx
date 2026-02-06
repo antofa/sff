@@ -1282,6 +1282,7 @@ export async function GET(
   const baseForgebornTitleFont = showFusedColumns ? scaleFont(26) : scaleFont(40)
   const baseForgebornAbilityFont = showFusedColumns ? scaleFont(14) : scaleFont(20)
   const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
+  const cardListFontScale = 1.05
   const primaryTitleScale = hasSecondaryForgeborn ? 0.9 : 1
   const primaryAbilityScale = hasSecondaryForgeborn ? 0.88 : 1
   const forgebornTitleFont = Math.round(baseForgebornTitleFont * primaryTitleScale * 10) / 10
@@ -1412,55 +1413,29 @@ export async function GET(
         fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
       }}
     >
-      {showFusedColumns && column ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-          {column.factionIconPath ? (
-            <img
-              src={cardIconMap.get(column.factionIconPath) || resolveAssetUrl(column.factionIconPath) || ''}
-              style={{ width: '16px', height: '16px', objectFit: 'contain' }}
-            />
-          ) : null}
-          <span
-            style={{
-              color: '#94a3b8',
-              fontSize: scaleFont(13),
-              fontWeight: 700,
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {[
-              column.setLabel || 'Unknown Set',
-              column.score !== null ? `Score ${column.score}` : null,
-              column.elo !== null ? `ELO ${column.elo}` : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </span>
-        </div>
-      ) : null}
       {column && column.sections.length > 0 ? (
         column.sections.map((section) => (
           <div key={`${columnIndex}-${section.label}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span
-              style={{
-                color: '#94a3b8',
-                fontSize: scaleFont(12),
-                fontWeight: 700,
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {section.label}
-            </span>
+            {!(showFusedColumns && /^(creatures|spells)\b/i.test(section.label)) ? (
+              <span
+                style={{
+                  color: '#94a3b8',
+                  fontSize: scaleFont(12),
+                  fontWeight: 700,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {section.label}
+              </span>
+            ) : null}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '4px',
-                fontSize: scaleFont(20),
+                fontSize: scaleFont(20 * cardListFontScale),
                 lineHeight: 1.15,
               }}
             >

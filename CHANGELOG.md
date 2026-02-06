@@ -6,6 +6,8 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Remove fused half faction/set/score/ELO metadata and hide creatures/spells headers in OG images.
+- Increase OG card list font size by 5%.
 - Stop pluralizing rarity labels in deck list rarity tags.
 - Stop pluralizing rarity labels in deck detail rarity tags.
 - Add Darkforge_LS rarity icons for all sets and use them in deck detail card lists.
