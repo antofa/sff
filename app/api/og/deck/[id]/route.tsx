@@ -1439,7 +1439,7 @@ export async function GET(
   }
 
   const fitMinScale = 0.75
-  const fitMaxScale = 1.2
+  const fitMaxScale = 1.3
   const heightBudget = innerHeight * 0.93
 
   const cardColumnScales = showFusedColumns
