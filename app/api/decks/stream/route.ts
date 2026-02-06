@@ -6,6 +6,7 @@ import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 import { logWithTimestamp } from '@/lib/logger'
 import { getLogDirs, shouldFallbackToTmp } from '@/lib/logPaths'
 import { pruneOldLogs } from '@/lib/logRotation'
+import { syncDeckSearchToSupabase } from '@/lib/supabaseDeckSync'
 
 export const dynamic = 'force-dynamic'
 
@@ -514,6 +515,27 @@ const processDeckBatch = async (
             fusedCount: 0,
             fusedPages: 0,
           })
+        }
+
+        writeEvent(controller, 'progress', {
+          message: 'Saving decks to database...',
+          page: meta.pages ?? meta.regularPages ?? 1,
+          received: regularWithTypes.length + fused.length,
+          totalSoFar: regularWithTypes.length + fused.length,
+        })
+
+        try {
+          const sync = await syncDeckSearchToSupabase(playerName, regularWithTypes, fused)
+          if (sync.enabled) {
+            logStage(
+              `supabase sync done profile=${sync.profileUpdated ? 'updated' : 'skipped'} regular=${sync.persistedRegular}/${regularWithTypes.length} fused=${sync.persistedFused}/${fused.length}`
+            )
+          } else {
+            logStage('supabase sync skipped (env missing)')
+          }
+        } catch (syncErr) {
+          console.warn('[API /decks/stream] Supabase sync failed:', syncErr)
+          logStage(`supabase sync error: ${syncErr instanceof Error ? syncErr.message : 'unknown'}`)
         }
 
         // Send decks immediately so fetch step can complete on client

@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPlayerDecks, fetchFusedDecksFromAPI } from '@/lib/api'
 import { logWithTimestamp } from '@/lib/logger'
+import { syncDeckSearchToSupabase } from '@/lib/supabaseDeckSync'
+
+const syncBestEffort = async (playerName: string, regularDecks: any[], fusedDecks: any[]) => {
+  try {
+    const summary = await syncDeckSearchToSupabase(playerName, regularDecks, fusedDecks)
+    if (summary.enabled) {
+      logWithTimestamp(
+        `[API Route] Supabase sync complete for ${playerName}: regular ${summary.persistedRegular}/${regularDecks.length}, fused ${summary.persistedFused}/${fusedDecks.length}`
+      )
+    } else {
+      logWithTimestamp(`[API Route] Supabase sync skipped for ${playerName}: missing env`)
+    }
+  } catch (error) {
+    console.warn('[API Route] Supabase sync failed:', error)
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,6 +37,7 @@ export async function GET(request: NextRequest) {
     if (type === 'fused') {
       // Fetch only fused decks
       const fusedDecks = await fetchFusedDecksFromAPI(playerName, { force })
+      await syncBestEffort(playerName, [], fusedDecks)
       logWithTimestamp(`[API Route] Received ${fusedDecks.length} fused decks for player: ${playerName}`)
       return NextResponse.json({
         fused: fusedDecks,
@@ -32,6 +49,7 @@ export async function GET(request: NextRequest) {
     } else if (type === 'regular') {
       // Fetch only regular decks
       const { decks, meta } = await getPlayerDecks(playerName, { force })
+      await syncBestEffort(playerName, decks, [])
       logWithTimestamp(`[API Route] Received ${decks.length} regular decks for player: ${playerName}`)
       return NextResponse.json({
         regular: decks,
@@ -45,6 +63,7 @@ export async function GET(request: NextRequest) {
       // Fetch both regular and fused decks
       const { decks: regularDecks, meta } = await getPlayerDecks(playerName, { force })
       const fusedDecks = await fetchFusedDecksFromAPI(playerName, { force })
+      await syncBestEffort(playerName, regularDecks, fusedDecks)
       
       logWithTimestamp(`[API Route] Received ${regularDecks.length} regular and ${fusedDecks.length} fused decks for player: ${playerName}`)
       
