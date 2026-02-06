@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-06 UTC) Tightened fused OG auto-fit sizing for card columns to prevent long second-column card names from overflowing beyond the image bounds.
 - (2026-02-06 UTC) Shortened fused deck OG rarity summary labels to compact initials (for example, `Common` -> `C`, `Darkforge LS` -> `DL`) to reduce description length.
 - (2026-02-06 UTC) Added write-block protection for Supabase deck sync: when database writes fail due to read-only/disk-full conditions, deck search responses continue normally and sync attempts are temporarily paused.
 - (2026-02-06 UTC) Stopped updating `player_profiles` during automatic deck search sync; profile data is now left untouched.

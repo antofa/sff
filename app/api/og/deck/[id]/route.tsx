@@ -1419,7 +1419,8 @@ export async function GET(
   const estimateLinesForText = (text: string, fontSize: number, maxWidth: number) => {
     const normalized = String(text || '').trim()
     if (!normalized) return 0
-    const avgCharWidth = fontSize * 0.55
+    // Slightly conservative estimate helps avoid vertical overflow for long card names.
+    const avgCharWidth = fontSize * 0.62
     const capacity = Math.max(1, Math.floor(maxWidth / avgCharWidth))
     const words = normalized.split(/\s+/)
     let lines = 1
@@ -1468,11 +1469,11 @@ export async function GET(
     const labelFontSize = baseLabelFontSize * scale
     const cardFontSize = baseCardFontSize * scale
     const iconSize = Math.round(18 * rarityIconScale * scale)
-    const textWidth = Math.max(40, columnWidth - iconSize - 10)
+    const textWidth = Math.max(40, columnWidth - iconSize - 18)
     const sectionGap = 8
     const labelGap = 4
     const listGap = 4
-    const lineHeight = 1.15
+    const lineHeight = 1.18
     const labelLineHeight = 1.1
 
     let totalHeight = 0
@@ -1557,7 +1558,7 @@ export async function GET(
   const fitMinScale = 0.75
   let fitMaxScale = 1.45
   const heightBudget = innerHeight
-  const fusedEstimateAllowance = showFusedColumns ? 0.9 : 1
+  const fusedEstimateAllowance = 1
 
   if (showFusedColumns) {
     const atBaseMax = Math.max(
@@ -1595,8 +1596,8 @@ export async function GET(
     )
     const effectiveEstimated = estimatedAtBase * fusedEstimateAllowance
     if (effectiveEstimated > 0) {
-      const targetFill = heightBudget * 0.995
-      fillBoost = Math.max(1, Math.min(2.4, targetFill / effectiveEstimated))
+      const targetFill = heightBudget * 0.96
+      fillBoost = Math.max(1, Math.min(1.55, targetFill / effectiveEstimated))
     }
   }
 
