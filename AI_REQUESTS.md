@@ -620,3 +620,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 1374f67
   Request: Reduce fused OG bottom whitespace by allowing larger auto-fit scaling and tighter padding.
   Date: 2026-02-06
+- Commit: 883ad5f
+  Request: Inline forgeborn level icons with the ability text in the third column.
+  Date: 2026-02-06
