@@ -575,3 +575,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 5d28956
   Request: Reduce empty spacing in the site header.
   Date: 2026-02-06
+- Commit: ef09182
+  Request: "в og image fused колод убери информацию о фракции, сете, score и elo половин колод, а также убери подписи creatures и spells, затем увеличь шрифт списка карт на 5%"
+  Date: 2026-02-06
