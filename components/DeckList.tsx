@@ -4918,7 +4918,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         <Collapse in={filtersOpened}>
           <Paper
             p="md"
-            className="mb-4 backdrop-blur-md border border-sf-primary/30 rounded-xl"
+            className="filters-panel mb-4 backdrop-blur-md border border-sf-primary/30 rounded-xl"
             style={{ backgroundColor: 'rgba(30, 41, 59, 0.6)' }}
           >
             <Stack gap="md">
@@ -5147,40 +5147,110 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       )
                       const modeControl = (
                         <Group gap={6} align="center">
-                          <NumberInput
-                            placeholder="Min"
-                            value={currentMin ?? ''}
-                            onChange={(value) =>
-                              update({ forgebornNameMin: typeof value === 'number' ? value : null })
-                            }
-                            min={0}
-                            w={70}
-                            size="xs"
-                            styles={{
-                              input: {
-                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                                color: 'white',
-                                borderColor: 'rgba(74, 144, 226, 0.3)',
-                              },
-                            }}
-                          />
-                          <NumberInput
-                            placeholder="Max"
-                            value={currentMax ?? ''}
-                            onChange={(value) =>
-                              update({ forgebornNameMax: typeof value === 'number' ? value : null })
-                            }
-                            min={0}
-                            w={70}
-                            size="xs"
-                            styles={{
-                              input: {
-                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                                color: 'white',
-                                borderColor: 'rgba(74, 144, 226, 0.3)',
-                              },
-                            }}
-                          />
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Min"
+                              value={currentMin ?? ''}
+                              onChange={(value) =>
+                                update({ forgebornNameMin: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMin !== null && currentMin !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ forgebornNameMin: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Max"
+                              value={currentMax ?? ''}
+                              onChange={(value) =>
+                                update({ forgebornNameMax: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMax !== null && currentMax !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ forgebornNameMax: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
                           <SegmentedControl
                             size="xs"
                             value={currentMode}
@@ -5222,40 +5292,110 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       )
                       const modeControl = (
                         <Group gap={6} align="center">
-                          <NumberInput
-                            placeholder="Min"
-                            value={currentMin ?? ''}
-                            onChange={(value) =>
-                              update({ cardNameMin: typeof value === 'number' ? value : null })
-                            }
-                            min={0}
-                            w={70}
-                            size="xs"
-                            styles={{
-                              input: {
-                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                                color: 'white',
-                                borderColor: 'rgba(74, 144, 226, 0.3)',
-                              },
-                            }}
-                          />
-                          <NumberInput
-                            placeholder="Max"
-                            value={currentMax ?? ''}
-                            onChange={(value) =>
-                              update({ cardNameMax: typeof value === 'number' ? value : null })
-                            }
-                            min={0}
-                            w={70}
-                            size="xs"
-                            styles={{
-                              input: {
-                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                                color: 'white',
-                                borderColor: 'rgba(74, 144, 226, 0.3)',
-                              },
-                            }}
-                          />
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Min"
+                              value={currentMin ?? ''}
+                              onChange={(value) =>
+                                update({ cardNameMin: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMin !== null && currentMin !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ cardNameMin: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Max"
+                              value={currentMax ?? ''}
+                              onChange={(value) =>
+                                update({ cardNameMax: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMax !== null && currentMax !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ cardNameMax: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
                           <SegmentedControl
                             size="xs"
                             value={currentMode}
@@ -5331,40 +5471,110 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       )
                       const modeControl = (
                         <Group gap={6} align="center">
-                          <NumberInput
-                            placeholder="Min"
-                            value={currentMin ?? ''}
-                            onChange={(value) =>
-                              update({ tagsMin: typeof value === 'number' ? value : null })
-                            }
-                            min={0}
-                            w={70}
-                            size="xs"
-                            styles={{
-                              input: {
-                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                                color: 'white',
-                                borderColor: 'rgba(74, 144, 226, 0.3)',
-                              },
-                            }}
-                          />
-                          <NumberInput
-                            placeholder="Max"
-                            value={currentMax ?? ''}
-                            onChange={(value) =>
-                              update({ tagsMax: typeof value === 'number' ? value : null })
-                            }
-                            min={0}
-                            w={70}
-                            size="xs"
-                            styles={{
-                              input: {
-                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                                color: 'white',
-                                borderColor: 'rgba(74, 144, 226, 0.3)',
-                              },
-                            }}
-                          />
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Min"
+                              value={currentMin ?? ''}
+                              onChange={(value) =>
+                                update({ tagsMin: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMin !== null && currentMin !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ tagsMin: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Max"
+                              value={currentMax ?? ''}
+                              onChange={(value) =>
+                                update({ tagsMax: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMax !== null && currentMax !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ tagsMax: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
                           <SegmentedControl
                             size="xs"
                             value={currentMode}
@@ -6015,46 +6225,122 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       }
                       const modeControl = (
                         <Group gap={6} align="center">
-                          <NumberInput
-                            placeholder="Min"
-                            value={cardSetState.cardSetNoMin ?? ''}
-                            onChange={(value) =>
-                              updateCardSetState({
-                                ...cardSetState,
-                                cardSetNoMin: typeof value === 'number' ? value : null,
-                              })
-                            }
-                            min={0}
-                            w={70}
-                            size="xs"
-                            styles={{
-                              input: {
-                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                                color: 'white',
-                                borderColor: 'rgba(74, 144, 226, 0.3)',
-                              },
-                            }}
-                          />
-                          <NumberInput
-                            placeholder="Max"
-                            value={cardSetState.cardSetNoMax ?? ''}
-                            onChange={(value) =>
-                              updateCardSetState({
-                                ...cardSetState,
-                                cardSetNoMax: typeof value === 'number' ? value : null,
-                              })
-                            }
-                            min={0}
-                            w={70}
-                            size="xs"
-                            styles={{
-                              input: {
-                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                                color: 'white',
-                                borderColor: 'rgba(74, 144, 226, 0.3)',
-                              },
-                            }}
-                          />
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Min"
+                              value={cardSetState.cardSetNoMin ?? ''}
+                              onChange={(value) =>
+                                updateCardSetState({
+                                  ...cardSetState,
+                                  cardSetNoMin: typeof value === 'number' ? value : null,
+                                })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {cardSetState.cardSetNoMin !== null && cardSetState.cardSetNoMin !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  updateCardSetState({
+                                    ...cardSetState,
+                                    cardSetNoMin: null,
+                                  })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Max"
+                              value={cardSetState.cardSetNoMax ?? ''}
+                              onChange={(value) =>
+                                updateCardSetState({
+                                  ...cardSetState,
+                                  cardSetNoMax: typeof value === 'number' ? value : null,
+                                })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {cardSetState.cardSetNoMax !== null && cardSetState.cardSetNoMax !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  updateCardSetState({
+                                    ...cardSetState,
+                                    cardSetNoMax: null,
+                                  })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
                           <SegmentedControl
                             size="xs"
                             value={cardSetState.cardSetNoMode}

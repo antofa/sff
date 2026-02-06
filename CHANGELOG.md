@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
-## [0.0.2] - 2026-02-05
+## [0.0.2] - 2026-02-06
 
 ### Changed
 - Stop pluralizing rarity labels in deck list rarity tags.
@@ -11,6 +11,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Add Darkforge_LS rarity icons for all sets and use them in deck detail card lists.
 - Rename Darkforge_LS labels to Darkforge LS in rarity tags and filters.
 - Add Min/Max limits to multi-select filters (Forgeborn, Card Name, Tags, Card Set) with any-match defaults.
+- Add clear buttons for Min/Max inputs and widen filter scrollbars.
 - Add a "Rarity (Word)" filter that matches decks by rarity tokens (e.g., Common matches Common Rare).
 - Rename the rarity filter to "Rarity (Exact)" and add comparison operators for rarity counts.
 - Add Darkforge Common and Darkforge_LS to rarity tags and filters.
