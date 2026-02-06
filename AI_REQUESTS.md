@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 528db89
+  Request: Review the whole fused OG image for anomalies, not just bottom spacing; detect and fix any strange layout artifacts.
+  Date: 2026-02-06
 - Commit: affc143
   Request: Fix fused OG auto-fit inconsistency where `Fused_28e2ml15qmam` looked correct but `Fused_u9912mkvb9mqm` still left bottom empty space.
   Date: 2026-02-06
