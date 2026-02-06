@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Reduce fused OG vertical padding to 12px and allow larger auto-fit scaling.
 - Raise fused OG auto-fit max scale to 1.35 and use full-height budget.
 - Reduce fused OG vertical padding to 16px.
 - Relax fused OG auto-fit sizing to better fill vertical space.
