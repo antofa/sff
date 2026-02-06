@@ -1371,6 +1371,8 @@ export async function GET(
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * globalFontScale * 10) / 10
   const cardListFontScale = 1.1025
   const rarityIconScale = 1.3
+  const ogBodyTextWeight = 600
+  const ogBodyTextShadow = '0 0 1px rgba(2, 6, 23, 0.65)'
   const baseLabelFontSize = scaleFont(12)
   const baseNoCardsFontSize = scaleFont(18)
   const baseCardFontSize = scaleFont(20 * cardListFontScale)
@@ -1561,6 +1563,8 @@ export async function GET(
           gap: options.gap ?? '8px',
           fontSize: options.fontSize,
           lineHeight: options.lineHeight,
+          fontWeight: ogBodyTextWeight,
+          textShadow: ogBodyTextShadow,
           width: '100%',
         }}
       >
@@ -1605,8 +1609,10 @@ export async function GET(
         display: 'flex',
         flexDirection: 'column',
         gap: '6px',
-        color: '#e2e8f0',
+        color: '#f8fafc',
         fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
+        fontWeight: ogBodyTextWeight,
+        textShadow: ogBodyTextShadow,
         minWidth: 0,
         width: '100%',
         flex: 1,
@@ -1674,6 +1680,8 @@ export async function GET(
                 gap: '4px',
                 fontSize: Math.round(baseCardFontSize * columnScale * 10) / 10,
                 lineHeight: 1.15,
+                fontWeight: ogBodyTextWeight,
+                textShadow: ogBodyTextShadow,
               }}
             >
               {section.items.map((item, idx) => {

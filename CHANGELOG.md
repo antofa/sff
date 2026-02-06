@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Improve OG image text legibility under social preview compression by slightly increasing body text weight and adding a subtle text shadow for card and ability text.
 - Split fused link preview deck-summary text so `Rarities` and `Creature Types` each render on their own line.
 - Extend fused link preview descriptions with half-deck expiry dates (when available) and add a new summary line for creatures/spells/solbind counts, rarity counts, and creature type counts.
 - Refine fused link preview metadata: format owner as `owner: <name>` in title and render half summaries as plain value lines (no half names, no parentheses, no `Faction:` label).
