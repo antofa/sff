@@ -1557,6 +1557,7 @@ export async function GET(
   const fitMinScale = 0.75
   let fitMaxScale = 1.45
   const heightBudget = innerHeight
+  const fusedEstimateAllowance = showFusedColumns ? 0.9 : 1
 
   if (showFusedColumns) {
     const atBaseMax = Math.max(
@@ -1566,24 +1567,45 @@ export async function GET(
     )
     // If everything remains clearly underfilled at base max scale, allow larger upscaling.
     if (atBaseMax < heightBudget * 0.9) {
-      fitMaxScale = 1.8
+      fitMaxScale = 2.2
     }
   }
 
-  const cardColumnScales = showFusedColumns
+  const baseCardColumnScales = showFusedColumns
     ? [
         fitScale(fitMinScale, fitMaxScale, (scale) =>
-          estimateCardColumnHeight(cardColumns[0], scale, fusedCardColumnWidth) <= heightBudget
+          estimateCardColumnHeight(cardColumns[0], scale, fusedCardColumnWidth) * fusedEstimateAllowance <= heightBudget
         ),
         fitScale(fitMinScale, fitMaxScale, (scale) =>
-          estimateCardColumnHeight(cardColumns[1], scale, fusedCardColumnWidth) <= heightBudget
+          estimateCardColumnHeight(cardColumns[1], scale, fusedCardColumnWidth) * fusedEstimateAllowance <= heightBudget
         ),
       ]
     : [1]
 
-  const forgebornColumnScale = showFusedColumns
-    ? fitScale(fitMinScale, fitMaxScale, (scale) => estimateForgebornHeight(scale) <= heightBudget)
+  const baseForgebornColumnScale = showFusedColumns
+    ? fitScale(fitMinScale, fitMaxScale, (scale) => estimateForgebornHeight(scale) * fusedEstimateAllowance <= heightBudget)
     : 1
+
+  let fillBoost = 1
+  if (showFusedColumns) {
+    const estimatedAtBase = Math.max(
+      estimateCardColumnHeight(cardColumns[0], baseCardColumnScales[0], fusedCardColumnWidth),
+      estimateCardColumnHeight(cardColumns[1], baseCardColumnScales[1], fusedCardColumnWidth),
+      estimateForgebornHeight(baseForgebornColumnScale)
+    )
+    const effectiveEstimated = estimatedAtBase * fusedEstimateAllowance
+    if (effectiveEstimated > 0) {
+      const targetFill = heightBudget * 0.995
+      fillBoost = Math.max(1, Math.min(2.4, targetFill / effectiveEstimated))
+    }
+  }
+
+  const cardColumnScales = showFusedColumns
+    ? baseCardColumnScales.map((scale) => Math.min(2.4, scale * fillBoost))
+    : baseCardColumnScales
+  const forgebornColumnScale = showFusedColumns
+    ? Math.min(2.4, baseForgebornColumnScale * fillBoost)
+    : baseForgebornColumnScale
 
   const forgebornAbilityFont = Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * 10) / 10
   const forgebornLevelIconSize = `${Math.round(
