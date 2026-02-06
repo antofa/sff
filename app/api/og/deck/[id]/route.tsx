@@ -798,14 +798,15 @@ const renderAbilityText = (
   const parts: Array<
     | { type: 'text'; value: string }
     | { type: 'stat'; src: string; number: string }
+    | { type: 'statLetter'; src: string }
     | { type: 'level'; src: string }
   > = []
-  const pattern = /(\[(?:l)?([1-4])\]|([+-]?\d+)\s*([ADH])\b(?![A-Za-z]))/gi
+  const pattern = /(\[(?:l)?([1-4])\]|([+-]?\d+)\s*([ADH])\b(?![A-Za-z])|(?<![A-Za-z])([ADH])(?=[^A-Za-z]|$))/g
   let lastIndex = 0
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(normalizedText)) !== null) {
-    const [full, _token, levelValue, numberValue, statValue] = match
+    const [full, _token, levelValue, numberValue, statValue, standaloneStatValue] = match
     const start = match.index
     if (start > lastIndex) {
       parts.push({ type: 'text', value: normalizedText.slice(lastIndex, start) })
@@ -819,13 +820,14 @@ const renderAbilityText = (
         parts.push({ type: 'level', src: iconSrc })
       }
     } else {
-      const number = numberValue || ''
-      const stat = (statValue || '').toUpperCase()
+      const stat = (statValue || standaloneStatValue || '').toUpperCase()
       const iconSrc = statIconMap.get(stat) || null
-      if (!iconSrc || !number) {
+      if (!iconSrc) {
         parts.push({ type: 'text', value: full })
+      } else if (numberValue) {
+        parts.push({ type: 'stat', src: iconSrc, number: numberValue })
       } else {
-        parts.push({ type: 'stat', src: iconSrc, number })
+        parts.push({ type: 'statLetter', src: iconSrc })
       }
     }
     lastIndex = start + full.length
@@ -839,6 +841,7 @@ const renderAbilityText = (
     | { kind: 'text'; text: string }
     | { kind: 'level'; src: string; suffix?: string }
     | { kind: 'stat'; src: string; number: string; suffix?: string }
+    | { kind: 'statLetter'; src: string; suffix?: string }
   const renderTokens: AbilityRenderToken[] = []
   const appendToPreviousToken = (suffix: string) => {
     if (!suffix) return
@@ -880,7 +883,11 @@ const renderAbilityText = (
       renderTokens.push({ kind: 'level', src: part.src })
       return
     }
-    renderTokens.push({ kind: 'stat', src: part.src, number: part.number })
+    if (part.type === 'stat') {
+      renderTokens.push({ kind: 'stat', src: part.src, number: part.number })
+      return
+    }
+    renderTokens.push({ kind: 'statLetter', src: part.src })
   })
 
   return (
@@ -915,6 +922,27 @@ const renderAbilityText = (
                   objectFit: 'contain',
                   margin: '0 2px 0 1px',
                   transform: 'translateY(2px)',
+                }}
+              />
+              {token.suffix ? <span>{token.suffix}</span> : null}
+            </span>
+          )
+        }
+        if (token.kind === 'statLetter') {
+          return (
+            <span
+              key={`stat-letter-${idx}`}
+              style={{ display: 'flex', alignItems: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap', marginRight: '4px' }}
+            >
+              <img
+                src={token.src}
+                style={{
+                  verticalAlign: 'middle',
+                  width: `${scaledStatIconSize}px`,
+                  height: `${scaledStatIconSize}px`,
+                  objectFit: 'contain',
+                  marginLeft: '1px',
+                  transform: 'translateY(1px)',
                 }}
               />
               {token.suffix ? <span>{token.suffix}</span> : null}
@@ -1527,8 +1555,20 @@ export async function GET(
   }
 
   const fitMinScale = 0.75
-  const fitMaxScale = 1.45
+  let fitMaxScale = 1.45
   const heightBudget = innerHeight
+
+  if (showFusedColumns) {
+    const atBaseMax = Math.max(
+      estimateCardColumnHeight(cardColumns[0], fitMaxScale, fusedCardColumnWidth),
+      estimateCardColumnHeight(cardColumns[1], fitMaxScale, fusedCardColumnWidth),
+      estimateForgebornHeight(fitMaxScale)
+    )
+    // If everything remains clearly underfilled at base max scale, allow larger upscaling.
+    if (atBaseMax < heightBudget * 0.9) {
+      fitMaxScale = 1.8
+    }
+  }
 
   const cardColumnScales = showFusedColumns
     ? [

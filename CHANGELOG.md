@@ -148,6 +148,8 @@ Dates use UTC and roll over at 00:00 UTC.
 - Count nested Solbind references from card-level `solbindCards` and `solbindId*` fields in fused metadata descriptions.
 - Add an internal half-deck fallback in fused metadata generation so half expiry dates appear when upstream deck details omit expiry.
 - Rename fused metadata half expiry label from `Expires` to `Expire date`.
+- Allow fused OG auto-fit to upscale further when all columns are still underfilled at the default max scale.
+- Render attack/health/armor icons for standalone uppercase `A`, `H`, and `D` tokens inside OG ability text.
 - Show the earliest half-deck expiry date for fused decks in the card modal header.
 - Remove the extra modal scrollbar in deck card views when the content already fits.
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
