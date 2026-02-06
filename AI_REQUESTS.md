@@ -608,3 +608,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: e76c2ab
   Request: Increase the maximum fused OG auto-fit scale to 1.3.
   Date: 2026-02-06
+- Commit: 71fd106
+  Request: Remove spaces before periods at the end of forgeborn ability sentences.
+  Date: 2026-02-06
