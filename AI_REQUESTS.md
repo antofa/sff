@@ -680,3 +680,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 8b7182e
   Request: Reduce forgeborn ability level icon size in the OG image third column by 5%.
   Date: 2026-02-06
+- Commit: 7185ec3
+  Request: Revert the latest OG icon-size tweak and find/fix why descenders like "g" are slightly clipped in the fused OG third column.
+  Date: 2026-02-06
