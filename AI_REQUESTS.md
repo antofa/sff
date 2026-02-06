@@ -602,3 +602,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 7d62a81
   Request: Fix fused OG auto-fit so the third column text does not overflow.
   Date: 2026-02-06
+- Commit: f53b8c9
+  Request: Remove the forgeborn name from the third column.
+  Date: 2026-02-06
