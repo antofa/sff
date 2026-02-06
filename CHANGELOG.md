@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Make OG forgeborn ability text truly inline with the level icons.
 - Inline forgeborn level icons with ability text in OG previews.
 - Reduce fused OG vertical padding to 12px and allow larger auto-fit scaling.
 - Raise fused OG auto-fit max scale to 1.35 and use full-height budget.

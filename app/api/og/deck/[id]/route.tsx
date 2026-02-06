@@ -774,10 +774,12 @@ const getRarityIconPath = (
 const renderAbilityText = (
   text: string,
   statIconMap: Map<string, string | null>,
-  levelIconMap: Map<number, string | null>
+  levelIconMap: Map<number, string | null>,
+  options?: { inline?: boolean }
 ) => {
   const normalizedText = normalizeForgebornAbilityText(String(text || ''))
   if (!normalizedText) return null
+  const inlineMode = options?.inline === true
   const parts: Array<
     | { type: 'text'; value: string }
     | { type: 'stat'; src: string; number: string }
@@ -819,7 +821,17 @@ const renderAbilityText = (
   }
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', width: '100%', minWidth: 0, maxWidth: '100%' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        width: inlineMode ? 'auto' : '100%',
+        minWidth: 0,
+        maxWidth: '100%',
+        flex: inlineMode ? 1 : undefined,
+      }}
+    >
       {parts.flatMap((part, idx) => {
         if (part.type === 'text') {
           return part.value
@@ -1511,7 +1523,7 @@ export async function GET(
                       }}
                     />
                   ) : null}
-                  {renderAbilityText(ability.text || '', statIconMap, levelIconMap)}
+                  {renderAbilityText(ability.text || '', statIconMap, levelIconMap, { inline: true })}
                 </div>
               </div>
             )
