@@ -180,7 +180,7 @@ export function Header() {
   const [errorPrices, setErrorPrices] = useState<string | null>(null)
   const releaseDate = formatChangelogDate(CHANGELOG_SUMMARY.date)
   const [changelogOpened, setChangelogOpened] = useState(false)
-  const logoSrc = '/images/icons/too-many-decks-logo.png'
+  const logoSrc = '/images/logo/too-many-decks-logo.png'
 
   const handleDiscordLogin = () => {
     signIn('discord')

@@ -13,6 +13,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - Add Min/Max limits to multi-select filters (Forgeborn, Card Name, Tags, Card Set) with any-match defaults.
 - Add clear buttons for Min/Max inputs and widen filter scrollbars.
 - Replace the header logo with the Too Many Decks mark and size it for the nav bar.
+- Move Too Many Decks logo assets into a dedicated logo folder.
 - Add a "Rarity (Word)" filter that matches decks by rarity tokens (e.g., Common matches Common Rare).
 - Rename the rarity filter to "Rarity (Exact)" and add comparison operators for rarity counts.
 - Add Darkforge Common and Darkforge_LS to rarity tags and filters.
