@@ -1283,6 +1283,7 @@ export async function GET(
   const baseForgebornAbilityFont = showFusedColumns ? scaleFont(14) : scaleFont(20)
   const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
   const cardListFontScale = 1.1025
+  const rarityIconScale = 1.3
   const primaryTitleScale = hasSecondaryForgeborn ? 0.9 : 1
   const primaryAbilityScale = hasSecondaryForgeborn ? 0.88 : 1
   const forgebornTitleFont = Math.round(baseForgebornTitleFont * primaryTitleScale * 10) / 10
@@ -1443,18 +1444,26 @@ export async function GET(
                 const rarityIconSrc = item.rarityIconPath
                   ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
                   : null
+                const rarityIconSize = `${Math.round(18 * rarityIconScale)}px`
                 return (
                   <div
                     key={`${columnIndex}-${section.label}-${idx}`}
                     style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', minWidth: 0 }}
                   >
                     {rarityIconSrc ? (
-                      <img src={rarityIconSrc} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
+                      <img
+                        src={rarityIconSrc}
+                        style={{
+                          width: rarityIconSize,
+                          height: rarityIconSize,
+                          objectFit: 'contain',
+                        }}
+                      />
                     ) : (
                       <span
                         style={{
-                          width: '18px',
-                          height: '18px',
+                          width: rarityIconSize,
+                          height: rarityIconSize,
                           borderRadius: '999px',
                           backgroundColor: item.factionColor,
                           opacity: 0.8,
