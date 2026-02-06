@@ -6,6 +6,7 @@ type TokenPrice = {
   change24h: number | null
   change7d: number | null
   change30d: number | null
+  change1y: number | null
 }
 
 const CACHE_TTL_MS = 60 * 1000
@@ -20,7 +21,7 @@ const fetchPricesForIds = async (idsKey: string, ids: string[]) => {
     const params = new URLSearchParams({
       vs_currency: 'usd',
       ids: ids.join(','),
-      price_change_percentage: '1h,24h,7d,30d',
+      price_change_percentage: '1h,24h,7d,30d,1y',
     })
     const url = `https://api.coingecko.com/api/v3/coins/markets?${params.toString()}`
     const res = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' })
@@ -39,6 +40,7 @@ const fetchPricesForIds = async (idsKey: string, ids: string[]) => {
           change24h: entry?.price_change_percentage_24h_in_currency ?? null,
           change7d: entry?.price_change_percentage_7d_in_currency ?? null,
           change30d: entry?.price_change_percentage_30d_in_currency ?? null,
+          change1y: entry?.price_change_percentage_1y_in_currency ?? null,
         }
       })
     }

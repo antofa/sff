@@ -19,11 +19,12 @@ type TokenPrice = {
   change24h: number | null
   change7d: number | null
   change30d: number | null
+  change1y: number | null
 }
 
 const PRICE_CACHE_KEY = 'sff:token-prices:v1'
 const PRICE_CACHE_TTL_MS = 60 * 1000
-const PRICE_HEADER_CELLS = ['', '1H', '1D', '1W', '1M']
+const PRICE_HEADER_CELLS = ['', '1H', '1D', '1W', '1M', '1Y']
 const TOKENS: TokenInfo[] = [
   { id: 'bitcoin', symbol: 'BTC', label: 'BTC' },
   { id: 'ethereum', symbol: 'ETH', label: 'ETH' },
@@ -142,6 +143,7 @@ const PriceRow = memo(function PriceRow({ token, quote, gridTemplate }: PriceRow
     { label: '1D', value: quote?.change24h },
     { label: '1W', value: quote?.change7d },
     { label: '1M', value: quote?.change30d },
+    { label: '1Y', value: quote?.change1y },
   ]
 
   return (
@@ -270,8 +272,10 @@ export function Header() {
   const pricePanel = useMemo(() => {
     const bitcoinPrice = prices['bitcoin']?.price ?? null
     const isHighPrice = bitcoinPrice !== null && bitcoinPrice >= 100000
-    const gridTemplate = isHighPrice ? '30px 72px 45px 47px 47px' : '30px 56px 45px 47px 47px'
-    const minWidth = isHighPrice ? 280 : 260
+    const gridTemplate = isHighPrice
+      ? '30px 72px 45px 47px 47px 47px'
+      : '30px 56px 45px 47px 47px 47px'
+    const minWidth = isHighPrice ? 320 : 300
 
     return (
       <Paper
