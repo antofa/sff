@@ -322,7 +322,8 @@ const extractCreatureTypes = (card: any): string[] => {
 
 const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
   const primaryCards = extractDeckCards(deckLike)
-  const cards = primaryCards.length > 0 ? primaryCards : enrichedHalves.flatMap((half) => extractDeckCards(half))
+  const fallbackCards = enrichedHalves.flatMap((half) => extractDeckCards(half))
+  const mergedCards = [...primaryCards, ...fallbackCards].filter(Boolean)
   const forgebornId = deckLike?.forgeborn?.id || deckLike?.forgebornId || null
 
   let creatures = 0
@@ -331,8 +332,54 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
   const rarityCounts = new Map<string, number>()
   const creatureTypeCounts = new Map<string, number>()
 
-  cards.forEach((card: any) => {
-    const id = typeof card === 'string' ? card : card?.id || card?.cardId || card?.card_id
+  const solbindIdSet = new Set<string>()
+  const addSolbindId = (value?: string | null) => {
+    if (!hasValue(value)) return
+    solbindIdSet.add(String(value).trim().toLowerCase())
+  }
+
+  const addSolbindIdsFromDeck = (source: any) => {
+    if (!source || typeof source !== 'object') return
+    const directSolbinds = Array.isArray(source?.solbinds) ? source.solbinds : []
+    directSolbinds.forEach((solbindCard: any) => {
+      const id =
+        typeof solbindCard === 'string'
+          ? solbindCard
+          : solbindCard?.id || solbindCard?.cardId || solbindCard?.card_id || solbindCard?.name
+      addSolbindId(id)
+    })
+
+    const fb = source?.forgeborn
+    if (!fb || typeof fb !== 'object') return
+    if (Array.isArray(fb.solbindCards)) {
+      fb.solbindCards.forEach((solbindCard: any) => {
+        const id = solbindCard?.id || solbindCard?.cardId || solbindCard?.card_id || solbindCard?.name
+        addSolbindId(id)
+      })
+    }
+    addSolbindId(fb.solbindId1 || fb.solbindid1)
+    addSolbindId(fb.solbindId2 || fb.solbindid2)
+  }
+
+  addSolbindIdsFromDeck(deckLike)
+  enrichedHalves.forEach((half) => addSolbindIdsFromDeck(half))
+
+  const uniqueCards: any[] = []
+  const seenCards = new Set<string>()
+  mergedCards.forEach((card, index) => {
+    const id =
+      typeof card === 'string'
+        ? card
+        : card?.id || card?.cardId || card?.card_id || card?.name || card?.title || null
+    const key = hasValue(id) ? String(id).trim().toLowerCase() : `idx:${index}`
+    if (seenCards.has(key)) return
+    seenCards.add(key)
+    uniqueCards.push(card)
+  })
+
+  uniqueCards.forEach((card: any) => {
+    const id = typeof card === 'string' ? card : card?.id || card?.cardId || card?.card_id || card?.name
+    const idKey = hasValue(id) ? String(id).trim().toLowerCase() : ''
     const typeValue = typeof card === 'string' ? '' : card?.type || card?.cardType || ''
     const rarityValue = typeof card === 'string' ? '' : card?.rarity || ''
     const typeLower = String(typeValue).toLowerCase()
@@ -344,8 +391,11 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
       rarityLower.includes('forgeborn')
     if (isForgeborn) return
 
-    if (rarityLower.includes('solbind') || typeLower.includes('solbind')) {
+    const isSolbindById = idKey && solbindIdSet.has(idKey)
+    const isSolbindByTag = rarityLower.includes('solbind') || typeLower.includes('solbind')
+    if (isSolbindById || isSolbindByTag) {
       solbind += 1
+      if (idKey) solbindIdSet.add(idKey)
     } else if (typeLower.includes('spell')) {
       spells += 1
     } else if (typeLower.includes('creature')) {
@@ -361,6 +411,10 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
       rarityCounts.set(rarity, (rarityCounts.get(rarity) || 0) + 1)
     }
   })
+
+  if (solbindIdSet.size > solbind) {
+    solbind = solbindIdSet.size
+  }
 
   const formatCounts = (counts: Map<string, number>, fallback: string) => {
     if (counts.size === 0) return fallback
