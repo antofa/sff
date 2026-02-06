@@ -5,14 +5,65 @@ import { fetchDeckDetails, normalizeDeck } from '@/lib/api'
 
 export const dynamic = 'force-dynamic'
 
-const buildCandidates = (rawId: string) => {
-  const stripDeckPrefixes = (value: string) =>
-    value
-      .toString()
-      .replace(/^deck[_-]?fused[_-]?/i, '')
-      .replace(/^deck[_-]?/i, '')
-      .replace(/^fused[_-]?/i, '')
+const DECK_PREVIEW_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+const DECK_PREVIEW_CACHE_MAX_ENTRIES = 500
 
+type DeckPreviewCore = {
+  title: string
+  description: string
+  imageAlt: string
+}
+
+type DeckPreviewCacheEntry = {
+  expiresAt: number
+  data: DeckPreviewCore
+}
+
+const deckPreviewCache = new Map<string, DeckPreviewCacheEntry>()
+const deckPreviewInFlight = new Map<string, Promise<DeckPreviewCore | null>>()
+
+const stripDeckPrefixes = (value: string) =>
+  value
+    .toString()
+    .replace(/^deck[_-]?fused[_-]?/i, '')
+    .replace(/^deck[_-]?/i, '')
+    .replace(/^fused[_-]?/i, '')
+
+const normalizeDeckPreviewKey = (deckId: string) => stripDeckPrefixes(deckId).trim().toLowerCase()
+
+const trimLru = (cache: Map<string, DeckPreviewCacheEntry>, maxEntries: number) => {
+  while (cache.size > maxEntries) {
+    const oldest = cache.keys().next().value
+    if (oldest === undefined) break
+    cache.delete(oldest)
+  }
+}
+
+const touchDeckPreviewCache = (key: string, entry: DeckPreviewCacheEntry) => {
+  deckPreviewCache.delete(key)
+  deckPreviewCache.set(key, entry)
+}
+
+const getCachedDeckPreview = (key: string): DeckPreviewCore | null => {
+  const cached = deckPreviewCache.get(key)
+  if (!cached) return null
+  if (cached.expiresAt < Date.now()) {
+    deckPreviewCache.delete(key)
+    return null
+  }
+  touchDeckPreviewCache(key, cached)
+  return cached.data
+}
+
+const setCachedDeckPreview = (key: string, data: DeckPreviewCore) => {
+  touchDeckPreviewCache(key, {
+    expiresAt: Date.now() + DECK_PREVIEW_CACHE_TTL_MS,
+    data,
+  })
+  trimLru(deckPreviewCache, DECK_PREVIEW_CACHE_MAX_ENTRIES)
+}
+
+const buildCandidates = (rawId: string) => {
   const baseId = stripDeckPrefixes(rawId)
   return Array.from(
     new Set(
@@ -468,6 +519,89 @@ const listDeckCards = (deck: any) => {
   return names
 }
 
+const fetchRawDeckForPreview = async (deckId: string, baseUrl: string | null) => {
+  const candidates = buildCandidates(deckId)
+  let rawDeck: any = null
+
+  for (const candidate of candidates) {
+    const raw = await fetchDeckDetails(candidate)
+    if (!raw) continue
+    const rawId = raw?.id || raw?.deckId || raw?.deck_id
+    if (!rawId) continue
+    rawDeck = raw
+    break
+  }
+
+  if (!rawDeck && baseUrl) {
+    try {
+      const res = await fetch(`${baseUrl}/api/deck/${encodeURIComponent(deckId)}?skipOwnerMerge=1`, {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const json = await res.json()
+        rawDeck = json?.deck || null
+      }
+    } catch {
+      rawDeck = null
+    }
+  }
+
+  return rawDeck
+}
+
+const buildDeckPreviewCore = async (
+  deckId: string,
+  titleFallback: string,
+  baseUrl: string | null
+): Promise<DeckPreviewCore | null> => {
+  const rawDeck = await fetchRawDeckForPreview(deckId, baseUrl)
+  if (!rawDeck) return null
+
+  const deck = normalizeDeck(rawDeck)
+  const forgebornName = rawDeck?.forgeborn?.name || deck?.forgeborn?.name || deck?.forgebornId
+  const isFusedDeck = isFusedDeckLike(rawDeck) || isFusedDeckLike(deck)
+  const cardNames = listDeckCards(deck)
+  const baseDescription = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
+  const description = isFusedDeck ? await buildFusedDescription(rawDeck, deck) : baseDescription
+  const baseTitle = deck?.name || titleFallback
+  const ownerName = getDeckOwnerName(rawDeck) || getDeckOwnerName(deck)
+  const title = isFusedDeck ? buildFusedTitle(baseTitle, forgebornName, ownerName) : baseTitle
+
+  return {
+    title,
+    description,
+    imageAlt: forgebornName ? `Forgeborn ${forgebornName}` : 'Forgeborn card',
+  }
+}
+
+const getDeckPreviewCore = async (
+  deckId: string,
+  titleFallback: string,
+  baseUrl: string | null
+): Promise<DeckPreviewCore | null> => {
+  const cacheKey = normalizeDeckPreviewKey(deckId)
+  const cached = getCachedDeckPreview(cacheKey)
+  if (cached) return cached
+
+  const inflight = deckPreviewInFlight.get(cacheKey)
+  if (inflight) return inflight
+
+  const promise = buildDeckPreviewCore(deckId, titleFallback, baseUrl)
+    .then((core) => {
+      if (core) {
+        setCachedDeckPreview(cacheKey, core)
+      }
+      return core
+    })
+    .finally(() => {
+      deckPreviewInFlight.delete(cacheKey)
+    })
+
+  deckPreviewInFlight.set(cacheKey, promise)
+  return promise
+}
+
 export async function generateMetadata(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Metadata> {
@@ -475,50 +609,13 @@ export async function generateMetadata(
   const titleFallback = `Deck ${deckId}`
 
   try {
-    const candidates = buildCandidates(deckId)
-    let rawDeck: any = null
     const baseUrl = await resolveBaseUrl()
-
-    for (const candidate of candidates) {
-      const raw = await fetchDeckDetails(candidate)
-      if (raw) {
-        const rawId = raw?.id || raw?.deckId || raw?.deck_id
-        if (!rawId) {
-          continue
-        }
-        rawDeck = raw
-        break
-      }
-    }
-
-    if (!rawDeck && baseUrl) {
-      try {
-        const res = await fetch(`${baseUrl}/api/deck/${encodeURIComponent(deckId)}?skipOwnerMerge=1`, {
-          headers: { Accept: 'application/json' },
-          cache: 'no-store',
-        })
-        if (res.ok) {
-          const json = await res.json()
-          rawDeck = json?.deck || null
-        }
-      } catch {
-        rawDeck = null
-      }
-    }
-
-    if (!rawDeck) {
+    const previewCore = await getDeckPreviewCore(deckId, titleFallback, baseUrl)
+    if (!previewCore) {
       return { title: titleFallback, description: 'SolForge Fusion deck overview.' }
     }
 
-    const deck = normalizeDeck(rawDeck)
-    const forgebornName = rawDeck?.forgeborn?.name || deck?.forgeborn?.name || deck?.forgebornId
-    const isFusedDeck = isFusedDeckLike(rawDeck) || isFusedDeckLike(deck)
-    const cardNames = listDeckCards(deck)
-    const baseDescription = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
-    const description = isFusedDeck ? await buildFusedDescription(rawDeck, deck) : baseDescription
-    const baseTitle = deck?.name || titleFallback
-    const ownerName = getDeckOwnerName(rawDeck) || getDeckOwnerName(deck)
-    const title = isFusedDeck ? buildFusedTitle(baseTitle, forgebornName, ownerName) : baseTitle
+    const { title, description, imageAlt } = previewCore
     const ogImageUrl = baseUrl ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}` : undefined
 
     return {
@@ -534,7 +631,7 @@ export async function generateMetadata(
                 url: ogImageUrl,
                 width: 1200,
                 height: 630,
-                alt: forgebornName ? `Forgeborn ${forgebornName}` : 'Forgeborn card',
+                alt: imageAlt,
               },
             ]
           : undefined,
