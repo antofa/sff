@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 41a4bd5
+  Request: Add proactive handling for Supabase database-full/read-only mode so deck search does not fail when writes are blocked.
+  Date: 2026-02-06
 - Commit: 6308f02
   Request: Do not touch `player_profiles` for now during deck search synchronization.
   Date: 2026-02-06
