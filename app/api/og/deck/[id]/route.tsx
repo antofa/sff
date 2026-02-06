@@ -630,6 +630,7 @@ const normalizeForgebornAbilityText = (value: string) =>
     .replace(/([.!?])([A-Za-z])/g, '$1 $2')
     .replace(/\s+([.,!?;:])/g, '$1')
     .replace(/([.!?])\s+(["'])/g, '$1$2')
+    .replace(/(["'])\s+/g, '$1')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -823,9 +824,11 @@ const renderAbilityText = (
   }
 
   return (
-    <span
+    <div
       style={{
-        display: 'block',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
         width: inlineMode ? 'auto' : '100%',
         minWidth: 0,
         maxWidth: '100%',
@@ -834,17 +837,31 @@ const renderAbilityText = (
     >
       {parts.flatMap((part, idx) => {
         if (part.type === 'text') {
-          if (!part.value) return []
-          return (
-            <span
-              key={`text-${idx}`}
-              style={{
-                whiteSpace: 'normal',
-              }}
-            >
-              {part.value}
+          const rawTokens = part.value.match(/\S+/g) || []
+          const mergedTokens: string[] = []
+          rawTokens.forEach((rawToken) => {
+            let token = rawToken
+            const leadingPunctMatch = token.match(/^([\"')\]]+)(.+)$/)
+            if (leadingPunctMatch && mergedTokens.length > 0) {
+              mergedTokens[mergedTokens.length - 1] += leadingPunctMatch[1]
+              token = leadingPunctMatch[2]
+            }
+            if (/^[.,!?;:\"')\]]+$/.test(token) && mergedTokens.length > 0) {
+              mergedTokens[mergedTokens.length - 1] += token
+              return
+            }
+            if (/^[\"')\]]/.test(token) && mergedTokens.length > 0) {
+              mergedTokens[mergedTokens.length - 1] += token.charAt(0)
+              token = token.slice(1)
+            }
+            if (token) mergedTokens.push(token)
+          })
+
+          return mergedTokens.map((token, tokenIdx) => (
+            <span key={`text-${idx}-${tokenIdx}`} style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>
+              {token}
             </span>
-          )
+          ))
         }
         if (part.type === 'level') {
           return (
@@ -856,14 +873,17 @@ const renderAbilityText = (
                 width: `${levelIconSize}px`,
                 height: `${levelIconSize}px`,
                 objectFit: 'contain',
-                margin: '0 1px',
+                margin: '0 2px 0 1px',
                 transform: 'translateY(2px)',
               }}
             />
           )
         }
         return (
-          <span key={`stat-${idx}`} style={{ verticalAlign: 'middle', whiteSpace: 'nowrap', marginRight: '2px' }}>
+          <span
+            key={`stat-${idx}`}
+            style={{ display: 'flex', alignItems: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap', marginRight: '2px' }}
+          >
             <span>{part.number}</span>
             <img
               src={part.src}
@@ -879,7 +899,7 @@ const renderAbilityText = (
           </span>
         )
       })}
-    </span>
+    </div>
   )
 }
 
