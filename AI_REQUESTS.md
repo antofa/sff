@@ -665,3 +665,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 9f171b7
   Request: Increase all icons in the OG image third column by 1.5x.
   Date: 2026-02-06
+- Commit: a4874f3
+  Request: In fused preview descriptions, move `Rarities` and `Creature Types` to new lines.
+  Date: 2026-02-06
