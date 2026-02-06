@@ -674,3 +674,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 28cb681
   Request: Cache deck page link-preview metadata (title/description/image alt) in memory with in-flight request deduplication, not just the OG image.
   Date: 2026-02-06
+- Commit: ff2bbf6
+  Request: Improve OG image text sharpness in compressed Discord previews.
+  Date: 2026-02-06
