@@ -4326,6 +4326,8 @@ const originalCardMeta = useMemo(() => {
           width: modalWidth,
           minWidth: modalMinWidth,
           minHeight: isMdUp ? 'calc(80vh + 50px)' : 'calc(85vh - 24px)',
+          overflowY: isMdUp ? 'hidden' : 'auto',
+          overflowX: 'hidden',
           transition: 'transform 300ms ease-in-out, opacity 300ms ease-in-out',
         },
         header: {
