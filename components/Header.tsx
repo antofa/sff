@@ -378,7 +378,7 @@ export function Header() {
           <div
             style={{
               width: '100%',
-              maxWidth: '42rem', // align with search panel width
+              maxWidth: '36rem', // align with search panel width
               margin: '0 auto',
             }}
           >
@@ -386,7 +386,7 @@ export function Header() {
               justify="space-between"
               align="center"
               wrap="wrap"
-              gap="md"
+              gap="sm"
             >
             <Group gap="sm" align="center" wrap="nowrap">
               <Link href="/?reset=1" aria-label="Go to home" className="flex items-center no-underline">
