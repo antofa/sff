@@ -628,6 +628,7 @@ const normalizeForgebornAbilityText = (value: string) =>
   value
     .replace(/([^\s])([+-])(?=\d)/g, '$1 $2')
     .replace(/([.!?])([A-Za-z])/g, '$1 $2')
+    .replace(/\s+\./g, '.')
     .replace(/\s+/g, ' ')
     .trim()
 
