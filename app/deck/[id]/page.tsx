@@ -361,8 +361,31 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
     addSolbindId(fb.solbindId2 || fb.solbindid2)
   }
 
+  const addSolbindIdsFromCard = (card: any) => {
+    if (!card || typeof card !== 'object') return
+
+    if (Array.isArray(card.solbindCards)) {
+      card.solbindCards.forEach((solbindCard: any) => {
+        const id = solbindCard?.id || solbindCard?.cardId || solbindCard?.card_id || solbindCard?.name
+        addSolbindId(id)
+      })
+    }
+
+    if (typeof card.solbind === 'string') {
+      card.solbind
+        .split(',')
+        .map((value: string) => value.trim())
+        .filter(Boolean)
+        .forEach((value: string) => addSolbindId(value))
+    }
+
+    addSolbindId(card.solbindId1 || card.solbindid1)
+    addSolbindId(card.solbindId2 || card.solbindid2)
+  }
+
   addSolbindIdsFromDeck(deckLike)
   enrichedHalves.forEach((half) => addSolbindIdsFromDeck(half))
+  mergedCards.forEach((card) => addSolbindIdsFromCard(card))
 
   const uniqueCards: any[] = []
   const seenCards = new Set<string>()
