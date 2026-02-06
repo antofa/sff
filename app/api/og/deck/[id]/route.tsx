@@ -1305,7 +1305,7 @@ export async function GET(
   const estimateLinesForText = (text: string, fontSize: number, maxWidth: number) => {
     const normalized = String(text || '').trim()
     if (!normalized) return 0
-    const avgCharWidth = fontSize * 0.6
+    const avgCharWidth = fontSize * 0.58
     const capacity = Math.max(1, Math.floor(maxWidth / avgCharWidth))
     const words = normalized.split(/\s+/)
     let lines = 1
@@ -1354,7 +1354,7 @@ export async function GET(
     const labelFontSize = baseLabelFontSize * scale
     const cardFontSize = baseCardFontSize * scale
     const iconSize = Math.round(18 * rarityIconScale * scale)
-    const textWidth = Math.max(40, columnWidth - iconSize - 16)
+    const textWidth = Math.max(40, columnWidth - iconSize - 12)
     const sectionGap = 8
     const labelGap = 4
     const listGap = 4
@@ -1395,7 +1395,7 @@ export async function GET(
     if (visible.length === 0) {
       return fontSize * lineHeight
     }
-    const textWidth = Math.max(40, maxWidth - levelIconSize - Math.round(fontSize * 1.2))
+    const textWidth = Math.max(40, maxWidth - levelIconSize - Math.round(fontSize * 1.0))
     const total = visible.reduce((sum, ability) => {
       const lines = Math.max(1, estimateLinesForText(ability.text || '', fontSize, textWidth))
       const rowHeight = Math.max(levelIconSize, lines * fontSize * lineHeight)
@@ -1407,7 +1407,7 @@ export async function GET(
   const estimateForgebornHeight = (scale: number) => {
     const columnWidth = Math.max(
       40,
-      (showFusedColumns ? fusedForgebornColumnWidth : innerWidth) - (showFusedColumns ? 18 : 12)
+      (showFusedColumns ? fusedForgebornColumnWidth : innerWidth) - (showFusedColumns ? 14 : 10)
     )
     const abilityFontSize = baseForgebornAbilityFont * primaryAbilityScale * scale
     const levelIconSize = Math.round(baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * scale)
@@ -1441,7 +1441,7 @@ export async function GET(
 
   const fitMinScale = 0.75
   const fitMaxScale = 1.3
-  const heightBudget = innerHeight * 0.93
+  const heightBudget = innerHeight * 0.98
 
   const cardColumnScales = showFusedColumns
     ? [

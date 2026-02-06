@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Relax fused OG auto-fit sizing to better fill vertical space.
 - Strip stray spaces before periods in OG forgeborn ability text.
 - Allow fused OG auto-fit to scale up to 1.3.
 - Remove forgeborn names from the fused OG third column.
