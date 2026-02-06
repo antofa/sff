@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: fa6ffc1
+  Request: Change OG metadata for the homepage (`http://hadoop21.click:3000/`): set the title to "Too Many Decks" and use the site icon as the image.
+  Date: 2026-02-06
 - Commit: 3a560c1
   Request: Add a CHANGELOG.md file to track changes; add another file to keep a history of all AI requests, including the commit ID and the request that led to it.
   Date: 2026-01-28
