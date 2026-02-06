@@ -547,6 +547,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const fusedCardsMergedRef = useRef<boolean>(false) // Prevent repeated card merging for fused decks
   const isSmUp = useMediaQuery('(min-width: 48em)')
   const isMdUp = useMediaQuery('(min-width: 62em)')
+  const modalBodyMaxHeight = isMdUp ? 'calc(80vh + 50px)' : 'calc(85vh - 24px)'
+  const modalBodyInnerHeight = isMdUp ? 'calc(80vh + 50px - 3rem)' : undefined
   const modalWidth = isMdUp
     ? 'min(1500px, calc(100vw - 64px))'
     : isSmUp
@@ -554,7 +556,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       : 'calc(100vw - 24px)'
   const modalMinWidth = isMdUp ? 'min(1100px, calc(100vw - 64px))' : 'auto'
   const detailPaneStyle: React.CSSProperties = isMdUp
-    ? { position: 'sticky', top: '1.5rem', alignSelf: 'flex-start', maxHeight: 'calc(80vh - 1.5rem)' }
+    ? { position: 'sticky', top: '1.5rem', alignSelf: 'flex-start', maxHeight: 'calc(80vh + 50px - 4.5rem)' }
     : { position: 'static', alignSelf: 'stretch', maxHeight: 'none' }
   const detailPanelWidth = isMdUp ? 'min(60vw, 900px)' : '100%'
   const detailPanelMinWidth = isMdUp ? '520px' : '0'
@@ -4442,7 +4444,7 @@ const originalCardMeta = useMemo(() => {
         },
         body: {
           padding: '1.5rem',
-          maxHeight: isMdUp ? 'calc(80vh + 50px)' : 'calc(85vh - 24px)',
+          maxHeight: modalBodyMaxHeight,
           minHeight: isMdUp ? 'calc(70vh + 50px)' : 'auto',
           overflowY: isMdUp ? 'hidden' : undefined,
         },
@@ -4451,12 +4453,20 @@ const originalCardMeta = useMemo(() => {
         },
       }}
     >
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ alignItems: 'flex-start' }}>
+      <div
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+        style={{
+          alignItems: 'flex-start',
+          height: modalBodyInnerHeight,
+          maxHeight: modalBodyInnerHeight,
+        }}
+      >
         {/* Left column - card lists */}
         <div
           className="lg:col-span-1 flex flex-col h-full"
           style={{
-            maxHeight: isMdUp ? 'calc(80vh + 50px)' : 'none',
+            height: modalBodyInnerHeight,
+            maxHeight: modalBodyInnerHeight ?? 'none',
             overflowY: isMdUp ? 'auto' : 'visible',
           }}
         >
