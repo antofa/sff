@@ -671,3 +671,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 66304b8
   Request: Improve OG image text sharpness/readability in social previews.
   Date: 2026-02-06
+- Commit: 28cb681
+  Request: Cache deck page link-preview metadata (title/description/image alt) in memory with in-flight request deduplication, not just the OG image.
+  Date: 2026-02-06
