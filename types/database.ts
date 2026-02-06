@@ -14,6 +14,21 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      cards: {
+        Row: {
+          card_id: string
+          card_name: string
+        }
+        Insert: {
+          card_id: string
+          card_name: string
+        }
+        Update: {
+          card_id?: string
+          card_name?: string
+        }
+        Relationships: []
+      }
       player_decks: {
         Row: {
           deck_id: string
@@ -172,6 +187,9 @@ export type Database = {
 export type PlayerDeckRow = Database['public']['Tables']['player_decks']['Row']
 export type PlayerDeckInsert = Database['public']['Tables']['player_decks']['Insert']
 export type PlayerDeckUpdate = Database['public']['Tables']['player_decks']['Update']
+export type CardRow = Database['public']['Tables']['cards']['Row']
+export type CardInsert = Database['public']['Tables']['cards']['Insert']
+export type CardUpdate = Database['public']['Tables']['cards']['Update']
 export type PlayerDeckCardRow = Database['public']['Tables']['player_deck_cards']['Row']
 export type PlayerDeckCardInsert = Database['public']['Tables']['player_deck_cards']['Insert']
 export type PlayerDeckCardUpdate = Database['public']['Tables']['player_deck_cards']['Update']
