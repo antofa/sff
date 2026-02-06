@@ -1345,21 +1345,50 @@ const originalCardMeta = useMemo(() => {
     const deckToUse = fullDeckData || deck
     if (!deckToUse) return new Set<string>()
     const ids = new Set<string>()
-    
-    // First, check forgeborn.solbindCards for Solbind cards
-    if (deckToUse.forgeborn && typeof deckToUse.forgeborn === 'object' && deckToUse.forgeborn.solbindCards && Array.isArray(deckToUse.forgeborn.solbindCards)) {
-      deckToUse.forgeborn.solbindCards.forEach((solbindCard: any) => {
-        if (solbindCard && solbindCard.id) {
-          ids.add(solbindCard.id)
-        }
-      })
-    }
-    if (deckToUse.forgeborn) {
-      const fb = deckToUse.forgeborn as any
+
+    const addSolbindFromForgeborn = (source: any) => {
+      const fb = source?.forgeborn
+      if (!fb || typeof fb !== 'object') return
+      if (Array.isArray(fb.solbindCards)) {
+        fb.solbindCards.forEach((solbindCard: any) => {
+          if (solbindCard && solbindCard.id) {
+            ids.add(solbindCard.id)
+          }
+        })
+      }
       const fbId1 = fb.solbindId1 || fb.solbindid1
       const fbId2 = fb.solbindId2 || fb.solbindid2
       if (fbId1) ids.add(fbId1)
       if (fbId2) ids.add(fbId2)
+    }
+
+    addSolbindFromForgeborn(deckToUse)
+
+    if (isFusedDeckLike(deckToUse)) {
+      const seen = new Set<string>()
+      const candidates: any[] = []
+      const pushCandidate = (candidate: any) => {
+        if (!candidate) return
+        const key = candidate.id || candidate.deckId || candidate.name
+        if (key) {
+          const keyStr = String(key)
+          if (seen.has(keyStr)) return
+          seen.add(keyStr)
+        }
+        candidates.push(candidate)
+      }
+
+      if (Array.isArray((deckToUse as any).myDecks)) {
+        (deckToUse as any).myDecks.forEach((candidate: any) => pushCandidate(candidate))
+      }
+      if (Array.isArray((deck as any)?.myDecks)) {
+        (deck as any).myDecks.forEach((candidate: any) => pushCandidate(candidate))
+      }
+      getFusedDeckSourceDecks.forEach((candidate) => pushCandidate(candidate))
+      fusedSourceDecks.forEach((candidate) => pushCandidate(candidate))
+      Object.values(halfDetails).forEach((candidate) => pushCandidate(candidate))
+
+      candidates.forEach(addSolbindFromForgeborn)
     }
     
     // Add Solbind cards from solbindCards arrays in normalizedCards (prefer richer data if available)
@@ -1399,7 +1428,7 @@ const originalCardMeta = useMemo(() => {
     }
     
     return ids
-  }, [uniqueNormalizedCards, deck, fullDeckData])
+  }, [uniqueNormalizedCards, deck, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks, halfDetails])
 
   // Create a stable string representation for use in dependencies
   const solbindCardIdsKey = useMemo(() => {
@@ -1539,7 +1568,7 @@ const originalCardMeta = useMemo(() => {
       spells: Math.max(derived.spells, comp.spells ?? 0),
       solbind: Math.max(derived.solbind, comp.solbind ?? 0),
     }
-  }, [deck, uniqueNormalizedCards])
+  }, [deck, uniqueNormalizedCards, solbindCardIdsSet])
 
   const deckTags = useMemo(() => {
     const tagSet = new Set<string>()
@@ -2932,22 +2961,52 @@ const originalCardMeta = useMemo(() => {
         .filter(Boolean)
     }
 
-    // forgeborn.solbindCards
-    if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && Array.isArray(deckForUse.forgeborn.solbindCards)) {
-      deckForUse.forgeborn.solbindCards.forEach((solbindCard: any) => {
-        if (solbindCard && solbindCard.id && !solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
-          solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
-        }
-      })
-    }
-    // forgeborn solbindId1/solbindId2
-    if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object') {
-      const fb = deckForUse.forgeborn as any
+    const addSolbindFromForgeborn = (source: any) => {
+      const fb = source?.forgeborn
+      if (!fb || typeof fb !== 'object') return
+
+      if (Array.isArray(fb.solbindCards)) {
+        fb.solbindCards.forEach((solbindCard: any) => {
+          if (solbindCard && solbindCard.id && !solbindCardObjects.some(sb => sb.id === solbindCard.id)) {
+            solbindCardObjects.push(getCardInfo(solbindCard.id, solbindCard))
+          }
+        })
+      }
+
       ;[fb.solbindId1 || fb.solbindid1, fb.solbindId2 || fb.solbindid2].forEach(id => {
         if (id && !solbindCardObjects.some(sb => sb.id === id)) {
           solbindCardObjects.push(getCardInfo(id))
         }
       })
+    }
+
+    addSolbindFromForgeborn(deckForUse)
+
+    if (isFusedDeckLike(deckForUse)) {
+      const seen = new Set<string>()
+      const candidates: any[] = []
+      const pushCandidate = (candidate: any) => {
+        if (!candidate) return
+        const key = candidate.id || candidate.deckId || candidate.name
+        if (key) {
+          const keyStr = String(key)
+          if (seen.has(keyStr)) return
+          seen.add(keyStr)
+        }
+        candidates.push(candidate)
+      }
+
+      if (Array.isArray((deckForUse as any).myDecks)) {
+        (deckForUse as any).myDecks.forEach((candidate: any) => pushCandidate(candidate))
+      }
+      if (Array.isArray((deck as any)?.myDecks)) {
+        (deck as any).myDecks.forEach((candidate: any) => pushCandidate(candidate))
+      }
+      getFusedDeckSourceDecks.forEach((candidate) => pushCandidate(candidate))
+      fusedSourceDecks.forEach((candidate) => pushCandidate(candidate))
+      Object.values(halfDetails).forEach((candidate) => pushCandidate(candidate))
+
+      candidates.forEach(addSolbindFromForgeborn)
     }
 
     // Cards with solbindCards arrays
@@ -3032,7 +3091,7 @@ const originalCardMeta = useMemo(() => {
     })
 
     return Array.from(dedupMap.values())
-  }, [uniqueNormalizedCards, forgebornCards, solbindCardIdsSet, deck, fullDeckData])
+  }, [uniqueNormalizedCards, forgebornCards, solbindCardIdsSet, deck, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks, halfDetails])
 
   // Merge rarity summary with Solbind count (make sure Solbind shows up if we have Solbind cards)
   const displayRaritySummary = useMemo(() => {

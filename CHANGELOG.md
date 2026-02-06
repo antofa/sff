@@ -142,6 +142,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - (2026-02-05 UTC) Prevent OG ability stat icons from replacing letters inside words like "Damage".
 
 ### Fixed
+- Include Solbind cards from both halves in fused deck modal lists.
 - Show the earliest half-deck expiry date for fused decks in the card modal header.
 - Remove the extra modal scrollbar in deck card views when the content already fits.
 - Avoid unsupported `inline-flex` styles in OG ability rendering to prevent preview failures.
