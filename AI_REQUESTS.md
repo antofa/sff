@@ -617,3 +617,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: c5b6dc0
   Request: Raise fused OG auto-fit max scale to 1.35, use full height, and reduce vertical padding.
   Date: 2026-02-06
+- Commit: 1374f67
+  Request: Reduce fused OG bottom whitespace by allowing larger auto-fit scaling and tighter padding.
+  Date: 2026-02-06
