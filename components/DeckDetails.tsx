@@ -586,7 +586,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
   }, [selectedCard, isMdUp])
 
-  // Всегда работаем с обогащенной декой (computed поля) для сетов/expiry/тегов
+  // Always use the enriched deck (computed fields) for sets/expiry/tags.
   const deckForDisplay = useMemo(() => {
     const base = fullDeckData || deck
     if (!base) return null
@@ -1082,7 +1082,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         return
       }
 
-      // cards array без cardIds — используем как временный вариант, но всё равно пытаемся фетчить
+      // Cards array without cardIds: use as a temporary fallback, but still try to fetch.
       if (hasCardsArray) {
         if (!stored) updates[cid] = c
         if (!storedHasIds) pendingFetch.push(cid)
@@ -1133,7 +1133,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     load().catch(() => {})
   }, [deck, opened, isFusedDeck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, allDecks, halfDetails])
 
-  // Собираем карты для отображения в модалке (чистый сбор для fused)
+  // Assemble cards for the modal (clean merge for fused decks).
   const normalizedCards: CardInfo[] = useMemo(() => {
     const deckToUse = deckForDisplay || deck
     if (!deckToUse) return []
@@ -1175,22 +1175,22 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
     const collectFused = (): any[] => {
       let candidates: any[] = []
-      // 1) myDecks из полных данных
+      // 1) myDecks from full data
       if (Array.isArray((fullDeckData as any)?.myDecks)) {
         (fullDeckData as any).myDecks.forEach((s: any) => s && candidates.push(s))
       }
-      // 2) myDecks из оригинальной колоды (часто с cardIds)
+      // 2) myDecks from the original deck (often with cardIds)
       if (Array.isArray((deck as any)?.myDecks)) {
         (deck as any).myDecks.forEach((s: any) => s && candidates.push(s))
       }
-      // 3) getFusedDeckSourceDecks (из списка всех колод)
+      // 3) getFusedDeckSourceDecks (from the full deck list)
       const [s1, s2] = getFusedDeckSourceDecks
       if (s1) candidates.push(s1)
       if (s2) candidates.push(s2)
-      // 4) fusedSourceDecks (фетч по id)
+      // 4) fusedSourceDecks (fetched by id)
       fusedSourceDecks.forEach(s => s && candidates.push(s))
 
-      // Попробуем заменить кандидатов на версии из allDecks, если там есть cardIds/cardList
+      // Try to replace candidates with versions from allDecks when they include cardIds/cardList.
       const allDecksMap = new Map<string, any>()
       allDecks.forEach(d => d?.id && allDecksMap.set(d.id, d))
       candidates = candidates.map((c) => {
@@ -1203,7 +1203,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         return c
       })
 
-      // Попробуем заменить кандидатов деталями, которые уже подтянули отдельно
+      // Try to replace candidates with separately fetched details.
       candidates = candidates.map((c) => {
         const cid = c?.id
         const details = cid ? halfDetails[cid] : null
@@ -1217,7 +1217,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
       if (candidates.length === 0) return []
 
-      // выберем сначала те, где есть cardIds
+      // Prefer candidates that include cardIds.
       const withIds = candidates.filter(h => Array.isArray((h as any).cardIds) && (h as any).cardIds.length > 0)
       const picked: any[] = []
       withIds.slice(0, 2).forEach(h => picked.push(h))
@@ -1265,7 +1265,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     })
   }, [deck, deckForDisplay, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, isFusedDeck, halfDetails, allDecks])
 
-  // Дедуп уже после нормализации (id в нижнем регистре)
+  // Deduplicate after normalization (id lowercased).
   const uniqueNormalizedCards: CardInfo[] = useMemo(() => {
     const map = new Map<string, CardInfo>()
     normalizedCards.forEach((card, idx) => {
@@ -1278,7 +1278,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     return Array.from(map.values())
   }, [normalizedCards])
 
-  // Метаданные типов из половинок (используются как fallback)
+  // Type metadata from halves (used as fallback).
 const originalCardMeta = useMemo(() => {
   const map = new Map<string, { cardType?: string; type?: string }>()
   const deckToUse = deckForDisplay || deck
@@ -3823,27 +3823,74 @@ const originalCardMeta = useMemo(() => {
   const expireInfo = useMemo(() => {
     const d = deckForDisplay as any
     if (!d) return { label: null, isExpired: false }
-    const raw =
-      d.expireAt ||
-      d.expire ||
-      d.expireDate ||
-      d.expire_date ||
-      d.expiry ||
-      d.pExpiry ||
-      (Number.isFinite(d.computed?.expiryTs) ? new Date(d.computed.expiryTs).toISOString() : null)
 
-    if (!raw) return { label: null, isExpired: false }
-    const ts = Date.parse(raw)
-    if (!Number.isFinite(ts)) return { label: null, isExpired: false }
-    return {
-      label: new Date(ts).toLocaleDateString('en-GB', {
+    const resolveExpiryTimestamp = (candidate: any): number | null => {
+      if (!candidate) return null
+      const computedTs = candidate.computed?.expiryTs
+      if (Number.isFinite(computedTs)) return computedTs as number
+      const expireRaw =
+        candidate.expireAt ??
+        candidate.expire ??
+        candidate.expire_at ??
+        candidate.expireDate ??
+        candidate.expire_date ??
+        candidate.expiry ??
+        candidate.pExpiry ??
+        null
+      if (!expireRaw) return null
+      const ts = new Date(expireRaw).getTime()
+      return Number.isNaN(ts) ? null : ts
+    }
+
+    const formatLabel = (ts: number) =>
+      new Date(ts).toLocaleDateString('en-GB', {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
-      }),
+      })
+
+    let ts: number | null = null
+
+    if (isFusedDeckLike(d)) {
+      const seen = new Set<string>()
+      const sources: any[] = []
+      const pushSource = (source: any) => {
+        if (!source) return
+        const key = source.id || source.deckId || source.name
+        if (key) {
+          if (seen.has(String(key))) return
+          seen.add(String(key))
+        }
+        sources.push(source)
+      }
+
+      const [half1, half2] = getFusedDeckSourceDecks
+      pushSource(half1)
+      pushSource(half2)
+      fusedSourceDecks.forEach(pushSource)
+      if (Array.isArray(d.myDecks)) d.myDecks.forEach(pushSource)
+      Object.values(halfDetails).forEach(pushSource)
+
+      const halfExpiry = sources
+        .map(resolveExpiryTimestamp)
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+
+      if (halfExpiry.length > 0) {
+        ts = Math.min(...halfExpiry)
+      }
+    }
+
+    if (ts === null) {
+      ts = resolveExpiryTimestamp(d)
+    }
+
+    if (ts === null) return { label: null, isExpired: false }
+
+    return {
+      label: formatLabel(ts),
       isExpired: ts < Date.now(),
     }
-  }, [deckForDisplay])
+  }, [deckForDisplay, fusedSourceDecks, halfDetails, getFusedDeckSourceDecks])
 
   const copyDeckLink = useCallback(() => {
     if (!deck?.id) return
