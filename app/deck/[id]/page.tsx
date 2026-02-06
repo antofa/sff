@@ -407,6 +407,16 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
     const rarityValue = typeof card === 'string' ? '' : card?.rarity || ''
     const typeLower = String(typeValue).toLowerCase()
     const rarityLower = String(rarityValue).toLowerCase()
+    const hasSolbindChildren =
+      !!(
+        typeof card === 'object' &&
+        card !== null &&
+        (
+          (Array.isArray(card.solbindCards) && card.solbindCards.length > 0) ||
+          (typeof card.solbind === 'string' && card.solbind.trim().length > 0) ||
+          hasValue(card.solbindId1 || card.solbindid1 || card.solbindId2 || card.solbindid2)
+        )
+      )
 
     const isForgeborn =
       (!!id && !!forgebornId && String(id).toLowerCase() === String(forgebornId).toLowerCase()) ||
@@ -414,11 +424,22 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
       rarityLower.includes('forgeborn')
     if (isForgeborn) return
 
+    if (hasSolbindChildren) {
+      const isSpellParent = typeLower.includes('spell') && !typeLower.includes('creature')
+      if (isSpellParent) spells += 1
+      else creatures += 1
+
+      const rarity = normalizeRarityLabel(rarityValue)
+      if (rarity) {
+        rarityCounts.set(rarity, (rarityCounts.get(rarity) || 0) + 1)
+      }
+      return
+    }
+
     const isSolbindById = idKey && solbindIdSet.has(idKey)
     const isSolbindByTag = rarityLower.includes('solbind') || typeLower.includes('solbind')
     if (isSolbindById || isSolbindByTag) {
       solbind += 1
-      if (idKey) solbindIdSet.add(idKey)
     } else if (typeLower.includes('spell')) {
       spells += 1
     } else if (typeLower.includes('creature')) {
