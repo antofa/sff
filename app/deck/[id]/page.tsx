@@ -485,7 +485,7 @@ const buildHalfSummary = (halfDeck: any): string | null => {
   if (setLabel) details.push(`Set: ${setLabel}`)
   if (score !== null) details.push(`Score: ${score}`)
   if (elo !== null) details.push(`ELO: ${elo}`)
-  if (expireLabel) details.push(`Expires: ${expireLabel}`)
+  if (expireLabel) details.push(`Expire date: ${expireLabel}`)
   if (details.length === 0) return null
   return details.join(', ')
 }
