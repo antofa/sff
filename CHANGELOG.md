@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- Preserve punctuation/quote attachment across OG ability text, level icons, and stat icons during wrapping.
 - Tokenize OG ability text by words with explicit spacing and punctuation attachment for stable wrapping.
 - Use normal whitespace collapse for OG ability text segments to avoid exaggerated wraps.
 - Tighten OG ability punctuation normalization around commas/quotes.

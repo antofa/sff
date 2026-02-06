@@ -624,15 +624,24 @@ const stripMarkup = (value: string) => {
   return withIconText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-const normalizeForgebornAbilityText = (value: string) =>
-  value
+const normalizeForgebornAbilityText = (value: string) => {
+  let normalized = value
     .replace(/([^\s])([+-])(?=\d)/g, '$1 $2')
     .replace(/([.!?])([A-Za-z])/g, '$1 $2')
     .replace(/\s+([.,!?;:])/g, '$1')
     .replace(/([.!?])\s+(["'])/g, '$1$2')
-    .replace(/(["'])\s+/g, '$1')
+    .replace(/([.!?]["'])\s*([A-Za-z])/g, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim()
+
+  // Preserve common quoted trigger phrases as one unbreakable token in OG rendering.
+  normalized = normalized.replace(
+    /"([^"]*?\b(?:When|After|Before)\b[^"]*?)"/gi,
+    (_full, inner: string) => `"${inner.replace(/\s+/g, '\u00A0')}"`
+  )
+
+  return normalized
+}
 
 type AbilityEntry = { title: string | null; text: string | null; level?: number | null }
 type CardListEntry = {
@@ -823,6 +832,54 @@ const renderAbilityText = (
     parts.push({ type: 'text', value: normalizedText.slice(lastIndex) })
   }
 
+  type AbilityRenderToken =
+    | { kind: 'text'; text: string }
+    | { kind: 'level'; src: string; suffix?: string }
+    | { kind: 'stat'; src: string; number: string; suffix?: string }
+  const renderTokens: AbilityRenderToken[] = []
+  const appendToPreviousToken = (suffix: string) => {
+    if (!suffix) return
+    const lastToken = renderTokens[renderTokens.length - 1]
+    if (!lastToken) {
+      renderTokens.push({ kind: 'text', text: suffix })
+      return
+    }
+    if (lastToken.kind === 'text') {
+      lastToken.text += suffix
+      return
+    }
+    lastToken.suffix = `${lastToken.suffix || ''}${suffix}`
+  }
+
+  parts.forEach((part) => {
+    if (part.type === 'text') {
+      const rawTokens = part.value.match(/\S+/g) || []
+      rawTokens.forEach((rawToken) => {
+        let token = rawToken
+        if (renderTokens.length > 0) {
+          const punctPrefix = token.match(/^([.,!?;:]+["')\]]*)(.+)$/)
+          if (punctPrefix) {
+            appendToPreviousToken(punctPrefix[1])
+            token = punctPrefix[2]
+          }
+        }
+        if (/^[.,!?;:"')\]]+$/.test(token) && renderTokens.length > 0) {
+          appendToPreviousToken(token)
+          return
+        }
+        if (token) {
+          renderTokens.push({ kind: 'text', text: token })
+        }
+      })
+      return
+    }
+    if (part.type === 'level') {
+      renderTokens.push({ kind: 'level', src: part.src })
+      return
+    }
+    renderTokens.push({ kind: 'stat', src: part.src, number: part.number })
+  })
+
   return (
     <div
       style={{
@@ -835,58 +892,41 @@ const renderAbilityText = (
         flex: inlineMode ? 1 : undefined,
       }}
     >
-      {parts.flatMap((part, idx) => {
-        if (part.type === 'text') {
-          const rawTokens = part.value.match(/\S+/g) || []
-          const mergedTokens: string[] = []
-          rawTokens.forEach((rawToken) => {
-            let token = rawToken
-            const leadingPunctMatch = token.match(/^([\"')\]]+)(.+)$/)
-            if (leadingPunctMatch && mergedTokens.length > 0) {
-              mergedTokens[mergedTokens.length - 1] += leadingPunctMatch[1]
-              token = leadingPunctMatch[2]
-            }
-            if (/^[.,!?;:\"')\]]+$/.test(token) && mergedTokens.length > 0) {
-              mergedTokens[mergedTokens.length - 1] += token
-              return
-            }
-            if (/^[\"')\]]/.test(token) && mergedTokens.length > 0) {
-              mergedTokens[mergedTokens.length - 1] += token.charAt(0)
-              token = token.slice(1)
-            }
-            if (token) mergedTokens.push(token)
-          })
-
-          return mergedTokens.map((token, tokenIdx) => (
-            <span key={`text-${idx}-${tokenIdx}`} style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>
-              {token}
-            </span>
-          ))
-        }
-        if (part.type === 'level') {
+      {renderTokens.map((token, idx) => {
+        if (token.kind === 'text') {
           return (
-            <img
-              key={`level-${idx}`}
-              src={part.src}
-              style={{
-                verticalAlign: 'middle',
-                width: `${levelIconSize}px`,
-                height: `${levelIconSize}px`,
-                objectFit: 'contain',
-                margin: '0 2px 0 1px',
-                transform: 'translateY(2px)',
-              }}
-            />
+            <span key={`text-${idx}`} style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>
+              {token.text}
+            </span>
+          )
+        }
+        if (token.kind === 'level') {
+          return (
+            <span key={`level-${idx}`} style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', marginRight: '4px' }}>
+              <img
+                src={token.src}
+                style={{
+                  verticalAlign: 'middle',
+                  width: `${levelIconSize}px`,
+                  height: `${levelIconSize}px`,
+                  objectFit: 'contain',
+                  margin: '0 2px 0 1px',
+                  transform: 'translateY(2px)',
+                }}
+              />
+              {token.suffix ? <span>{token.suffix}</span> : null}
+            </span>
           )
         }
         return (
           <span
             key={`stat-${idx}`}
-            style={{ display: 'flex', alignItems: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap', marginRight: '2px' }}
+            style={{ display: 'flex', alignItems: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap', marginRight: '4px' }}
           >
-            <span>{part.number}</span>
+            <span>{token.number}</span>
             <img
-              src={part.src}
+              key={`level-${idx}`}
+              src={token.src}
               style={{
                 verticalAlign: 'middle',
                 width: '20px',
@@ -896,6 +936,7 @@ const renderAbilityText = (
                 transform: 'translateY(1px)',
               }}
             />
+            {token.suffix ? <span>{token.suffix}</span> : null}
           </span>
         )
       })}
