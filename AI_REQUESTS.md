@@ -626,3 +626,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 0c491f4
   Request: Ensure forgeborn level icons do not create a separate column with no text beneath them.
   Date: 2026-02-06
+- Commit: 2228f33
+  Request: Fix fused OG third-column abilities so text continues under Roman level icons (II-IV) instead of leaving an empty icon gutter.
+  Date: 2026-02-06
