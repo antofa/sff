@@ -638,3 +638,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: c8aac5a
   Request: Fix fused OG third-column wrapping so lines do not break too early and follow natural inline flow.
   Date: 2026-02-06
+- Commit: f28aa68
+  Request: Fix OG render crash caused by unsupported `display: inline-block` in ability text styles.
+  Date: 2026-02-06
