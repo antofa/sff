@@ -584,3 +584,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 802a17d
   Request: также увеличь иконки редкости на 30%
   Date: 2026-02-06
+- Commit: 16b67c9
+  Request: сделай scale всего шрифта во всех колонках og fused image 1.1
+  Date: 2026-02-06
