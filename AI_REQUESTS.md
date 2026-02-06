@@ -548,3 +548,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 4218bc2
   Request: Fix the Darkforge Common exact rarity filter returning zero results.
   Date: 2026-02-05
+- Commit: 24b1de5
+  Request: Add Min/Max fields to multi-select filters so they require at least N of the selected values (default any-match).
+  Date: 2026-02-06
