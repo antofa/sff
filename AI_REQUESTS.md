@@ -641,3 +641,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: f28aa68
   Request: Fix OG render crash caused by unsupported `display: inline-block` in ability text styles.
   Date: 2026-02-06
+- Commit: c783980
+  Request: Fix fused OG third-column wrapping that became too aggressive and normalize punctuation spacing.
+  Date: 2026-02-06
