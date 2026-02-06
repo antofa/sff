@@ -38,6 +38,189 @@ const resolveBaseUrl = async () => {
   return `${proto}://${host}`
 }
 
+const hasValue = (value: unknown) => {
+  if (value === null || value === undefined) return false
+  if (typeof value === 'string') return value.trim().length > 0
+  if (Array.isArray(value)) return value.length > 0
+  return true
+}
+
+const isFusedDeckLike = (deck: any) => {
+  const format = String(deck?.format || deck?.gameFormat || '').toLowerCase()
+  if (format === 'fused') return true
+  const idCandidates = [deck?.id, deck?.deckId, deck?.deck_id]
+    .filter(Boolean)
+    .map((value) => String(value).toLowerCase())
+  return idCandidates.some((value) => /^fused[_-]/.test(value) || value.includes('deck_fused'))
+}
+
+const normalizeSetLabel = (value: unknown): string | null => {
+  if (!hasValue(value)) return null
+  const normalized = String(value).trim().toUpperCase()
+  if (!normalized) return null
+  if (normalized === 'B1' || normalized === 'B2' || normalized === 'B3') return normalized
+  if (/^\d+$/.test(normalized)) return `S${normalized}`
+  if (/^S\d+$/.test(normalized)) return normalized
+  if (/^B\d+$/.test(normalized)) return normalized
+  return null
+}
+
+const inferSetFromCardId = (cardId: string): string | null => {
+  if (!cardId) return null
+  if (/^b3_/i.test(cardId)) return 'B3'
+  if (/^b2_/i.test(cardId)) return 'B2'
+  if (/^b1_/i.test(cardId)) return 'B1'
+  const match = cardId.match(/^s(\d+)/i)
+  if (match?.[1]) return `S${match[1]}`
+  return null
+}
+
+const getSetLabel = (deckLike: any): string | null => {
+  const fromDeck =
+    normalizeSetLabel(deckLike?.cardSetNo ?? deckLike?.card_set_no) ||
+    normalizeSetLabel(deckLike?.cardSetId ?? deckLike?.card_set_id)
+  if (fromDeck) return fromDeck
+
+  const cards =
+    (Array.isArray(deckLike?.cards) && deckLike.cards) ||
+    (Array.isArray(deckLike?.cardList) && deckLike.cardList) ||
+    []
+  for (const card of cards) {
+    const fromCard =
+      normalizeSetLabel(card?.cardSetNo ?? card?.card_set_no) ||
+      normalizeSetLabel(card?.cardSetId ?? card?.card_set_id ?? card?.SK ?? card?.sk)
+    if (fromCard) return fromCard
+    const cardId = card?.id || card?.cardId || card?.card_id
+    if (typeof cardId === 'string') {
+      const fromCardId = inferSetFromCardId(cardId)
+      if (fromCardId) return fromCardId
+    }
+  }
+  return null
+}
+
+const getRoundedScore = (deckLike: any): number | null => {
+  const raw = deckLike?.deckScore ?? deckLike?.score ?? deckLike?.scoreValue ?? deckLike?.sffScore ?? null
+  const numeric = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(numeric)) return null
+  return Math.round(numeric * 100)
+}
+
+const getRoundedElo = (deckLike: any): number | null => {
+  const raw = deckLike?.elo ?? deckLike?.Elo ?? deckLike?.deckElo ?? null
+  const numeric = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(numeric)) return null
+  return Math.round(numeric)
+}
+
+const getHalfDeckId = (deckLike: any): string | null => {
+  const raw = deckLike?.id ?? deckLike?.deckId ?? deckLike?.deck_id ?? null
+  if (!hasValue(raw)) return null
+  const id = String(raw).trim()
+  return id || null
+}
+
+const getHalfDeckName = (deckLike: any): string | null => {
+  const raw = deckLike?.name ?? deckLike?.deckName ?? null
+  if (!hasValue(raw)) return null
+  const name = String(raw).trim()
+  return name || null
+}
+
+const extractFusedHalfCandidates = (deckLike: any): any[] => {
+  const candidates: any[] = []
+  if (Array.isArray(deckLike?.myDecks)) {
+    candidates.push(...deckLike.myDecks)
+  }
+  if (Array.isArray(deckLike?.decks)) {
+    candidates.push(...deckLike.decks)
+  }
+  if (Array.isArray(deckLike?.fusedDeckIds)) {
+    deckLike.fusedDeckIds.forEach((id: any) => {
+      if (!hasValue(id)) return
+      candidates.push({ id: String(id) })
+    })
+  }
+
+  const deduped: any[] = []
+  const seen = new Set<string>()
+  candidates.forEach((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object') return
+    const id = getHalfDeckId(candidate)
+    const name = getHalfDeckName(candidate)
+    const key = id ? `id:${id.toLowerCase()}` : name ? `name:${name.toLowerCase()}` : `idx:${index}`
+    if (seen.has(key)) return
+    seen.add(key)
+    deduped.push(candidate)
+  })
+  return deduped.slice(0, 2)
+}
+
+const mergeDeckLike = (primary: any, fallback: any) => {
+  const merged = { ...(fallback && typeof fallback === 'object' ? fallback : {}) }
+  if (primary && typeof primary === 'object') {
+    Object.entries(primary).forEach(([key, value]) => {
+      if (hasValue(value)) {
+        ;(merged as any)[key] = value
+      }
+    })
+  }
+  return merged
+}
+
+const hasHalfSummaryData = (deckLike: any) => {
+  return (
+    hasValue(getHalfDeckName(deckLike)) ||
+    hasValue(deckLike?.faction) ||
+    hasValue(getSetLabel(deckLike)) ||
+    getRoundedScore(deckLike) !== null ||
+    getRoundedElo(deckLike) !== null
+  )
+}
+
+const buildHalfSummary = (halfDeck: any, index: number): string | null => {
+  const halfName = getHalfDeckName(halfDeck)
+  const faction = hasValue(halfDeck?.faction) ? String(halfDeck.faction).trim() : null
+  const setLabel = getSetLabel(halfDeck)
+  const score = getRoundedScore(halfDeck)
+  const elo = getRoundedElo(halfDeck)
+  const details: string[] = []
+  if (faction) details.push(`Faction: ${faction}`)
+  if (setLabel) details.push(`Set: ${setLabel}`)
+  if (score !== null) details.push(`Score: ${score}`)
+  if (elo !== null) details.push(`ELO: ${elo}`)
+
+  if (!halfName && details.length === 0) return null
+  const label = halfName || `Deck ${index + 1}`
+  return details.length > 0 ? `Half ${index + 1}: ${label} (${details.join(', ')})` : `Half ${index + 1}: ${label}`
+}
+
+const buildFusedDescription = async (deckLike: any, baseDescription: string) => {
+  if (!isFusedDeckLike(deckLike)) return baseDescription
+
+  const halfCandidates = extractFusedHalfCandidates(deckLike)
+  if (halfCandidates.length === 0) return baseDescription
+
+  const enrichedHalves = await Promise.all(
+    halfCandidates.map(async (halfDeck) => {
+      const halfId = getHalfDeckId(halfDeck)
+      const needsEnrichment = !hasHalfSummaryData(halfDeck)
+      if (!halfId || !needsEnrichment) return halfDeck
+
+      const details = await fetchDeckDetails(halfId, { timeoutMs: 2500, revalidateSeconds: 86400 })
+      if (!details || typeof details !== 'object') return halfDeck
+      return mergeDeckLike(halfDeck, details)
+    })
+  )
+
+  const summaries = enrichedHalves
+    .map((halfDeck, index) => buildHalfSummary(halfDeck, index))
+    .filter((value): value is string => !!value)
+
+  if (summaries.length === 0) return baseDescription
+  return `${summaries.join(' + ')}. Cards: ${baseDescription}`
+}
+
 const listDeckCards = (deck: any) => {
   const cards = Array.isArray(deck?.cards) ? deck.cards : []
   const solbindCards = Array.isArray(deck?.solbinds) ? deck.solbinds : []
@@ -158,7 +341,8 @@ export async function generateMetadata(
     const deck = normalizeDeck(rawDeck)
     const forgebornName = rawDeck?.forgeborn?.name || deck?.forgeborn?.name || deck?.forgebornId
     const cardNames = listDeckCards(deck)
-    const description = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
+    const baseDescription = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
+    const description = await buildFusedDescription(rawDeck, baseDescription)
     const title = deck?.name || titleFallback
     const ogImageUrl = baseUrl ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}` : undefined
 
