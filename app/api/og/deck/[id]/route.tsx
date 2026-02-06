@@ -822,11 +822,9 @@ const renderAbilityText = (
   }
 
   return (
-    <div
+    <span
       style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
+        display: 'block',
         width: inlineMode ? 'auto' : '100%',
         minWidth: 0,
         maxWidth: '100%',
@@ -841,7 +839,6 @@ const renderAbilityText = (
               key={`text-${idx}`}
               style={{
                 whiteSpace: 'pre-wrap',
-                minWidth: 0,
               }}
             >
               {part.value}
@@ -854,6 +851,8 @@ const renderAbilityText = (
               key={`level-${idx}`}
               src={part.src}
               style={{
+                display: 'inline-block',
+                verticalAlign: 'middle',
                 width: `${levelIconSize}px`,
                 height: `${levelIconSize}px`,
                 objectFit: 'contain',
@@ -864,11 +863,16 @@ const renderAbilityText = (
           )
         }
         return (
-          <span key={`stat-${idx}`} style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+          <span
+            key={`stat-${idx}`}
+            style={{ display: 'inline-block', verticalAlign: 'middle', whiteSpace: 'nowrap' }}
+          >
             <span>{part.number}</span>
             <img
               src={part.src}
               style={{
+                display: 'inline-block',
+                verticalAlign: 'middle',
                 width: '20px',
                 height: '20px',
                 objectFit: 'contain',
@@ -879,7 +883,7 @@ const renderAbilityText = (
           </span>
         )
       })}
-    </div>
+    </span>
   )
 }
 
