@@ -99,6 +99,27 @@ const getSetLabel = (deckLike: any): string | null => {
   return null
 }
 
+const getExpireLabel = (deckLike: any): string | null => {
+  const raw =
+    deckLike?.expireAt ??
+    deckLike?.expire_at ??
+    deckLike?.expireDate ??
+    deckLike?.expire_date ??
+    deckLike?.pExpiry ??
+    deckLike?.expire ??
+    deckLike?.expiry ??
+    null
+  if (!hasValue(raw)) return null
+  const ts = Date.parse(String(raw))
+  if (!Number.isFinite(ts)) return null
+  return new Date(ts).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
 const getRoundedScore = (deckLike: any): number | null => {
   const raw = deckLike?.deckScore ?? deckLike?.score ?? deckLike?.scoreValue ?? deckLike?.sffScore ?? null
   const numeric = typeof raw === 'number' ? raw : Number(raw)
@@ -125,6 +146,23 @@ const getHalfDeckName = (deckLike: any): string | null => {
   if (!hasValue(raw)) return null
   const name = String(raw).trim()
   return name || null
+}
+
+const extractDeckCards = (deckLike: any): any[] => {
+  if (!deckLike || typeof deckLike !== 'object') return []
+  const cards =
+    (Array.isArray(deckLike?.cards) && deckLike.cards) ||
+    (deckLike?.cards && typeof deckLike.cards === 'object' ? Object.values(deckLike.cards) : null) ||
+    (Array.isArray(deckLike?.cardList) && deckLike.cardList) ||
+    (Array.isArray(deckLike?.cardIds) && deckLike.cardIds) ||
+    []
+
+  const solbinds =
+    (Array.isArray(deckLike?.solbinds) && deckLike.solbinds) ||
+    (Array.isArray(deckLike?.forgeborn?.solbindCards) && deckLike.forgeborn.solbindCards) ||
+    []
+
+  return [...cards, ...solbinds].filter(Boolean)
 }
 
 const getDeckOwnerName = (deckLike: any): string | null => {
@@ -201,13 +239,90 @@ const mergeDeckLike = (primary: any, fallback: any) => {
   return merged
 }
 
-const hasHalfSummaryData = (deckLike: any) => {
-  return (
-    hasValue(deckLike?.faction) ||
-    hasValue(getSetLabel(deckLike)) ||
-    getRoundedScore(deckLike) !== null ||
-    getRoundedElo(deckLike) !== null
-  )
+const normalizeRarityLabel = (value: unknown): string | null => {
+  if (!hasValue(value)) return null
+  const raw = String(value).replace(/\s+/g, ' ').trim()
+  if (!raw) return null
+  return raw
+}
+
+const extractCreatureTypes = (card: any): string[] => {
+  if (!card || typeof card !== 'object') return []
+  const rawValue =
+    card?.cardSubType ??
+    card?.card_sub_type ??
+    card?.cardSubtype ??
+    card?.card_subtype ??
+    card?.subType ??
+    card?.subtype ??
+    card?.creatureType ??
+    card?.creatureTypes ??
+    null
+
+  if (!hasValue(rawValue)) return []
+
+  const rawText = Array.isArray(rawValue) ? rawValue.join(',') : String(rawValue)
+  const parts = rawText
+    .split(/[\/|,&]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  return Array.from(new Set(parts))
+}
+
+const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
+  const primaryCards = extractDeckCards(deckLike)
+  const cards = primaryCards.length > 0 ? primaryCards : enrichedHalves.flatMap((half) => extractDeckCards(half))
+  const forgebornId = deckLike?.forgeborn?.id || deckLike?.forgebornId || null
+
+  let creatures = 0
+  let spells = 0
+  let solbind = 0
+  const rarityCounts = new Map<string, number>()
+  const creatureTypeCounts = new Map<string, number>()
+
+  cards.forEach((card: any) => {
+    const id = typeof card === 'string' ? card : card?.id || card?.cardId || card?.card_id
+    const typeValue = typeof card === 'string' ? '' : card?.type || card?.cardType || ''
+    const rarityValue = typeof card === 'string' ? '' : card?.rarity || ''
+    const typeLower = String(typeValue).toLowerCase()
+    const rarityLower = String(rarityValue).toLowerCase()
+
+    const isForgeborn =
+      (!!id && !!forgebornId && String(id).toLowerCase() === String(forgebornId).toLowerCase()) ||
+      typeLower.includes('forgeborn') ||
+      rarityLower.includes('forgeborn')
+    if (isForgeborn) return
+
+    if (rarityLower.includes('solbind') || typeLower.includes('solbind')) {
+      solbind += 1
+    } else if (typeLower.includes('spell')) {
+      spells += 1
+    } else if (typeLower.includes('creature')) {
+      creatures += 1
+      const creatureTypes = extractCreatureTypes(card)
+      creatureTypes.forEach((creatureType) => {
+        creatureTypeCounts.set(creatureType, (creatureTypeCounts.get(creatureType) || 0) + 1)
+      })
+    }
+
+    const rarity = normalizeRarityLabel(rarityValue)
+    if (rarity) {
+      rarityCounts.set(rarity, (rarityCounts.get(rarity) || 0) + 1)
+    }
+  })
+
+  const formatCounts = (counts: Map<string, number>, fallback: string) => {
+    if (counts.size === 0) return fallback
+    return Array.from(counts.entries())
+      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+      .map(([label, count]) => `${label} ${count}`)
+      .join(', ')
+  }
+
+  const countsPart = `Creatures: ${creatures}, Spells: ${spells}, Solbind: ${solbind}`
+  const rarityPart = `Rarities: ${formatCounts(rarityCounts, 'none')}`
+  const creatureTypesPart = `Creature Types: ${formatCounts(creatureTypeCounts, 'none')}`
+  return `${countsPart} | ${rarityPart} | ${creatureTypesPart}`
 }
 
 const buildHalfSummary = (halfDeck: any): string | null => {
@@ -215,23 +330,32 @@ const buildHalfSummary = (halfDeck: any): string | null => {
   const setLabel = getSetLabel(halfDeck)
   const score = getRoundedScore(halfDeck)
   const elo = getRoundedElo(halfDeck)
+  const expireLabel = getExpireLabel(halfDeck)
   const details: string[] = []
   if (faction) details.push(faction)
   if (setLabel) details.push(`Set: ${setLabel}`)
   if (score !== null) details.push(`Score: ${score}`)
   if (elo !== null) details.push(`ELO: ${elo}`)
+  if (expireLabel) details.push(`Expires: ${expireLabel}`)
   if (details.length === 0) return null
   return details.join(', ')
 }
 
-const buildFusedDescription = async (deckLike: any) => {
+const buildFusedDescription = async (deckLike: any, normalizedDeck: any) => {
   const halfCandidates = extractFusedHalfCandidates(deckLike)
   if (halfCandidates.length === 0) return 'SolForge Fusion fused deck overview.'
 
   const enrichedHalves = await Promise.all(
     halfCandidates.map(async (halfDeck) => {
       const halfId = getHalfDeckId(halfDeck)
-      const needsEnrichment = !hasHalfSummaryData(halfDeck)
+      const hasCards = extractDeckCards(halfDeck).length > 0
+      const needsEnrichment =
+        !hasCards ||
+        !hasValue(halfDeck?.faction) ||
+        !hasValue(getSetLabel(halfDeck)) ||
+        getRoundedScore(halfDeck) === null ||
+        getRoundedElo(halfDeck) === null ||
+        !hasValue(getExpireLabel(halfDeck))
       if (!halfId || !needsEnrichment) return halfDeck
 
       const details = await fetchDeckDetails(halfId, { timeoutMs: 2500, revalidateSeconds: 86400 })
@@ -244,9 +368,10 @@ const buildFusedDescription = async (deckLike: any) => {
     .map((halfDeck) => buildHalfSummary(halfDeck))
     .filter((value): value is string => !!value)
 
-  if (summaries.length === 0) return 'SolForge Fusion fused deck overview.'
+  const deckSummaryLine = buildDeckSummaryLine(normalizedDeck, enrichedHalves)
+  if (summaries.length === 0) return deckSummaryLine || 'SolForge Fusion fused deck overview.'
   // Newline is intentionally included to encourage two-line previews where supported.
-  return summaries.join('\n')
+  return [...summaries, deckSummaryLine].filter(Boolean).join('\n')
 }
 
 const buildFusedTitle = (baseTitle: string, forgebornName?: string | null, ownerName?: string | null) => {
@@ -390,7 +515,7 @@ export async function generateMetadata(
     const isFusedDeck = isFusedDeckLike(rawDeck) || isFusedDeckLike(deck)
     const cardNames = listDeckCards(deck)
     const baseDescription = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
-    const description = isFusedDeck ? await buildFusedDescription(rawDeck) : baseDescription
+    const description = isFusedDeck ? await buildFusedDescription(rawDeck, deck) : baseDescription
     const baseTitle = deck?.name || titleFallback
     const ownerName = getDeckOwnerName(rawDeck) || getDeckOwnerName(deck)
     const title = isFusedDeck ? buildFusedTitle(baseTitle, forgebornName, ownerName) : baseTitle
