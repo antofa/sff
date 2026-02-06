@@ -1998,12 +1998,18 @@ interface FilterState {
   factionMode: 'include' | 'exclude'
   forgebornName: string[]
   forgebornMode: 'include' | 'exclude'
+  forgebornNameMin: number | null
+  forgebornNameMax: number | null
   cardName: string[]
   cardNameMode: 'include' | 'exclude'
+  cardNameMin: number | null
+  cardNameMax: number | null
   cardText: string
   cardTextMode: 'include' | 'exclude'
   tags: string[]
   tagsMode: 'include' | 'exclude'
+  tagsMin: number | null
+  tagsMax: number | null
   rarityType: string
   rarityOperator: '>=' | '<=' | '='
   rarityCount: number | null
@@ -2037,6 +2043,8 @@ interface FilterState {
   deckName: string
   cardSetNo: string[]
   cardSetNoMode: 'include' | 'exclude'
+  cardSetNoMin: number | null
+  cardSetNoMax: number | null
   eloOperator: '>=' | '<=' | '='
   eloValue: number | null
   eloMode: 'include' | 'exclude'
@@ -2050,12 +2058,18 @@ const createDefaultFilters = (): FilterState => ({
   factionMode: 'include',
   forgebornName: [],
   forgebornMode: 'include',
+  forgebornNameMin: null,
+  forgebornNameMax: null,
   cardName: [],
   cardNameMode: 'include',
+  cardNameMin: null,
+  cardNameMax: null,
   cardText: '',
   cardTextMode: 'include',
   tags: [],
   tagsMode: 'include',
+  tagsMin: null,
+  tagsMax: null,
   rarityType: '',
   rarityOperator: '>=',
   rarityCount: null,
@@ -2089,6 +2103,8 @@ const createDefaultFilters = (): FilterState => ({
   deckName: '',
   cardSetNo: [],
   cardSetNoMode: 'include',
+  cardSetNoMin: null,
+  cardSetNoMax: null,
   eloOperator: '>=',
   eloValue: null,
   eloMode: 'include',
@@ -2143,17 +2159,17 @@ const FILTER_BLOCK_LABELS: Record<FilterBlockKey, string> = {
 const FILTER_BLOCK_FIELDS: Record<FilterBlockKey, (keyof FilterState)[]> = {
   'deck-name': ['deckName', 'deckNameMode'],
   faction: ['faction', 'factionMode'],
-  forgeborn: ['forgebornName', 'forgebornMode'],
-  'card-name': ['cardName', 'cardNameMode'],
+  forgeborn: ['forgebornName', 'forgebornNameMin', 'forgebornNameMax', 'forgebornMode'],
+  'card-name': ['cardName', 'cardNameMin', 'cardNameMax', 'cardNameMode'],
   'card-text': ['cardText', 'cardTextMode'],
-  tags: ['tags', 'tagsMode'],
+  tags: ['tags', 'tagsMin', 'tagsMax', 'tagsMode'],
   creatures: ['creaturesOperator', 'creaturesValue', 'creaturesMode'],
   'free-creatures': ['freeCreaturesOperator', 'freeCreaturesValue', 'freeCreaturesMode'],
   'creature-type': ['creatureType', 'creatureTypeOperator', 'creatureTypeCount', 'creatureTypeMode'],
   spells: ['spellsOperator', 'spellsValue', 'spellsMode'],
   'free-spells': ['freeSpellsOperator', 'freeSpellsValue', 'freeSpellsMode'],
   'spell-type': ['spellType', 'spellTypeCount', 'spellTypeMode'],
-  'card-set': ['cardSetNo', 'cardSetNoMode'],
+  'card-set': ['cardSetNo', 'cardSetNoMin', 'cardSetNoMax', 'cardSetNoMode'],
   elo: ['eloOperator', 'eloValue', 'eloMode'],
   score: ['scoreOperator', 'scoreValue', 'scoreMode'],
   rarity: ['rarityType', 'rarityOperator', 'rarityCount', 'rarityMode'],
@@ -2212,14 +2228,22 @@ const FILTER_QUERY_KEYS = [
   'forgeborn',
   'forgebornName',
   'forgebornMode',
+  'forgebornNameMin',
+  'forgebornNameMax',
   'cardName',
   'cardNameMode',
+  'cardNameMin',
+  'cardNameMax',
   'cardText',
   'cardTextMode',
   'tags',
   'tagsMode',
+  'tagsMin',
+  'tagsMax',
   'cardSetNo',
   'cardSetNoMode',
+  'cardSetNoMin',
+  'cardSetNoMax',
   'creaturesOperator',
   'creaturesValue',
   'creaturesMode',
@@ -2295,6 +2319,8 @@ type FilterBlockInstance = {
 type CardSetInstanceState = {
   cardSetNo: string[]
   cardSetNoMode: 'include' | 'exclude'
+  cardSetNoMin?: number | null
+  cardSetNoMax?: number | null
 }
 
 type FilterInstanceState = Partial<FilterState>
@@ -2308,6 +2334,12 @@ const ARRAY_FIELDS = new Set<keyof FilterState>([
 ])
 
 const NUMBER_FIELDS = new Set<keyof FilterState>([
+  'forgebornNameMin',
+  'forgebornNameMax',
+  'cardNameMin',
+  'cardNameMax',
+  'tagsMin',
+  'tagsMax',
   'creaturesValue',
   'freeCreaturesValue',
   'creatureTypeCount',
@@ -2316,6 +2348,8 @@ const NUMBER_FIELDS = new Set<keyof FilterState>([
   'spellTypeCount',
   'rarityCount',
   'rarityWordCount',
+  'cardSetNoMin',
+  'cardSetNoMax',
   'eloValue',
   'scoreValue',
 ])
@@ -2328,13 +2362,28 @@ const getDefaultsForKey = (key: FilterBlockKey): FilterInstanceState => {
     case 'faction':
       return { faction: defaults.faction, factionMode: defaults.factionMode }
     case 'forgeborn':
-      return { forgebornName: defaults.forgebornName, forgebornMode: defaults.forgebornMode }
+      return {
+        forgebornName: defaults.forgebornName,
+        forgebornMode: defaults.forgebornMode,
+        forgebornNameMin: defaults.forgebornNameMin,
+        forgebornNameMax: defaults.forgebornNameMax,
+      }
     case 'card-name':
-      return { cardName: defaults.cardName, cardNameMode: defaults.cardNameMode }
+      return {
+        cardName: defaults.cardName,
+        cardNameMode: defaults.cardNameMode,
+        cardNameMin: defaults.cardNameMin,
+        cardNameMax: defaults.cardNameMax,
+      }
     case 'card-text':
       return { cardText: defaults.cardText, cardTextMode: defaults.cardTextMode }
     case 'tags':
-      return { tags: defaults.tags, tagsMode: defaults.tagsMode }
+      return {
+        tags: defaults.tags,
+        tagsMode: defaults.tagsMode,
+        tagsMin: defaults.tagsMin,
+        tagsMax: defaults.tagsMax,
+      }
     case 'creatures':
       return {
         creaturesOperator: defaults.creaturesOperator,
@@ -2376,6 +2425,8 @@ const getDefaultsForKey = (key: FilterBlockKey): FilterInstanceState => {
       return {
         cardSetNo: defaults.cardSetNo,
         cardSetNoMode: defaults.cardSetNoMode,
+        cardSetNoMin: defaults.cardSetNoMin,
+        cardSetNoMax: defaults.cardSetNoMax,
       }
     case 'elo':
       return {
@@ -2563,16 +2614,22 @@ const parseFiltersFromSearch = (
   cardSetBlocks.forEach((block) => {
     const blockIndex = blockIndices.get(block.id) || 0
     const values = getArray(getParamName('cardSetNo', blockIndex))
+    const minValue = getNumber(getParamName('cardSetNoMin', blockIndex))
+    const maxValue = getNumber(getParamName('cardSetNoMax', blockIndex))
     const mode =
       (params.get(getParamName('cardSetNoMode', blockIndex)) as CardSetInstanceState['cardSetNoMode']) ||
       'include'
     cardSetInstances[block.id] = {
       cardSetNo: values,
       cardSetNoMode: mode || 'include',
+      cardSetNoMin: minValue,
+      cardSetNoMax: maxValue,
     }
     instanceFilters[block.id] = {
       cardSetNo: values,
       cardSetNoMode: mode || 'include',
+      cardSetNoMin: minValue,
+      cardSetNoMax: maxValue,
     }
   })
 
@@ -3143,7 +3200,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     if (key === 'card-set') {
       setCardSetInstances((prev) => ({
         ...prev,
-        [id]: { cardSetNo: [], cardSetNoMode: 'include' },
+        [id]: { cardSetNo: [], cardSetNoMode: 'include', cardSetNoMin: null, cardSetNoMax: null },
       }))
     }
     setInstanceFilters((prev) => ({
@@ -3668,6 +3725,16 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         return count
       }
 
+      const resolveSelectionRange = (
+        selectedCount: number,
+        minValue?: number | null,
+        maxValue?: number | null
+      ) => {
+        const min = minValue ?? 1
+        const max = maxValue ?? selectedCount
+        return { min, max }
+      }
+
       for (const { block, state } of blockStates) {
         switch (block.key) {
           case 'deck-name': {
@@ -3696,8 +3763,15 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             const selected = (state.forgebornName as string[]) || []
             if (selected.length > 0) {
               const forgebornName = getForgebornNameFromDeck(deck)
-              const match = !!forgebornName && selected.includes(forgebornName)
-              if (!applyMode(match, (state.forgebornMode as FilterState['forgebornMode']) || 'include')) {
+              const selectedSet = new Set(selected.map((name) => name.trim()).filter(Boolean))
+              const matchCount = forgebornName && selectedSet.has(forgebornName) ? 1 : 0
+              const { min, max } = resolveSelectionRange(
+                selectedSet.size,
+                state.forgebornNameMin as number | null | undefined,
+                state.forgebornNameMax as number | null | undefined
+              )
+              const inRange = matchCount >= min && matchCount <= max
+              if (!applyMode(inRange, (state.forgebornMode as FilterState['forgebornMode']) || 'include')) {
                 return false
               }
             }
@@ -3709,15 +3783,21 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               const deckCardNames = normalizedCards
                 .map(card => card.name?.toLowerCase())
                 .filter((name): name is string => !!name)
-
-              const hasAnySelectedCard = selected.some(selectedName =>
-                deckCardNames.includes(selectedName.toLowerCase())
+              const selectedSet = new Set(
+                selected.map((name) => name.trim().toLowerCase()).filter(Boolean)
               )
-
-              const mode = (state.cardNameMode as FilterState['cardNameMode']) || 'include'
-              const match = mode === 'include' ? hasAnySelectedCard : !hasAnySelectedCard
-
-              if (!match) {
+              const deckNameSet = new Set(deckCardNames)
+              let matchCount = 0
+              selectedSet.forEach((name) => {
+                if (deckNameSet.has(name)) matchCount += 1
+              })
+              const { min, max } = resolveSelectionRange(
+                selectedSet.size,
+                state.cardNameMin as number | null | undefined,
+                state.cardNameMax as number | null | undefined
+              )
+              const inRange = matchCount >= min && matchCount <= max
+              if (!applyMode(inRange, (state.cardNameMode as FilterState['cardNameMode']) || 'include')) {
                 return false
               }
             }
@@ -3806,20 +3886,20 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             const selected = (state.tags as string[]) || []
             if (selected.length > 0) {
               const searchTags = selected.map(t => t.trim().toLowerCase()).filter(Boolean)
+              const selectedSet = new Set(searchTags)
               const deckTags = getDeckTags()
-
-              const hasAllTags = searchTags.every(searchTag =>
-                deckTags.some(deckTag => deckTag === searchTag || deckTag.includes(searchTag))
+              let matchCount = 0
+              selectedSet.forEach((searchTag) => {
+                const matches = deckTags.some(deckTag => deckTag === searchTag || deckTag.includes(searchTag))
+                if (matches) matchCount += 1
+              })
+              const { min, max } = resolveSelectionRange(
+                selectedSet.size,
+                state.tagsMin as number | null | undefined,
+                state.tagsMax as number | null | undefined
               )
-              const hasAnyTag = searchTags.some(searchTag =>
-                deckTags.some(deckTag => deckTag === searchTag || deckTag.includes(searchTag))
-              )
-              const mode = (state.tagsMode as FilterState['tagsMode']) || 'include'
-              const match =
-                mode === 'include'
-                  ? hasAllTags
-                  : !hasAnyTag
-              if (!match) {
+              const inRange = matchCount >= min && matchCount <= max
+              if (!applyMode(inRange, (state.tagsMode as FilterState['tagsMode']) || 'include')) {
                 return false
               }
             }
@@ -4484,6 +4564,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               cardSetInstances[block.id] || {
                 cardSetNo: (state.cardSetNo as string[]) || [],
                 cardSetNoMode: ((state.cardSetNoMode as 'include' | 'exclude') || 'include'),
+                cardSetNoMin: state.cardSetNoMin as number | null | undefined,
+                cardSetNoMax: state.cardSetNoMax as number | null | undefined,
               }
             if (cardSetState.cardSetNo.length > 0) {
               const deckSetStr = getDeckSetString()
@@ -4491,8 +4573,15 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               const selectedSets = cardSetState.cardSetNo
                 .map((value) => normalizeSetLabel(value))
                 .filter((value): value is string => Boolean(value))
-              const match = !!deckSetNormalized && selectedSets.includes(deckSetNormalized)
-              if (!applyMode(match, cardSetState.cardSetNoMode || 'include')) {
+              const selectedSet = new Set(selectedSets)
+              const matchCount = deckSetNormalized && selectedSet.has(deckSetNormalized) ? 1 : 0
+              const { min, max } = resolveSelectionRange(
+                selectedSet.size,
+                cardSetState.cardSetNoMin,
+                cardSetState.cardSetNoMax
+              )
+              const inRange = matchCount >= min && matchCount <= max
+              if (!applyMode(inRange, cardSetState.cardSetNoMode || 'include')) {
                 return false
               }
             }
@@ -5049,18 +5138,56 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     case 'forgeborn': {
                       const currentValues = (state.forgebornName as string[]) || []
                       const currentMode = (state.forgebornMode as FilterState['forgebornMode']) || 'include'
+                      const currentMin = state.forgebornNameMin as number | null | undefined
+                      const currentMax = state.forgebornNameMax as number | null | undefined
                       const header = (
                         <Text size="sm" fw={500} style={{ color: 'white' }}>
                           Forgeborn Name
                         </Text>
                       )
                       const modeControl = (
-                        <SegmentedControl
-                          size="xs"
-                          value={currentMode}
-                          onChange={(value) => update({ forgebornMode: value as 'include' | 'exclude' })}
-                          data={MODE_OPTIONS}
-                        />
+                        <Group gap={6} align="center">
+                          <NumberInput
+                            placeholder="Min"
+                            value={currentMin ?? ''}
+                            onChange={(value) =>
+                              update({ forgebornNameMin: typeof value === 'number' ? value : null })
+                            }
+                            min={0}
+                            w={70}
+                            size="xs"
+                            styles={{
+                              input: {
+                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                color: 'white',
+                                borderColor: 'rgba(74, 144, 226, 0.3)',
+                              },
+                            }}
+                          />
+                          <NumberInput
+                            placeholder="Max"
+                            value={currentMax ?? ''}
+                            onChange={(value) =>
+                              update({ forgebornNameMax: typeof value === 'number' ? value : null })
+                            }
+                            min={0}
+                            w={70}
+                            size="xs"
+                            styles={{
+                              input: {
+                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                color: 'white',
+                                borderColor: 'rgba(74, 144, 226, 0.3)',
+                              },
+                            }}
+                          />
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ forgebornMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        </Group>
                       )
                       return renderFilterCol(
                         block,
@@ -5086,18 +5213,56 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     case 'card-name': {
                       const currentValues = (state.cardName as string[]) || []
                       const currentMode = (state.cardNameMode as FilterState['cardNameMode']) || 'include'
+                      const currentMin = state.cardNameMin as number | null | undefined
+                      const currentMax = state.cardNameMax as number | null | undefined
                       const header = (
                         <Text size="sm" fw={500} style={{ color: 'white' }}>
                           Card Name
                         </Text>
                       )
                       const modeControl = (
-                        <SegmentedControl
-                          size="xs"
-                          value={currentMode}
-                          onChange={(value) => update({ cardNameMode: value as 'include' | 'exclude' })}
-                          data={MODE_OPTIONS}
-                        />
+                        <Group gap={6} align="center">
+                          <NumberInput
+                            placeholder="Min"
+                            value={currentMin ?? ''}
+                            onChange={(value) =>
+                              update({ cardNameMin: typeof value === 'number' ? value : null })
+                            }
+                            min={0}
+                            w={70}
+                            size="xs"
+                            styles={{
+                              input: {
+                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                color: 'white',
+                                borderColor: 'rgba(74, 144, 226, 0.3)',
+                              },
+                            }}
+                          />
+                          <NumberInput
+                            placeholder="Max"
+                            value={currentMax ?? ''}
+                            onChange={(value) =>
+                              update({ cardNameMax: typeof value === 'number' ? value : null })
+                            }
+                            min={0}
+                            w={70}
+                            size="xs"
+                            styles={{
+                              input: {
+                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                color: 'white',
+                                borderColor: 'rgba(74, 144, 226, 0.3)',
+                              },
+                            }}
+                          />
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ cardNameMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        </Group>
                       )
                       return renderFilterCol(
                         block,
@@ -5157,18 +5322,56 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     case 'tags': {
                       const currentValues = (state.tags as string[]) || []
                       const currentMode = (state.tagsMode as FilterState['tagsMode']) || 'include'
+                      const currentMin = state.tagsMin as number | null | undefined
+                      const currentMax = state.tagsMax as number | null | undefined
                       const header = (
                         <Text size="sm" fw={500} style={{ color: 'white' }}>
                           Tags
                         </Text>
                       )
                       const modeControl = (
-                        <SegmentedControl
-                          size="xs"
-                          value={currentMode}
-                          onChange={(value) => update({ tagsMode: value as 'include' | 'exclude' })}
-                          data={MODE_OPTIONS}
-                        />
+                        <Group gap={6} align="center">
+                          <NumberInput
+                            placeholder="Min"
+                            value={currentMin ?? ''}
+                            onChange={(value) =>
+                              update({ tagsMin: typeof value === 'number' ? value : null })
+                            }
+                            min={0}
+                            w={70}
+                            size="xs"
+                            styles={{
+                              input: {
+                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                color: 'white',
+                                borderColor: 'rgba(74, 144, 226, 0.3)',
+                              },
+                            }}
+                          />
+                          <NumberInput
+                            placeholder="Max"
+                            value={currentMax ?? ''}
+                            onChange={(value) =>
+                              update({ tagsMax: typeof value === 'number' ? value : null })
+                            }
+                            min={0}
+                            w={70}
+                            size="xs"
+                            styles={{
+                              input: {
+                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                color: 'white',
+                                borderColor: 'rgba(74, 144, 226, 0.3)',
+                              },
+                            }}
+                          />
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ tagsMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        </Group>
                       )
                       return renderFilterCol(
                         block,
@@ -5786,6 +5989,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         cardSetInstances[block.id] || {
                           cardSetNo: (state.cardSetNo as string[]) || [],
                           cardSetNoMode: ((state.cardSetNoMode as 'include' | 'exclude') || 'include'),
+                          cardSetNoMin: state.cardSetNoMin as number | null | undefined,
+                          cardSetNoMax: state.cardSetNoMax as number | null | undefined,
                         }
                       const header = (
                         <Text size="sm" fw={500} style={{ color: 'white' }}>
@@ -5803,21 +6008,65 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             ...(prev[block.id] || getDefaultsForKey('card-set')),
                             cardSetNo: nextState.cardSetNo,
                             cardSetNoMode: nextState.cardSetNoMode,
+                            cardSetNoMin: nextState.cardSetNoMin ?? null,
+                            cardSetNoMax: nextState.cardSetNoMax ?? null,
                           },
                         }))
                       }
                       const modeControl = (
-                        <SegmentedControl
-                          size="xs"
-                          value={cardSetState.cardSetNoMode}
-                          onChange={(value) =>
-                            updateCardSetState({
-                              ...cardSetState,
-                              cardSetNoMode: value as 'include' | 'exclude',
-                            })
-                          }
-                          data={MODE_OPTIONS}
-                        />
+                        <Group gap={6} align="center">
+                          <NumberInput
+                            placeholder="Min"
+                            value={cardSetState.cardSetNoMin ?? ''}
+                            onChange={(value) =>
+                              updateCardSetState({
+                                ...cardSetState,
+                                cardSetNoMin: typeof value === 'number' ? value : null,
+                              })
+                            }
+                            min={0}
+                            w={70}
+                            size="xs"
+                            styles={{
+                              input: {
+                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                color: 'white',
+                                borderColor: 'rgba(74, 144, 226, 0.3)',
+                              },
+                            }}
+                          />
+                          <NumberInput
+                            placeholder="Max"
+                            value={cardSetState.cardSetNoMax ?? ''}
+                            onChange={(value) =>
+                              updateCardSetState({
+                                ...cardSetState,
+                                cardSetNoMax: typeof value === 'number' ? value : null,
+                              })
+                            }
+                            min={0}
+                            w={70}
+                            size="xs"
+                            styles={{
+                              input: {
+                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                color: 'white',
+                                borderColor: 'rgba(74, 144, 226, 0.3)',
+                              },
+                            }}
+                          />
+                          <SegmentedControl
+                            size="xs"
+                            value={cardSetState.cardSetNoMode}
+                            onChange={(value) =>
+                              updateCardSetState({
+                                ...cardSetState,
+                                cardSetNoMode: value as 'include' | 'exclude',
+                              })
+                            }
+                            data={MODE_OPTIONS}
+                          />
+                        </Group>
                       )
                       return renderFilterCol(
                         block,
