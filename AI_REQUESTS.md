@@ -815,3 +815,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: ac3817e
   Request: Continue improving fused OG auto-fit so at least one column fills near the bottom edge for http://hadoop21.click:3000/api/og/deck/Fused_93hi52mfig65sm?refresh=1.
   Date: 2026-02-06
+- Commit: c21f182
+  Request: http://hadoop21.click:3000/deck/epjfotg0jhjnhzrjdfjnqpm3r06rea?ss=224&sdfgbg=42&dsfs=wrew shows an old Discord preview image even with extra URL params; check whether stale OG cache in Upstash is the cause and fix cache invalidation.
+  Date: 2026-02-07
