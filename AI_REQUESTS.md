@@ -836,3 +836,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 0df629f
   Request: http://hadoop21.click:3000/api/og/deck/Fused_1qrav2mfzdk9b9?refresh=1 still clips the third column; make auto-fit reliably fit full text per column.
   Date: 2026-02-07
+- Commit: d389ad7
+  Request: Apply per-column font auto-fit for regular decks (fill columns without overflow/bottom clipping) and investigate OG cache not refreshing on deck URLs with extra query params.
+  Date: 2026-02-07
