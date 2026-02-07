@@ -81,7 +81,7 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/images/logo/:path*',
+        source: '/images/logo/too-many-decks-logo.png',
         headers: [
           {
             key: 'Cache-Control',

@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-07 UTC) Narrowed the 24-hour logo cache rule to the single header logo file (`/images/logo/too-many-decks-logo.png`) instead of all files under `/images/logo/*`.
 - (2026-02-07 UTC) Set a 24-hour cache policy for header logo assets under `/images/logo/*` by sending `Cache-Control: public, max-age=86400, s-maxage=86400, stale-while-revalidate=86400`.
 - (2026-02-07 UTC) Improved fused OG auto-fit line-wrap estimation with character-width aware text measurement, reducing conservative overestimation and substantially increasing bottom fill across card and forgeborn columns while avoiding overlap.
 - (2026-02-07 UTC) Fixed fused OG card-row overlap by tightening line-wrap estimation and changed rarity icon vertical alignment so icons are centered against multi-line card names instead of anchoring to the first text line.
