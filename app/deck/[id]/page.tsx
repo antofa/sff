@@ -580,6 +580,14 @@ const buildFusedDescription = async (deckLike: any, normalizedDeck: any, baseUrl
   return [...summaries, deckSummaryLine].filter(Boolean).join('\n')
 }
 
+const buildRegularDescription = (deckLike: any, normalizedDeck: any) => {
+  const mergedDeck = mergeDeckLike(deckLike, normalizedDeck)
+  const details = buildHalfSummary(mergedDeck)
+  const deckSummaryLine = buildDeckSummaryLine(mergedDeck, [])
+  if (details && deckSummaryLine) return `${details}\n${deckSummaryLine}`
+  return details || deckSummaryLine || 'SolForge Fusion deck overview.'
+}
+
 const buildFusedTitle = (baseTitle: string, forgebornName?: string | null, ownerName?: string | null) => {
   const parts: string[] = []
   if (hasValue(forgebornName)) {
@@ -597,81 +605,6 @@ const buildFusedTitle = (baseTitle: string, forgebornName?: string | null, owner
   }
   if (parts.length === 0) return baseTitle
   return `${baseTitle} (${parts.join(', ')})`
-}
-
-const listDeckCards = (deck: any) => {
-  const cards = Array.isArray(deck?.cards) ? deck.cards : []
-  const solbindCards = Array.isArray(deck?.solbinds) ? deck.solbinds : []
-  const allCards = cards.concat(solbindCards)
-  const forgebornId = deck?.forgeborn?.id || deck?.forgebornId
-
-  const isForgebornCard = (card: any) => {
-    const id = typeof card === 'string' ? card : card?.id
-    if (id && forgebornId && String(id).toLowerCase() === String(forgebornId).toLowerCase()) {
-      return true
-    }
-    const typeValue = typeof card === 'string' ? '' : card?.type || card?.cardType || ''
-    const rarityValue = typeof card === 'string' ? '' : card?.rarity || ''
-    const typeLower = String(typeValue).toLowerCase()
-    const rarityLower = String(rarityValue).toLowerCase()
-    return typeLower.includes('forgeborn') || rarityLower.includes('forgeborn')
-  }
-
-  const unique = new Set<string>()
-  const creatures: string[] = []
-  const spells: string[] = []
-  const solbind: string[] = []
-
-  const addName = (name?: string | null) => {
-    const trimmed = (name || '').trim()
-    if (!trimmed) return
-    return trimmed
-  }
-
-  const forgebornName = forgebornId ? addName(deck?.forgeborn?.name || forgebornId) : null
-  if (forgebornName) {
-    unique.add(forgebornName)
-  }
-
-  const pushUnique = (bucket: string[], name?: string | null) => {
-    const trimmed = addName(name)
-    if (!trimmed) return
-    if (unique.has(trimmed)) return
-    unique.add(trimmed)
-    bucket.push(trimmed)
-  }
-
-  allCards.forEach((card: any) => {
-    if (isForgebornCard(card)) return
-
-    if (typeof card === 'string') {
-      pushUnique(creatures, card)
-      return
-    }
-
-    const name = card?.name || card?.title || card?.cardTitle || card?.cardName || card?.id || card?.cardId
-    const typeValue = card?.type || card?.cardType || ''
-    const rarityValue = card?.rarity || ''
-    const typeLower = String(typeValue).toLowerCase()
-    const rarityLower = String(rarityValue).toLowerCase()
-
-    if (rarityLower.includes('solbind') || typeLower.includes('solbind')) {
-      pushUnique(solbind, name)
-      return
-    }
-    if (typeLower.includes('spell')) {
-      pushUnique(spells, name)
-      return
-    }
-    pushUnique(creatures, name)
-  })
-
-  const names: string[] = []
-  if (forgebornName) {
-    names.push(forgebornName)
-  }
-  names.push(...creatures, ...spells, ...solbind)
-  return names
 }
 
 const fetchRawDeckForPreview = async (deckId: string, baseUrl: string | null) => {
@@ -716,12 +649,12 @@ const buildDeckPreviewCore = async (
   const deck = normalizeDeck(rawDeck)
   const forgebornName = rawDeck?.forgeborn?.name || deck?.forgeborn?.name || deck?.forgebornId
   const isFusedDeck = isFusedDeckLike(rawDeck) || isFusedDeckLike(deck)
-  const cardNames = listDeckCards(deck)
-  const baseDescription = cardNames.length > 0 ? cardNames.join(', ') : 'SolForge Fusion deck overview.'
-  const description = isFusedDeck ? await buildFusedDescription(rawDeck, deck, baseUrl) : baseDescription
+  const description = isFusedDeck
+    ? await buildFusedDescription(rawDeck, deck, baseUrl)
+    : buildRegularDescription(rawDeck, deck)
   const baseTitle = deck?.name || titleFallback
   const ownerName = getDeckOwnerName(rawDeck) || getDeckOwnerName(deck)
-  const title = isFusedDeck ? buildFusedTitle(baseTitle, forgebornName, ownerName) : baseTitle
+  const title = buildFusedTitle(baseTitle, forgebornName, ownerName)
 
   return {
     title,
