@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 28ccc44
+  Request: Make OG for half-decks work analogously to fused decks.
+  Date: 2026-02-07
 - Commit: bb4f550
   Request: Only one logo is used in the header; cache just that file, not all logo assets.
   Date: 2026-02-07
