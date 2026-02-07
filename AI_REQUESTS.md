@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 800eccd
+  Request: Count `Creature Types` in OG descriptions for all decks exactly like in the modal, so compound subtypes (e.g. `Zombie Warrior`) are split into separate types.
+  Date: 2026-02-07
 - Commit: bdcab9f
   Request: Fix remaining slight bottom clipping and improve non-fused OG auto-alignment by width as well as height to reduce unused space between columns.
   Date: 2026-02-07
