@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: b27ee3e
+  Request: Remove `Creatures` and `Spells` labels from regular-deck OG images.
+  Date: 2026-02-07
 - Commit: 800eccd
   Request: Count `Creature Types` in OG descriptions for all decks exactly like in the modal, so compound subtypes (e.g. `Zombie Warrior`) are split into separate types.
   Date: 2026-02-07
