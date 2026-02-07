@@ -1904,7 +1904,9 @@ export async function GET(
     columnIndex: number,
     columnScale = 1,
     spacing: { sectionGap: number; listGap: number } = { sectionGap: 8, listGap: 4 }
-  ) => (
+  ) => {
+    const renderScale = showFusedColumns ? columnScale * 0.985 : columnScale
+    return (
     <div
       key={`column-${columnIndex}`}
       style={{
@@ -1946,7 +1948,7 @@ export async function GET(
                 display: 'flex',
                 flexDirection: 'column',
                 gap: `${spacing.listGap}px`,
-                fontSize: Math.round(baseCardFontSize * columnScale * 10) / 10,
+                fontSize: Math.round(baseCardFontSize * renderScale * 10) / 10,
                 lineHeight: 1.15,
                 fontWeight: ogBodyTextWeight,
                 textShadow: ogBodyTextShadow,
@@ -1956,7 +1958,7 @@ export async function GET(
                 const rarityIconSrc = item.rarityIconPath
                   ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
                   : null
-                const rarityIconSize = `${Math.round(18 * rarityIconScale * columnScale)}px`
+                const rarityIconSize = `${Math.round(18 * rarityIconScale * renderScale)}px`
                 return (
                   <div
                     key={`${columnIndex}-${section.label}-${idx}`}
@@ -2006,7 +2008,8 @@ export async function GET(
         </div>
       )}
     </div>
-  )
+    )
+  }
 
   const imageResponse = new ImageResponse(
     (
@@ -2014,6 +2017,7 @@ export async function GET(
         style={{
           width: `${imageWidth}px`,
           height: `${imageHeight}px`,
+          boxSizing: 'border-box',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'stretch',
