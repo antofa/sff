@@ -1426,7 +1426,7 @@ export async function GET(
     const normalized = String(text || '').trim()
     if (!normalized) return 0
     // Keep estimation close to real render metrics to avoid under-filling the image.
-    const avgCharWidth = fontSize * 0.52
+    const avgCharWidth = fontSize * 0.58
     const capacity = Math.max(1, Math.floor(maxWidth / avgCharWidth))
     const words = normalized.split(/\s+/)
     let lines = 1
@@ -1960,11 +1960,11 @@ export async function GET(
                   : null
                 const rarityIconSizePx = itemFontSize
                 const rarityIconSize = `${rarityIconSizePx}px`
-                const rarityIconOffset = `${Math.round(itemFontSize * 0.075 * 10) / 10}px`
+                const rarityIconOffset = `${Math.round(itemFontSize * 0.12 * 10) / 10}px`
                 return (
                   <div
                     key={`${columnIndex}-${section.label}-${idx}`}
-                    style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', width: '100%', minWidth: 0 }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', minWidth: 0 }}
                   >
                     {rarityIconSrc ? (
                       <img
@@ -1973,6 +1973,7 @@ export async function GET(
                           width: rarityIconSize,
                           height: rarityIconSize,
                           objectFit: 'contain',
+                          alignSelf: 'center',
                           marginTop: rarityIconOffset,
                           flexShrink: 0,
                         }}
@@ -1985,6 +1986,7 @@ export async function GET(
                           borderRadius: '999px',
                           backgroundColor: item.factionColor,
                           opacity: 0.8,
+                          alignSelf: 'center',
                           marginTop: rarityIconOffset,
                           flexShrink: 0,
                         }}
