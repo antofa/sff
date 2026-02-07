@@ -1405,7 +1405,6 @@ export async function GET(
   const fusedFontScale = showFusedColumns ? 1.44 : 1
   const scaleFont = (size: number) => Math.round(size * fusedFontScale * globalFontScale * 10) / 10
   const cardListFontScale = 1.1025
-  const rarityIconScale = 1.3
   // Discord recompression softens thin glyph edges; use crisp (non-blur) edge shadows.
   const ogBodyTextWeight = 700
   const ogBodyTextShadow =
@@ -1476,7 +1475,7 @@ export async function GET(
     }
     const labelFontSize = baseLabelFontSize * scale
     const cardFontSize = baseCardFontSize * scale
-    const iconSize = Math.round(18 * rarityIconScale * scale)
+    const iconSize = Math.round(cardFontSize)
     const textWidth = Math.max(40, columnWidth - iconSize - 12)
     const sectionGap = spacing?.sectionGap ?? 8
     const labelGap = 4
@@ -1955,10 +1954,13 @@ export async function GET(
               }}
             >
               {section.items.map((item, idx) => {
+                const itemFontSize = Math.round(baseCardFontSize * renderScale * 10) / 10
                 const rarityIconSrc = item.rarityIconPath
                   ? cardIconMap.get(item.rarityIconPath) || resolveAssetUrl(item.rarityIconPath)
                   : null
-                const rarityIconSize = `${Math.round(18 * rarityIconScale * renderScale)}px`
+                const rarityIconSizePx = itemFontSize
+                const rarityIconSize = `${rarityIconSizePx}px`
+                const rarityIconOffset = `${Math.round(itemFontSize * 0.075 * 10) / 10}px`
                 return (
                   <div
                     key={`${columnIndex}-${section.label}-${idx}`}
@@ -1971,6 +1973,8 @@ export async function GET(
                           width: rarityIconSize,
                           height: rarityIconSize,
                           objectFit: 'contain',
+                          marginTop: rarityIconOffset,
+                          flexShrink: 0,
                         }}
                       />
                     ) : (
@@ -1981,6 +1985,8 @@ export async function GET(
                           borderRadius: '999px',
                           backgroundColor: item.factionColor,
                           opacity: 0.8,
+                          marginTop: rarityIconOffset,
+                          flexShrink: 0,
                         }}
                       />
                     )}

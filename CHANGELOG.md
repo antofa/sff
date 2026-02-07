@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-07 UTC) Realigned fused OG rarity icons to the card text baseline and set icon size to match the rendered card font size for consistent row alignment.
 - (2026-02-07 UTC) Tightened fused OG lower-bound safety by adding a larger fused height reserve and a stronger final card-column render-scale guard, eliminating bottom-edge glyph clipping in the first column on dense fused decks.
 - (2026-02-07 UTC) Added a final fused OG render safety pass to prevent bottom-edge clipping of the last card row in dense lists, and aligned root image box sizing to keep layout math consistent with rendered bounds.
 - (2026-02-07 UTC) Reworked fused OG vertical auto-fit to independently tune left/middle card columns and forgeborn column with bounded adaptive widths and spacing so each tested fused deck now has at least one column effectively filling full image height without overflow or overlap artifacts.
