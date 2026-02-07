@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 7720d96
+  Request: Fix regular OG second-column overflow where forgeborn ability text does not fit (`/api/og/deck/epjfotg0jhjnhzrjdfjnqpm3r06rea`).
+  Date: 2026-02-07
 - Commit: dbcd15f
   Request: Also make `og:title` and `og:description` for regular decks analogous to fused decks.
   Date: 2026-02-07
