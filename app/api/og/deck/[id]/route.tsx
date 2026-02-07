@@ -1583,10 +1583,11 @@ export async function GET(
     const textWidth = Math.max(40, maxWidth - scaledLevelIconSize - (showFusedColumns ? 6 : 14))
     const total = visible.reduce((sum, ability) => {
       const lines = Math.max(1, estimateLinesForText(ability.text || '', fontSize, textWidth))
-      const rowHeight = Math.max(scaledLevelIconSize, lines * fontSize * lineHeight)
+      const lineBlockHeight = lines * fontSize * lineHeight + fontSize * (showFusedColumns ? 0.2 : 0.17)
+      const rowHeight = Math.max(scaledLevelIconSize * 1.04, lineBlockHeight)
       return sum + rowHeight
     }, 0)
-    return total + (visible.length - 1) * gap
+    return total + (visible.length - 1) * gap + fontSize * 0.12
   }
 
   type ForgebornSpacing = {
@@ -1661,7 +1662,7 @@ export async function GET(
     return Math.max(0, Math.min(1, widest / Math.max(1, textWidth)))
   }
 
-  const fitMinScale = 0.75
+  const fitMinScale = 0.62
   const maxVisualScale = showFusedColumns ? 3.6 : 2.4
   const heightBudget = innerHeight
   const safeHeightBudget = heightBudget - (showFusedColumns ? 10 : 12)
@@ -1951,6 +1952,13 @@ export async function GET(
       ]
       forgebornSpacing = getForgebornSpacing(forgebornColumnScale, selectedForgebornColumnWidth)
     }
+
+    // Final conservative guard for fused forgeborn column to prevent descender clipping
+    // with long wrapped ability text and inline icons.
+    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 20)
+    forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
+      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.86 <= safeHeightBudget
+    )
   } else {
     for (let i = 0; i < 2; i += 1) {
       cardColumnScales = [
@@ -1973,7 +1981,7 @@ export async function GET(
     // on long multi-line ability text in real OG rendering.
     const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 18)
     forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
-      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.88 <= safeHeightBudget
+      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.85 <= safeHeightBudget
     )
   }
 

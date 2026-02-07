@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-07 UTC) Strengthened OG auto-fit for fused third-column abilities: per-column fitting now uses a more conservative minimum scale and extra wrapped-line padding, plus a final fused forgeborn width/height guard to prevent bottom clipping of descenders and inline-icon lines.
 - (2026-02-07 UTC) Fixed missing owner in regular deck OG metadata after player search: `/api/decks/stream` now stores owner mappings in Upstash too (not only `/api/decks`), and owner-less regular metadata cache entries now expire quickly and auto-refresh instead of persisting for a full day.
 - (2026-02-07 UTC) Improved deck-stream resilience in the client store: SSE `error` events now log as warnings, stream failures automatically retry once through `/api/decks` HTTP fallback, and background restart refreshes now catch errors to avoid unhandled rejection noise in Next.js dev overlay.
 - (2026-02-07 UTC) Hardened regular-deck OG owner propagation: owner writes from `/api/decks` to Upstash are now awaited before response, metadata preview cache key was version-bumped to invalidate stale owner-less entries, and metadata fallback now calls `/api/deck/[id]` without `skipOwnerMerge`.
