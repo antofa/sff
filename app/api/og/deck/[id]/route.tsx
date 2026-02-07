@@ -1425,26 +1425,57 @@ export async function GET(
   const estimateLinesForText = (text: string, fontSize: number, maxWidth: number) => {
     const normalized = String(text || '').trim()
     if (!normalized) return 0
-    // Keep estimation close to real render metrics to avoid under-filling the image.
-    const avgCharWidth = fontSize * 0.58
-    const capacity = Math.max(1, Math.floor(maxWidth / avgCharWidth))
+    const widthLimit = Math.max(1, maxWidth)
     const words = normalized.split(/\s+/)
+    const spaceWidth = fontSize * 0.33
+
+    const charWidth = (ch: string) => {
+      if (/[ilI1'`|!]/.test(ch)) return fontSize * 0.28
+      if (/[mwMW@#%&]/.test(ch)) return fontSize * 0.78
+      if (/[A-Z]/.test(ch)) return fontSize * 0.62
+      if (/[0-9]/.test(ch)) return fontSize * 0.56
+      if (/[\-_,.:;()/+]/.test(ch)) return fontSize * 0.34
+      return fontSize * 0.52
+    }
+
+    const wordWidth = (word: string) => {
+      let sum = 0
+      for (const ch of word) sum += charWidth(ch)
+      return sum
+    }
+
     let lines = 1
-    let lineLength = 0
+    let lineWidth = 0
+
     for (const word of words) {
-      const wordLength = word.length
-      if (lineLength === 0) {
-        lineLength = wordLength
+      let w = wordWidth(word)
+      if (lineWidth > 0) {
+        if (lineWidth + spaceWidth + w <= widthLimit) {
+          lineWidth += spaceWidth + w
+          continue
+        }
+        lines += 1
+        lineWidth = 0
+      }
+
+      if (w <= widthLimit) {
+        lineWidth = w
         continue
       }
-      if (lineLength + 1 + wordLength <= capacity) {
-        lineLength += 1 + wordLength
-      } else {
-        lines += 1
-        lineLength = wordLength
+
+      // Very long token fallback: simulate internal wrapping.
+      const wrappedLines = Math.floor(w / widthLimit)
+      if (wrappedLines > 0) {
+        lines += wrappedLines
+        w -= wrappedLines * widthLimit
+      }
+      lineWidth = Math.max(0, w)
+      if (lineWidth === 0) {
+        lineWidth = widthLimit
       }
     }
-    return lines
+
+    return Math.max(1, lines)
   }
 
   const fitScale = (minScale: number, maxScale: number, fits: (scale: number) => boolean) => {
