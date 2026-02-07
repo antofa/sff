@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: c4b957c
+  Request: Cache the header logo for one day.
+  Date: 2026-02-07
 - Commit: 22ab805
   Request: Re-check real remote OG images for remaining bottom empty space and fix fused auto-fit to improve column height fill without overlap.
   Date: 2026-02-07
