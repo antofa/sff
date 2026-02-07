@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: dbcd15f
+  Request: Also make `og:title` and `og:description` for regular decks analogous to fused decks.
+  Date: 2026-02-07
 - Commit: a3d501c
   Request: Re-check the real half-deck OG URL and fix remaining bottom clipping where the last card line was cut off.
   Date: 2026-02-07
