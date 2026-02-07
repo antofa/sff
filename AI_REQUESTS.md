@@ -830,3 +830,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 1355d43
   Request: Owner still does not appear in regular deck OG description after opening the deck modal first; make owner propagation reliable from real player search flow.
   Date: 2026-02-07
+- Commit: 8cda8d5
+  Request: For http://hadoop21.click:3000/api/og/deck/Fused_1qrav2mfzdk9b9?refresh=1 the third column text is clipped; allow per-column font sizing so text fully fits within each column.
+  Date: 2026-02-07
