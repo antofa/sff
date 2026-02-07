@@ -1390,8 +1390,8 @@ export async function GET(
   const fusedColumnGap = 18
   const defaultFusedCardColumnFlexes: [number, number] = [1.1, 1.1]
   const defaultFusedForgebornColumnFlex = 1.0
-  const defaultHalfDeckCardColumnFlex = 1.2
-  const defaultHalfDeckForgebornColumnFlex = 1.0
+  const defaultHalfDeckCardColumnFlex = 1.0
+  const defaultHalfDeckForgebornColumnFlex = 1.25
   const fusedAvailableWidth = innerWidth - fusedColumnGap * 2
   const halfDeckAvailableWidth = innerWidth - fusedColumnGap
   const getFusedColumnWidths = (cardFlexes: [number, number], forgebornFlex: number) => {
@@ -1432,6 +1432,22 @@ export async function GET(
   const secondaryForgebornAbilityLineHeight = Math.max(1.05, forgebornAbilityLineHeight - 0.05)
   const baseForgebornLevelIconSize = showFusedColumns ? 18 : 20
 
+  const estimateTextWidth = (text: string, fontSize: number) => {
+    const normalized = String(text || '').trim()
+    if (!normalized) return 0
+    let sum = 0
+    for (const ch of normalized) {
+      if (/[ilI1'`|!]/.test(ch)) sum += fontSize * 0.28
+      else if (/[mwMW@#%&]/.test(ch)) sum += fontSize * 0.78
+      else if (/[A-Z]/.test(ch)) sum += fontSize * 0.62
+      else if (/[0-9]/.test(ch)) sum += fontSize * 0.56
+      else if (/[\-_,.:;()/+]/.test(ch)) sum += fontSize * 0.34
+      else if (/\s/.test(ch)) sum += fontSize * 0.33
+      else sum += fontSize * 0.52
+    }
+    return sum
+  }
+
   const estimateLinesForText = (text: string, fontSize: number, maxWidth: number) => {
     const normalized = String(text || '').trim()
     if (!normalized) return 0
@@ -1439,20 +1455,7 @@ export async function GET(
     const words = normalized.split(/\s+/)
     const spaceWidth = fontSize * 0.33
 
-    const charWidth = (ch: string) => {
-      if (/[ilI1'`|!]/.test(ch)) return fontSize * 0.28
-      if (/[mwMW@#%&]/.test(ch)) return fontSize * 0.78
-      if (/[A-Z]/.test(ch)) return fontSize * 0.62
-      if (/[0-9]/.test(ch)) return fontSize * 0.56
-      if (/[\-_,.:;()/+]/.test(ch)) return fontSize * 0.34
-      return fontSize * 0.52
-    }
-
-    const wordWidth = (word: string) => {
-      let sum = 0
-      for (const ch of word) sum += charWidth(ch)
-      return sum
-    }
+    const wordWidth = (word: string) => estimateTextWidth(word, fontSize)
 
     let lines = 1
     let lineWidth = 0
@@ -1546,6 +1549,24 @@ export async function GET(
     return totalHeight
   }
 
+  const estimateCardColumnWidthUsage = (
+    column: CardColumn | undefined,
+    scale: number,
+    columnWidth: number
+  ) => {
+    if (!column || column.sections.length === 0) return 0
+    const cardFontSize = baseCardFontSize * scale
+    const iconSize = Math.round(cardFontSize)
+    const textWidth = Math.max(40, columnWidth - iconSize - 12)
+    const allNames = column.sections.flatMap((section) => (section.items || []).map((item) => item.name || ''))
+    if (allNames.length === 0) return 0
+    let widest = 0
+    allNames.forEach((name) => {
+      widest = Math.max(widest, estimateTextWidth(name, cardFontSize))
+    })
+    return Math.max(0, Math.min(1, widest / Math.max(1, textWidth)))
+  }
+
   const estimateAbilityListHeight = (
     abilities: AbilityEntry[],
     fontSize: number,
@@ -1619,6 +1640,25 @@ export async function GET(
     }
 
     return totalHeight
+  }
+
+  const estimateForgebornWidthUsage = (scale: number, forgebornWidth: number) => {
+    const primaryVisible = forgebornAbilities.filter((ability) => !!ability?.text?.trim())
+    const secondaryVisible = hasSecondaryForgeborn
+      ? secondaryForgebornAbilities.filter((ability) => !!ability?.text?.trim())
+      : []
+    const visible = [...primaryVisible, ...secondaryVisible]
+    if (visible.length === 0) return 0
+    const columnWidth = Math.max(40, forgebornWidth - 8)
+    const abilityFontSize = baseForgebornAbilityFont * primaryAbilityScale * scale
+    const levelIconSize = Math.round(baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * scale)
+    const scaledLevelIconSize = levelIconSize * forgebornAbilityIconScale
+    const textWidth = Math.max(40, columnWidth - scaledLevelIconSize - 16)
+    let widest = 0
+    visible.forEach((ability) => {
+      widest = Math.max(widest, estimateTextWidth(ability.text || '', abilityFontSize))
+    })
+    return Math.max(0, Math.min(1, widest / Math.max(1, textWidth)))
   }
 
   const fitMinScale = 0.75
@@ -1724,8 +1764,8 @@ export async function GET(
     cardColumnScales = bestCandidate.cardScales
     forgebornColumnScale = bestCandidate.forgebornScale
   } else {
-    const cardFlexCandidates = [1.0, 1.15, 1.3, 1.45]
-    const forgebornFlexCandidates = [0.85, 1.0, 1.15, 1.3]
+    const cardFlexCandidates = [0.75, 0.9, 1.0, 1.1, 1.2, 1.3]
+    const forgebornFlexCandidates = [1.0, 1.15, 1.3, 1.45, 1.6]
 
     const evaluateCandidate = (cardFlex: number, forgebornFlex: number) => {
       const { cardColumnWidth, forgebornColumnWidth } = getHalfDeckColumnWidths(cardFlex, forgebornFlex)
@@ -1744,12 +1784,18 @@ export async function GET(
         Math.min(1.3, (estimatedHeights[0] * cardEstimateAllowance) / Math.max(1, safeHeightBudget)),
         Math.min(1.3, (estimatedHeights[1] * forgebornEstimateAllowance) / Math.max(1, safeHeightBudget)),
       ]
+      const widthUsage = [
+        estimateCardColumnWidthUsage(cardColumns[0], candidateCardScale, cardColumnWidth),
+        estimateForgebornWidthUsage(candidateForgebornScale, forgebornColumnWidth),
+      ]
 
       const avgFill = (fillRatios[0] + fillRatios[1]) / 2
       const maxFill = Math.max(fillRatios[0], fillRatios[1])
       const minFill = Math.min(fillRatios[0], fillRatios[1])
       const fullColumns = fillRatios.filter((value) => value >= 0.985).length
       const spread = maxFill - minFill
+      const avgWidthUsage = (widthUsage[0] + widthUsage[1]) / 2
+      const minWidthUsage = Math.min(widthUsage[0], widthUsage[1])
       const widthPenalty =
         Math.abs(cardFlex - defaultHalfDeckCardColumnFlex) +
         Math.abs(forgebornFlex - defaultHalfDeckForgebornColumnFlex)
@@ -1758,8 +1804,10 @@ export async function GET(
         maxFill * 20 +
         avgFill * 10 +
         minFill * 4 -
-        spread * 2 -
-        widthPenalty * 0.9
+        spread * 2 +
+        avgWidthUsage * 18 +
+        minWidthUsage * 8 -
+        widthPenalty * 0.45
 
       return {
         cardFlex,
@@ -1925,11 +1973,11 @@ export async function GET(
     // on long multi-line ability text in real OG rendering.
     const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 18)
     forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
-      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.9 <= safeHeightBudget
+      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.88 <= safeHeightBudget
     )
   }
 
-  const forgebornRenderScale = showFusedColumns ? 1 : 0.94
+  const forgebornRenderScale = showFusedColumns ? 1 : 0.92
   const forgebornAbilityFont =
     Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * forgebornRenderScale * 10) / 10
   const forgebornLevelIconSize = `${Math.round(

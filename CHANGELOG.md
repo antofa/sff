@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-07 UTC) Improved half-deck OG auto-layout to optimize both height and width: added width-usage scoring for non-fused two-column balancing, expanded flex candidate ranges to shift more space to the ability column when needed, and strengthened final non-fused bottom-clipping safeguards.
 - (2026-02-07 UTC) Hardened half-deck OG forgeborn column fitting to prevent second-column bottom clipping on long ability text by using a more conservative width reserve, tighter non-fused height budget, and a final non-fused render-scale safeguard.
 - (2026-02-07 UTC) Aligned regular (non-fused) deck link previews with fused formatting: OG/Twitter title now appends forgeborn and owner when available, and description now uses compact summary lines (deck details, card-type counts, rarity initials, creature types) instead of a raw card-name list.
 - (2026-02-07 UTC) Fixed half-deck OG bottom clipping in dense card lists by tightening the final non-fused card-column render safety scale so the last card line remains visible.
