@@ -821,3 +821,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: f5eaa89
   Request: For regular decks, OG description should include owner like fused decks; use Upstash-cached opened deck data to persist/reuse owner info for OG metadata.
   Date: 2026-02-07
+- Commit: 14569c4
+  Request: Owner still did not appear in regular-deck OG description after verification; fix reliability so owner is consistently available.
+  Date: 2026-02-07
