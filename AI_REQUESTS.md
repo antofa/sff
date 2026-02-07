@@ -818,3 +818,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: c21f182
   Request: http://hadoop21.click:3000/deck/epjfotg0jhjnhzrjdfjnqpm3r06rea?ss=224&sdfgbg=42&dsfs=wrew shows an old Discord preview image even with extra URL params; check whether stale OG cache in Upstash is the cause and fix cache invalidation.
   Date: 2026-02-07
+- Commit: f5eaa89
+  Request: For regular decks, OG description should include owner like fused decks; use Upstash-cached opened deck data to persist/reuse owner info for OG metadata.
+  Date: 2026-02-07
