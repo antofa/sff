@@ -839,3 +839,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: d389ad7
   Request: Apply per-column font auto-fit for regular decks (fill columns without overflow/bottom clipping) and investigate OG cache not refreshing on deck URLs with extra query params.
   Date: 2026-02-07
+- Commit: 3e2781a
+  Request: Review 10 regular and 10 fused OG images for cutiehammer and ensure all cards/abilities are fully visible without bottom clipping; fix any remaining clipping cases.
+  Date: 2026-02-07
