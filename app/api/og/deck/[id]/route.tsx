@@ -4,6 +4,7 @@ import path from 'node:path'
 import type { NextRequest } from 'next/server'
 import type { ReactNode } from 'react'
 import { getOgImageFromUpstashCache, isOgUpstashCacheConfigured, putOgImageToUpstashCache } from '@/lib/ogUpstashCache'
+import { OG_IMAGE_VERSION } from '@/lib/ogVersion'
 
 export const runtime = 'nodejs'
 
@@ -1213,7 +1214,7 @@ export async function GET(
   const origin = new URL(request.url).origin
 
   if (!forceRefresh && isOgUpstashCacheConfigured()) {
-    const cachedImage = await getOgImageFromUpstashCache(deckId)
+    const cachedImage = await getOgImageFromUpstashCache(deckId, { version: OG_IMAGE_VERSION })
     if (cachedImage) {
       const cachedBuffer = new ArrayBuffer(cachedImage.byteLength)
       new Uint8Array(cachedBuffer).set(cachedImage)
@@ -2294,6 +2295,7 @@ export async function GET(
   if (isOgUpstashCacheConfigured()) {
     void putOgImageToUpstashCache(deckId, new Uint8Array(imageBuffer), {
       ttlSeconds: OG_UPSTASH_IMAGE_TTL_SECONDS,
+      version: OG_IMAGE_VERSION,
     }).catch(() => {
       // Best-effort write; ignore cache upload errors.
     })

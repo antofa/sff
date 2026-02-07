@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis'
+import { OG_IMAGE_VERSION } from './ogVersion'
 
 const normalizeEnvValue = (value?: string | null): string | null => {
   if (!value) return null
@@ -38,7 +39,8 @@ const getRedis = () => {
   return redisClient
 }
 
-const getKey = (deckId: string) => `og:image:deck:${encodeURIComponent(deckId)}`
+const getKey = (deckId: string, version: string = OG_IMAGE_VERSION) =>
+  `og:image:deck:v:${encodeURIComponent(version)}:${encodeURIComponent(deckId)}`
 
 const toBase64 = (value: Uint8Array): string => {
   let binary = ''
@@ -64,11 +66,14 @@ const fromBase64 = (base64: string): Uint8Array | null => {
 
 export const isOgUpstashCacheConfigured = () => hasConfig
 
-export const getOgImageFromUpstashCache = async (deckId: string): Promise<Uint8Array | null> => {
+export const getOgImageFromUpstashCache = async (
+  deckId: string,
+  options?: { version?: string }
+): Promise<Uint8Array | null> => {
   const redis = getRedis()
   if (!redis) return null
   try {
-    const encoded = await redis.get<string>(getKey(deckId))
+    const encoded = await redis.get<string>(getKey(deckId, options?.version))
     if (!encoded || typeof encoded !== 'string') return null
     return fromBase64(encoded)
   } catch {
@@ -79,13 +84,13 @@ export const getOgImageFromUpstashCache = async (deckId: string): Promise<Uint8A
 export const putOgImageToUpstashCache = async (
   deckId: string,
   imageBytes: Uint8Array,
-  options?: { ttlSeconds?: number }
+  options?: { ttlSeconds?: number; version?: string }
 ) => {
   const redis = getRedis()
   if (!redis || !imageBytes || imageBytes.length === 0) return
   const ttlSeconds = Math.max(1, options?.ttlSeconds ?? 24 * 60 * 60)
   try {
-    await redis.set(getKey(deckId), toBase64(imageBytes), { ex: ttlSeconds })
+    await redis.set(getKey(deckId, options?.version), toBase64(imageBytes), { ex: ttlSeconds })
   } catch {
     // Best-effort cache write; ignore errors.
   }

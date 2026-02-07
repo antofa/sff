@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import DeckPageClient from './DeckPageClient'
 import { fetchDeckDetails, getCardInfo, normalizeDeck } from '@/lib/api'
+import { OG_IMAGE_VERSION } from '@/lib/ogVersion'
 
 export const dynamic = 'force-dynamic'
 
@@ -742,7 +743,9 @@ export async function generateMetadata(
     }
 
     const { title, description, imageAlt } = previewCore
-    const ogImageUrl = baseUrl ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}` : undefined
+    const ogImageUrl = baseUrl
+      ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}?v=${encodeURIComponent(OG_IMAGE_VERSION)}`
+      : undefined
 
     return {
       title,
