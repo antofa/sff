@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 4efc6eb
+  Request: Re-check and fix fused OG where first-column letters were still clipped by the bottom image edge on `Fused_u9912mkvb9mqm`.
+  Date: 2026-02-07
 - Commit: 557ea2d
   Request: Fix fused OG clipping where the 10th card in the first column could render beyond the bottom edge for `Fused_u9912mkvb9mqm`.
   Date: 2026-02-07
