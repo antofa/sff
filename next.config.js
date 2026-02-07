@@ -78,31 +78,44 @@ installConsoleTimestamp()
 
 const nextConfig = {
   reactStrictMode: true,
-      images: {
-        remotePatterns: [
+  async headers() {
+    return [
+      {
+        source: '/images/logo/:path*',
+        headers: [
           {
-            protocol: 'https',
-            hostname: 'solforgefusion.com',
-            pathname: '/**',
-          },
-          {
-            protocol: 'https',
-            hostname: 'www.solforgefusion.com',
-            pathname: '/**',
-          },
-          {
-            protocol: 'https',
-            hostname: '**.solforgefusion.com',
-            pathname: '/**',
-          },
-          {
-            protocol: 'https',
-            hostname: 'sfwmedia11453-main.s3.amazonaws.com',
-            pathname: '/**',
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=86400',
           },
         ],
-        unoptimized: false,
       },
+    ]
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'solforgefusion.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.solforgefusion.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.solforgefusion.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'sfwmedia11453-main.s3.amazonaws.com',
+        pathname: '/**',
+      },
+    ],
+    unoptimized: false,
+  },
 }
 
 module.exports = nextConfig
