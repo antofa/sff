@@ -2030,7 +2030,7 @@ export async function GET(
     columnScale = 1,
     spacing: { sectionGap: number; listGap: number } = { sectionGap: 8, listGap: 4 }
   ) => {
-    const renderScale = showFusedColumns ? columnScale * 0.972 : columnScale * 0.985
+    const renderScale = showFusedColumns ? columnScale * 0.972 : columnScale * 0.965
     return (
     <div
       key={`column-${columnIndex}`}

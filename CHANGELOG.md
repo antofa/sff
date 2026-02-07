@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-07 UTC) Fixed half-deck OG bottom clipping in dense card lists by tightening the final non-fused card-column render safety scale so the last card line remains visible.
 - (2026-02-07 UTC) Updated non-fused (half-deck) OG rendering to use the same side-by-side auto-fit approach as fused OG (cards column + forgeborn column), with adaptive width/scale balancing and spacing fill, and fixed ability-token spacing so words/icons no longer collapse together.
 - (2026-02-07 UTC) Narrowed the 24-hour logo cache rule to the single header logo file (`/images/logo/too-many-decks-logo.png`) instead of all files under `/images/logo/*`.
 - (2026-02-07 UTC) Set a 24-hour cache policy for header logo assets under `/images/logo/*` by sending `Cache-Control: public, max-age=86400, s-maxage=86400, stale-while-revalidate=86400`.
