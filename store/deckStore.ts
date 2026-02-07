@@ -1041,6 +1041,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         perDeckCreatureTypes?: Record<string, Record<string, number>>
       } = {}
       let latestTagMessage: string | undefined
+      let terminalErrorHandled = false
 
       const deckPhaseDone = () => {
         const regularStatus = progressSteps.find((s) => s.key === 'fetchRegular')?.status
@@ -1445,7 +1446,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           (parsed && typeof parsed === 'object' && 'message' in parsed && (parsed as any).message) ||
           (typeof parsed === 'string' ? parsed : null)
 
-        console.error('[Store] SSE error event:', {
+        console.warn('[Store] SSE error event:', {
           readyState,
           type: event?.type,
           payload: parsed,
@@ -1471,15 +1472,129 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           return
         }
 
+        if (terminalErrorHandled) return
+        terminalErrorHandled = true
         cleanup()
-        set({
-          error: userMessage,
-          loading: false,
-          decks: existingDecks,
-          fusedDecks: existingFused,
-        })
-        finishProgress(userMessage, 'error')
-        reject(new Error(userMessage))
+
+        void (async () => {
+          try {
+            updateSteps('fetchRegular', 'running', 'Stream interrupted. Retrying via HTTP...')
+            const cacheBust = forceRefresh ? `&_=${Date.now()}` : ''
+            const res = await fetch(
+              `/api/decks?player=${encodeURIComponent(normalizedName)}${forceRefresh ? '&force=1' : ''}${cacheBust}`,
+              { headers: { Accept: 'application/json' }, cache: 'no-store' }
+            )
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+            }
+
+            const json = await res.json()
+            const rawRegular = Array.isArray(json?.regular) ? json.regular : []
+            const rawFused = Array.isArray(json?.fused) ? json.fused : []
+            const owner = playerName.trim()
+            const taggedRegular = rawRegular.map((deck: any) => ({ ...deck, playerName: owner }))
+            const taggedFused = rawFused.map((deck: any) => ({ ...deck, playerName: owner }))
+
+            let enhancedRegular: Deck[] = []
+            let enhancedFused: Deck[] = []
+            try {
+              enhancedRegular = attachComputed(DecksResponseSchema.parse(taggedRegular))
+              enhancedFused = attachComputed(DecksResponseSchema.parse(taggedFused))
+            } catch (validationError) {
+              if ((taggedRegular.length + taggedFused.length) === 0) {
+                throw validationError
+              }
+              console.warn('[Store] HTTP fallback validation warning; using unvalidated data')
+              enhancedRegular = attachComputed(taggedRegular)
+              enhancedFused = attachComputed(taggedFused)
+            }
+
+            const names = buildNameIndexes(enhancedRegular, enhancedFused)
+            const allDecks = [...enhancedRegular, ...enhancedFused]
+            const perDeckTags: Record<string, string[]> = {}
+            const perDeckCreatureTypes: Record<string, Record<string, number>> = {}
+            const uniqueTags = new Set<string>()
+            const uniqueCardNames = new Set<string>()
+
+            allDecks.forEach((deck) => {
+              const deckId = deck?.id
+              const displayTags = Array.isArray(deck?.computed?.displayTags) ? deck.computed!.displayTags : []
+              if (deckId) {
+                perDeckTags[deckId] = displayTags
+                perDeckCreatureTypes[deckId] = deck.creatureType || {}
+              }
+              displayTags.forEach((tag) => {
+                if (tag && typeof tag === 'string') uniqueTags.add(tag)
+              })
+
+              if (Array.isArray(deck.cards)) {
+                deck.cards.forEach((card: any, index: number) => {
+                  const cardInfo =
+                    typeof card === 'string'
+                      ? getCardInfoCached(card)
+                      : getCardInfoCached(card?.id || card?.cardId || card?.name || `card-${index}`, card)
+                  if (cardInfo?.name && typeof cardInfo.name === 'string' && cardInfo.name.trim()) {
+                    uniqueCardNames.add(cardInfo.name.trim())
+                  }
+                })
+              }
+            })
+
+            setProgressCounters({
+              regularCount: enhancedRegular.length,
+              fusedCount: enhancedFused.length,
+              totalCount: enhancedRegular.length + enhancedFused.length,
+              regularPages: json?.meta?.regularPages ?? json?.meta?.pages ?? (enhancedRegular.length > 0 ? 1 : 0),
+              fusedPages: json?.meta?.fusedPages ?? (enhancedFused.length > 0 ? 1 : 0),
+              tagCount: uniqueTags.size,
+              tagTotal: enhancedRegular.length + enhancedFused.length,
+            })
+            updateSteps('fetchRegular', 'done', 'HTTP fallback complete')
+            updateSteps('fetchFused', 'done')
+            updateSteps('tags', 'done', 'Tags prepared')
+            updateSteps('finalize', 'done', 'Decks loaded (HTTP fallback)')
+
+            set((state) => ({
+              decks: enhancedRegular,
+              fusedDecks: enhancedFused,
+              error: null,
+              loading: false,
+              tagIndex: Array.from(uniqueTags).sort(),
+              cardNameIndex: Array.from(uniqueCardNames).sort(),
+              deckNameIndex: names.deckNameIndex,
+              forgebornNameIndex: names.forgebornNameIndex,
+              deckTags: perDeckTags,
+              deckCreatureTypes: perDeckCreatureTypes,
+              playerCache: {
+                ...state.playerCache,
+                [normalizedPlayer]: {
+                  decks: enhancedRegular,
+                  fusedDecks: enhancedFused,
+                  tagIndex: Array.from(uniqueTags).sort(),
+                  cardNameIndex: Array.from(uniqueCardNames).sort(),
+                  deckNameIndex: names.deckNameIndex,
+                  forgebornNameIndex: names.forgebornNameIndex,
+                  deckTags: perDeckTags,
+                  deckCreatureTypes: perDeckCreatureTypes,
+                  expiresAt: Date.now() + CACHE_TTL_MS,
+                },
+              },
+            }))
+            finishProgress('Decks loaded (HTTP fallback)', 'done')
+            resolve()
+          } catch (fallbackError) {
+            const fallbackMessage =
+              fallbackError instanceof Error ? fallbackError.message : userMessage || 'Failed to load decks.'
+            set({
+              error: fallbackMessage,
+              loading: false,
+              decks: existingDecks,
+              fusedDecks: existingFused,
+            })
+            finishProgress(fallbackMessage, 'error')
+            reject(new Error(fallbackMessage))
+          }
+        })()
       })
     })
   },
@@ -1542,6 +1657,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       }
       set({ currentEventSource: null })
     }
-    void fetchDecks(currentPlayer, { force: true, keepExisting: true })
+    void fetchDecks(currentPlayer, { force: true, keepExisting: true }).catch((err) => {
+      console.warn('[Store] restartFetchIfLoading failed:', err)
+    })
   },
 }))

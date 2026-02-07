@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-07 UTC) Improved deck-stream resilience in the client store: SSE `error` events now log as warnings, stream failures automatically retry once through `/api/decks` HTTP fallback, and background restart refreshes now catch errors to avoid unhandled rejection noise in Next.js dev overlay.
 - (2026-02-07 UTC) Hardened regular-deck OG owner propagation: owner writes from `/api/decks` to Upstash are now awaited before response, metadata preview cache key was version-bumped to invalidate stale owner-less entries, and metadata fallback now calls `/api/deck/[id]` without `skipOwnerMerge`.
 - (2026-02-07 UTC) Added Upstash deck-owner caching for regular and fused deck IDs and wired metadata generation to reuse cached owner names, so regular deck OG descriptions now include `owner: ...` consistently like fused previews.
 - (2026-02-07 UTC) Added OG image versioning for deck pages and Upstash cache keys: `og:image` URLs now include a version query string and Upstash keys include the same version, so Discord and upstream caches stop serving stale OG images after layout updates.
