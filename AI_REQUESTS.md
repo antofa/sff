@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 0372f1c
+  Request: Verify on actual remote OG images before reporting completion; fix fused OG text overlap and center rarity icons relative to two-line card names.
+  Date: 2026-02-07
 - Commit: 9bc6e66
   Request: In fused OG card lists, keep rarity icons vertically aligned with text and make icon size match the card font size.
   Date: 2026-02-07
