@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic'
 
 const DECK_PREVIEW_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const DECK_PREVIEW_CACHE_MAX_ENTRIES = 500
+const DECK_PREVIEW_CACHE_VERSION = '2026-02-07-owner-cache-v2'
 
 type DeckPreviewCore = {
   title: string
@@ -31,7 +32,8 @@ const stripDeckPrefixes = (value: string) =>
     .replace(/^deck[_-]?/i, '')
     .replace(/^fused[_-]?/i, '')
 
-const normalizeDeckPreviewKey = (deckId: string) => stripDeckPrefixes(deckId).trim().toLowerCase()
+const normalizeDeckPreviewKey = (deckId: string) =>
+  `${DECK_PREVIEW_CACHE_VERSION}:${stripDeckPrefixes(deckId).trim().toLowerCase()}`
 
 const trimLru = (cache: Map<string, DeckPreviewCacheEntry>, maxEntries: number) => {
   while (cache.size > maxEntries) {
@@ -664,7 +666,7 @@ const fetchRawDeckForPreview = async (deckId: string, baseUrl: string | null) =>
 
   if (!rawDeck && baseUrl) {
     try {
-      const res = await fetch(`${baseUrl}/api/deck/${encodeURIComponent(deckId)}?skipOwnerMerge=1`, {
+      const res = await fetch(`${baseUrl}/api/deck/${encodeURIComponent(deckId)}`, {
         headers: { Accept: 'application/json' },
         cache: 'no-store',
       })

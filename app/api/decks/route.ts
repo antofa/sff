@@ -47,7 +47,7 @@ const resolveOwnerName = (deck: any, fallbackOwnerName: string): string => {
   return String(candidate || fallbackOwnerName).trim()
 }
 
-const cacheDeckOwnersBestEffort = (playerName: string, decks: any[]) => {
+const cacheDeckOwnersBestEffort = async (playerName: string, decks: any[]) => {
   const entries = decks
     .map((deck) => {
       const deckId = resolveDeckId(deck)
@@ -61,7 +61,7 @@ const cacheDeckOwnersBestEffort = (playerName: string, decks: any[]) => {
 
   if (entries.length === 0) return
 
-  void putDeckOwnersToUpstashCache(entries).catch((error) => {
+  await putDeckOwnersToUpstashCache(entries).catch((error) => {
     console.warn('[API Route] Failed to cache deck owners in Upstash:', error)
   })
 }
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
     if (type === 'fused') {
       // Fetch only fused decks
       const fusedDecks = await fetchFusedDecksFromAPI(playerName, { force })
-      cacheDeckOwnersBestEffort(playerName, fusedDecks)
+      await cacheDeckOwnersBestEffort(playerName, fusedDecks)
       await syncBestEffort(playerName, [], fusedDecks)
       logWithTimestamp(`[API Route] Received ${fusedDecks.length} fused decks for player: ${playerName}`)
       return NextResponse.json({
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
     } else if (type === 'regular') {
       // Fetch only regular decks
       const { decks, meta } = await getPlayerDecks(playerName, { force })
-      cacheDeckOwnersBestEffort(playerName, decks)
+      await cacheDeckOwnersBestEffort(playerName, decks)
       await syncBestEffort(playerName, decks, [])
       logWithTimestamp(`[API Route] Received ${decks.length} regular decks for player: ${playerName}`)
       return NextResponse.json({
@@ -113,8 +113,8 @@ export async function GET(request: NextRequest) {
       // Fetch both regular and fused decks
       const { decks: regularDecks, meta } = await getPlayerDecks(playerName, { force })
       const fusedDecks = await fetchFusedDecksFromAPI(playerName, { force })
-      cacheDeckOwnersBestEffort(playerName, regularDecks)
-      cacheDeckOwnersBestEffort(playerName, fusedDecks)
+      await cacheDeckOwnersBestEffort(playerName, regularDecks)
+      await cacheDeckOwnersBestEffort(playerName, fusedDecks)
       await syncBestEffort(playerName, regularDecks, fusedDecks)
       
       logWithTimestamp(`[API Route] Received ${regularDecks.length} regular and ${fusedDecks.length} fused decks for player: ${playerName}`)
