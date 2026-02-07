@@ -8,13 +8,16 @@ import { OG_IMAGE_VERSION } from '@/lib/ogVersion'
 export const dynamic = 'force-dynamic'
 
 const DECK_PREVIEW_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+const DECK_PREVIEW_MISSING_OWNER_TTL_MS = 60 * 1000
 const DECK_PREVIEW_CACHE_MAX_ENTRIES = 500
-const DECK_PREVIEW_CACHE_VERSION = '2026-02-07-owner-cache-v2'
+const DECK_PREVIEW_CACHE_VERSION = '2026-02-07-owner-cache-v3'
 
 type DeckPreviewCore = {
   title: string
   description: string
   imageAlt: string
+  hasOwner: boolean
+  isFused: boolean
 }
 
 type DeckPreviewCacheEntry = {
@@ -59,9 +62,9 @@ const getCachedDeckPreview = (key: string): DeckPreviewCore | null => {
   return cached.data
 }
 
-const setCachedDeckPreview = (key: string, data: DeckPreviewCore) => {
+const setCachedDeckPreview = (key: string, data: DeckPreviewCore, ttlMs: number = DECK_PREVIEW_CACHE_TTL_MS) => {
   touchDeckPreviewCache(key, {
-    expiresAt: Date.now() + DECK_PREVIEW_CACHE_TTL_MS,
+    expiresAt: Date.now() + Math.max(1, ttlMs),
     data,
   })
   trimLru(deckPreviewCache, DECK_PREVIEW_CACHE_MAX_ENTRIES)
@@ -721,6 +724,8 @@ const buildDeckPreviewCore = async (
     title,
     description,
     imageAlt: forgebornName ? `Forgeborn ${forgebornName}` : 'Forgeborn card',
+    hasOwner: !!ownerName,
+    isFused: isFusedDeck,
   }
 }
 
@@ -731,7 +736,12 @@ const getDeckPreviewCore = async (
 ): Promise<DeckPreviewCore | null> => {
   const cacheKey = normalizeDeckPreviewKey(deckId)
   const cached = getCachedDeckPreview(cacheKey)
-  if (cached) return cached
+  if (cached) {
+    if (cached.isFused || cached.hasOwner) {
+      return cached
+    }
+    deckPreviewCache.delete(cacheKey)
+  }
 
   const inflight = deckPreviewInFlight.get(cacheKey)
   if (inflight) return inflight
@@ -739,7 +749,10 @@ const getDeckPreviewCore = async (
   const promise = buildDeckPreviewCore(deckId, titleFallback, baseUrl)
     .then((core) => {
       if (core) {
-        setCachedDeckPreview(cacheKey, core)
+        const cacheTtlMs = !core.isFused && !core.hasOwner
+          ? DECK_PREVIEW_MISSING_OWNER_TTL_MS
+          : DECK_PREVIEW_CACHE_TTL_MS
+        setCachedDeckPreview(cacheKey, core, cacheTtlMs)
       }
       return core
     })

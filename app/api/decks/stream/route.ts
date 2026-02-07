@@ -3,6 +3,7 @@ import path from 'path'
 import { NextRequest } from 'next/server'
 import { fetchFusedDecksFromAPI, getPlayerDecks, getCardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
+import { putDeckOwnersToUpstashCache } from '@/lib/deckOwnerUpstashCache'
 import { logWithTimestamp } from '@/lib/logger'
 import { getLogDirs, shouldFallbackToTmp } from '@/lib/logPaths'
 import { pruneOldLogs } from '@/lib/logRotation'
@@ -230,6 +231,47 @@ const buildTagPayload = (decks: any[], fused: any[]) => {
     perDeck,
     perDeckCreatureTypes,
   }
+}
+
+const resolveDeckId = (deck: any): string | null => {
+  const raw = deck?.id ?? deck?.deckId ?? deck?.deck_id ?? null
+  if (!raw) return null
+  const normalized = String(raw).trim()
+  return normalized || null
+}
+
+const resolveOwnerName = (deck: any, fallbackOwnerName: string): string => {
+  const candidate =
+    deck?.playerName ??
+    deck?.player_name ??
+    deck?.ownerName ??
+    deck?.owner ??
+    deck?.username ??
+    deck?.userName ??
+    deck?.myUser?.username ??
+    deck?.users?.[0]?.username ??
+    deck?.users?.[0]?.user?.username ??
+    fallbackOwnerName
+  return String(candidate || fallbackOwnerName).trim()
+}
+
+const cacheDeckOwnersBestEffort = async (playerName: string, decks: any[]) => {
+  const entries = decks
+    .map((deck) => {
+      const deckId = resolveDeckId(deck)
+      if (!deckId) return null
+      return {
+        deckId,
+        ownerName: resolveOwnerName(deck, playerName),
+      }
+    })
+    .filter((entry): entry is { deckId: string; ownerName: string } => !!entry)
+
+  if (entries.length === 0) return
+
+  await putDeckOwnersToUpstashCache(entries).catch((error) => {
+    console.warn('[API /decks/stream] Failed to cache deck owners in Upstash:', error)
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -543,6 +585,10 @@ const processDeckBatch = async (
           console.warn('[API /decks/stream] Supabase sync failed:', syncErr)
           logStage(`supabase sync error: ${syncErr instanceof Error ? syncErr.message : 'unknown'}`)
         }
+
+        await cacheDeckOwnersBestEffort(playerName, regularWithTypes)
+        await cacheDeckOwnersBestEffort(playerName, fused)
+        logStage(`owner cache done regular=${regularWithTypes.length} fused=${fused.length}`)
 
         // Send decks immediately so fetch step can complete on client
         writeEvent(controller, 'decks-ready', {
