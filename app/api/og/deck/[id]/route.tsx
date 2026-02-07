@@ -1439,8 +1439,10 @@ export async function GET(
   const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
   const primaryAbilityScale = 1
   const forgebornAbilityIconScale = 1.5
-  const forgebornTopSafetyPx = showFusedColumns ? 3 : 1
-  const forgebornBottomSafetyPx = showFusedColumns ? 18 : 8
+  const cardTopSafetyPx = showFusedColumns ? 2 : 2
+  const cardBottomSafetyPx = showFusedColumns ? 8 : 10
+  const forgebornTopSafetyPx = showFusedColumns ? 3 : 3
+  const forgebornBottomSafetyPx = showFusedColumns ? 18 : 16
   const forgebornAbilityLineHeight = hasSecondaryForgeborn
     ? Math.max(1.08, baseForgebornAbilityLineHeight - 0.05)
     : baseForgebornAbilityLineHeight
@@ -1560,7 +1562,7 @@ export async function GET(
         totalHeight += sectionGap
       }
     })
-    return totalHeight + forgebornTopSafetyPx + forgebornBottomSafetyPx
+    return totalHeight + cardTopSafetyPx + cardBottomSafetyPx
   }
 
   const estimateCardColumnWidthUsage = (
@@ -1741,9 +1743,9 @@ export async function GET(
   const fitMinScale = 0.54
   const maxVisualScale = showFusedColumns ? 3.6 : 2.4
   const heightBudget = innerHeight
-  const safeHeightBudget = heightBudget - (showFusedColumns ? 10 : 12)
-  const cardEstimateAllowance = showFusedColumns ? 0.95 : 0.96
-  const forgebornEstimateAllowance = showFusedColumns ? 0.92 : 0.9
+  const safeHeightBudget = heightBudget - (showFusedColumns ? 12 : 24)
+  const cardEstimateAllowance = showFusedColumns ? 0.95 : 0.93
+  const forgebornEstimateAllowance = showFusedColumns ? 0.92 : 0.86
 
   let fusedCardColumnFlexes: [number, number] = [...defaultFusedCardColumnFlexes]
   let fusedForgebornColumnFlex = defaultFusedForgebornColumnFlex
@@ -2057,9 +2059,9 @@ export async function GET(
 
     // Final conservative guard for half-deck forgeborn column to avoid bottom clipping
     // on long multi-line ability text in real OG rendering.
-    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 18)
+    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 22)
     forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
-      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.82 <= safeHeightBudget
+      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.78 <= safeHeightBudget
     )
 
     // Final render-fit for regular (non-fused) columns:
@@ -2074,12 +2076,12 @@ export async function GET(
         ) <= safeHeightBudget
       ),
     ]
-    forgebornRenderScale = fitScale(0.78, 1.02, (renderScale) =>
+    forgebornRenderScale = fitScale(0.74, 1.0, (renderScale) =>
       estimateForgebornHeight(
         forgebornColumnScale * renderScale,
         conservativeForgebornWidth,
         forgebornSpacing
-      ) * 0.99 <= safeHeightBudget
+      ) * 0.97 <= safeHeightBudget
     )
   }
 
