@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import DeckPageClient from './DeckPageClient'
-import { fetchDeckDetails, normalizeDeck } from '@/lib/api'
+import { fetchDeckDetails, getCardInfo, normalizeDeck } from '@/lib/api'
 
 export const dynamic = 'force-dynamic'
 
@@ -310,27 +310,57 @@ const abbreviateRarityLabel = (label: string): string => {
     .join('')
 }
 
-const extractCreatureTypes = (card: any): string[] => {
-  if (!card || typeof card !== 'object') return []
-  const rawValue =
-    card?.cardSubType ??
-    card?.card_sub_type ??
-    card?.cardSubtype ??
-    card?.card_subtype ??
-    card?.subType ??
-    card?.subtype ??
-    card?.creatureType ??
-    card?.creatureTypes ??
-    null
-
-  if (!hasValue(rawValue)) return []
-
-  const rawText = Array.isArray(rawValue) ? rawValue.join(',') : String(rawValue)
-  const parts = rawText
-    .split(/[\/|,&]+/)
-    .map((part) => part.trim())
+const normalizeCreatureSubtype = (raw: unknown): string[] => {
+  if (!raw || typeof raw !== 'string') return []
+  return raw
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.trim().toLowerCase())
     .filter(Boolean)
-  return Array.from(new Set(parts))
+}
+
+const pickCreatureSubtype = (card: any, info: any): string | undefined => {
+  const candidates = [
+    card?.cardSubType,
+    card?.CardSubType,
+    card?.CARDSUBTYPE,
+    card?.SubType,
+    card?.subType,
+    card?.SUBTYPE,
+    info?.cardSubType,
+    info?.CardSubType,
+    info?.SubType,
+    info?.subType,
+  ]
+  return candidates.find((val) => typeof val === 'string' && val.trim())
+}
+
+const isSpellCard = (cardData: any): boolean => {
+  const rawType =
+    cardData?.cardType ||
+    cardData?.card_type ||
+    cardData?.type ||
+    cardData?.Type ||
+    ''
+  const lowerType = rawType.toString().toLowerCase()
+  if (!lowerType) return false
+  if (lowerType.includes('forgeborn')) return false
+  return lowerType.includes('spell') && !lowerType.includes('creature')
+}
+
+const formatCreatureTypeLabel = (value: string) =>
+  value.charAt(0).toUpperCase() + value.slice(1).toLowerCase()
+
+const extractCreatureTypes = (card: any, index: number, cardInfo?: any): string[] => {
+  const resolvedCardInfo =
+    cardInfo ??
+    (typeof card === 'string'
+      ? getCardInfo(card)
+      : getCardInfo(card?.id || card?.cardId || card?.name || `card-${index}`, card))
+  const subType = pickCreatureSubtype(card, resolvedCardInfo)
+  const parts = normalizeCreatureSubtype(subType)
+  if (parts.length === 0) return []
+  return Array.from(new Set(parts.map(formatCreatureTypeLabel)))
 }
 
 const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
@@ -413,7 +443,7 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
     uniqueCards.push(card)
   })
 
-  uniqueCards.forEach((card: any) => {
+  uniqueCards.forEach((card: any, index: number) => {
     const id = typeof card === 'string' ? card : card?.id || card?.cardId || card?.card_id || card?.name
     const idKey = hasValue(id) ? String(id).trim().toLowerCase() : ''
     const typeValue = typeof card === 'string' ? '' : card?.type || card?.cardType || ''
@@ -437,6 +467,18 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
       rarityLower.includes('forgeborn')
     if (isForgeborn) return
 
+    const cardInfo =
+      typeof card === 'string'
+        ? getCardInfo(card)
+        : getCardInfo(card?.id || card?.cardId || card?.name || `card-${index}`, card)
+    const shouldCountCreatureTypes = !(isSpellCard(cardInfo) || isSpellCard(card))
+    if (shouldCountCreatureTypes) {
+      const creatureTypes = extractCreatureTypes(card, index, cardInfo)
+      creatureTypes.forEach((creatureType) => {
+        creatureTypeCounts.set(creatureType, (creatureTypeCounts.get(creatureType) || 0) + 1)
+      })
+    }
+
     if (hasSolbindChildren) {
       const isSpellParent = typeLower.includes('spell') && !typeLower.includes('creature')
       if (isSpellParent) spells += 1
@@ -457,10 +499,6 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
       spells += 1
     } else if (typeLower.includes('creature')) {
       creatures += 1
-      const creatureTypes = extractCreatureTypes(card)
-      creatureTypes.forEach((creatureType) => {
-        creatureTypeCounts.set(creatureType, (creatureTypeCounts.get(creatureType) || 0) + 1)
-      })
     }
 
     const rarity = normalizeRarityLabel(rarityValue)
