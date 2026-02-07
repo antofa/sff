@@ -1584,8 +1584,8 @@ export async function GET(
   const fitMinScale = 0.75
   const maxVisualScale = showFusedColumns ? 3.6 : 2.4
   const heightBudget = innerHeight
-  const safeHeightBudget = heightBudget - 2
-  const cardEstimateAllowance = showFusedColumns ? 0.92 : 1
+  const safeHeightBudget = heightBudget - (showFusedColumns ? 10 : 2)
+  const cardEstimateAllowance = showFusedColumns ? 0.95 : 1
   const forgebornEstimateAllowance = showFusedColumns ? 0.92 : 1
 
   let fusedCardColumnFlexes: [number, number] = [...defaultFusedCardColumnFlexes]
@@ -1905,7 +1905,7 @@ export async function GET(
     columnScale = 1,
     spacing: { sectionGap: number; listGap: number } = { sectionGap: 8, listGap: 4 }
   ) => {
-    const renderScale = showFusedColumns ? columnScale * 0.985 : columnScale
+    const renderScale = showFusedColumns ? columnScale * 0.972 : columnScale
     return (
     <div
       key={`column-${columnIndex}`}
