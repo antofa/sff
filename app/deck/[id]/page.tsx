@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
+import { createHash } from 'node:crypto'
 import DeckPageClient from './DeckPageClient'
 import { fetchDeckDetails, getCardInfo, normalizeDeck } from '@/lib/api'
 import { getDeckOwnerFromUpstashCache, putDeckOwnerToUpstashCache } from '@/lib/deckOwnerUpstashCache'
@@ -101,6 +102,27 @@ const hasValue = (value: unknown) => {
   if (typeof value === 'string') return value.trim().length > 0
   if (Array.isArray(value)) return value.length > 0
   return true
+}
+
+type MetadataSearchParams = Record<string, string | string[] | undefined>
+
+const buildOgQueryVariant = (searchParams: MetadataSearchParams | null | undefined) => {
+  if (!searchParams) return null
+  const pairs: string[] = []
+  Object.keys(searchParams)
+    .sort()
+    .forEach((key) => {
+      const value = searchParams[key]
+      if (value === undefined) return
+      const normalizedValues = Array.isArray(value) ? value : [value]
+      normalizedValues.forEach((item) => {
+        const normalized = String(item || '').trim()
+        if (!normalized) return
+        pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(normalized)}`)
+      })
+    })
+  if (pairs.length === 0) return null
+  return createHash('sha1').update(pairs.join('&')).digest('hex').slice(0, 12)
 }
 
 const isFusedDeckLike = (deck: any) => {
@@ -765,7 +787,13 @@ const getDeckPreviewCore = async (
 }
 
 export async function generateMetadata(
-  { params }: { params: Promise<{ id: string }> }
+  {
+    params,
+    searchParams,
+  }: {
+    params: Promise<{ id: string }>
+    searchParams?: Promise<MetadataSearchParams>
+  }
 ): Promise<Metadata> {
   const deckId = (await params).id
   const titleFallback = `Deck ${deckId}`
@@ -778,8 +806,12 @@ export async function generateMetadata(
     }
 
     const { title, description, imageAlt } = previewCore
+    const resolvedSearchParams = searchParams ? await searchParams : undefined
+    const ogVariant = buildOgQueryVariant(resolvedSearchParams)
     const ogImageUrl = baseUrl
-      ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}?v=${encodeURIComponent(OG_IMAGE_VERSION)}`
+      ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}?v=${encodeURIComponent(OG_IMAGE_VERSION)}${
+          ogVariant ? `&uq=${encodeURIComponent(ogVariant)}` : ''
+        }`
       : undefined
 
     return {

@@ -1221,7 +1221,8 @@ export async function GET(
 ) {
   const { id } = await context.params
   const deckId = id || ''
-  const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1'
+  const hasQueryVariantBuster = !!request.nextUrl.searchParams.get('uq')
+  const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1' || hasQueryVariantBuster
   const origin = new URL(request.url).origin
 
   if (!forceRefresh && isOgUpstashCacheConfigured()) {
@@ -1761,6 +1762,8 @@ export async function GET(
     : getHalfDeckColumnWidths(defaultHalfDeckCardColumnFlex, defaultHalfDeckForgebornColumnFlex).forgebornColumnWidth
   let cardColumnScales: number[] = showFusedColumns ? [1, 1] : [1]
   let forgebornColumnScale = 1
+  let cardRenderScaleFactors: number[] = showFusedColumns ? [0.972, 0.972] : [0.965]
+  let forgebornRenderScale = showFusedColumns ? 0.89 : 0.92
 
   if (showFusedColumns) {
     const cardFlexCandidates = [0.75, 0.9, 1.05, 1.2, 1.35]
@@ -2058,16 +2061,37 @@ export async function GET(
     forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
       estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.82 <= safeHeightBudget
     )
+
+    // Final render-fit for regular (non-fused) columns:
+    // maximize per-column fill while guaranteeing no bottom clipping.
+    cardRenderScaleFactors = [
+      fitScale(0.84, 1.08, (renderScale) =>
+        estimateCardColumnHeight(
+          cardColumns[0],
+          cardColumnScales[0] * renderScale,
+          selectedSingleCardColumnWidth,
+          cardColumnSpacings[0]
+        ) <= safeHeightBudget
+      ),
+    ]
+    forgebornRenderScale = fitScale(0.78, 1.02, (renderScale) =>
+      estimateForgebornHeight(
+        forgebornColumnScale * renderScale,
+        conservativeForgebornWidth,
+        forgebornSpacing
+      ) * 0.99 <= safeHeightBudget
+    )
   }
 
-  const forgebornRenderScale = showFusedColumns ? 0.89 : 0.92
   const forgebornAbilityFont =
     Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * forgebornRenderScale * 10) / 10
   const forgebornLevelIconSize = `${Math.round(
     baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * forgebornColumnScale * forgebornRenderScale
   )}px`
   const secondaryForgebornAbilityFont = Math.round(forgebornAbilityFont * 0.85 * 10) / 10
-  const secondaryForgebornLevelIconSize = `${Math.round(baseForgebornLevelIconSize * 0.8 * forgebornColumnScale)}px`
+  const secondaryForgebornLevelIconSize = `${Math.round(
+    baseForgebornLevelIconSize * 0.8 * forgebornColumnScale * forgebornRenderScale
+  )}px`
 
   const renderAbilityList = (
     abilities: AbilityEntry[],
@@ -2173,7 +2197,8 @@ export async function GET(
     columnScale = 1,
     spacing: { sectionGap: number; listGap: number } = { sectionGap: 8, listGap: 4 }
   ) => {
-    const renderScale = showFusedColumns ? columnScale * 0.972 : columnScale * 0.965
+    const columnRenderScaleFactor = cardRenderScaleFactors[columnIndex] ?? (showFusedColumns ? 0.972 : 0.965)
+    const renderScale = columnScale * columnRenderScaleFactor
     return (
     <div
       key={`column-${columnIndex}`}
