@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: a3d501c
+  Request: Re-check the real half-deck OG URL and fix remaining bottom clipping where the last card line was cut off.
+  Date: 2026-02-07
 - Commit: 28ccc44
   Request: Make OG for half-decks work analogously to fused decks.
   Date: 2026-02-07
