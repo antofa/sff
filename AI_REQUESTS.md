@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: bdcab9f
+  Request: Fix remaining slight bottom clipping and improve non-fused OG auto-alignment by width as well as height to reduce unused space between columns.
+  Date: 2026-02-07
 - Commit: 7720d96
   Request: Fix regular OG second-column overflow where forgeborn ability text does not fit (`/api/og/deck/epjfotg0jhjnhzrjdfjnqpm3r06rea`).
   Date: 2026-02-07
