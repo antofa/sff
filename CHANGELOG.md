@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-07 UTC) Added Upstash deck-owner caching for regular and fused deck IDs and wired metadata generation to reuse cached owner names, so regular deck OG descriptions now include `owner: ...` consistently like fused previews.
 - (2026-02-07 UTC) Added OG image versioning for deck pages and Upstash cache keys: `og:image` URLs now include a version query string and Upstash keys include the same version, so Discord and upstream caches stop serving stale OG images after layout updates.
 - (2026-02-07 UTC) Removed `Creatures` and `Spells` section labels from non-fused OG card columns (the same behavior already used for fused), so regular deck OG images show only card rows without those headers.
 - (2026-02-07 UTC) Matched OG deck description creature-type counting to modal logic for all decks by using whitespace-based subtype tokenization (for example, `Zombie Warrior` now counts as `Zombie` + `Warrior`) and the same spell exclusion rules.

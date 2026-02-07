@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchDeckDetails, normalizeDeck, getPlayerDecks } from '@/lib/api'
+import { getDeckOwnerFromUpstashCache, putDeckOwnerToUpstashCache } from '@/lib/deckOwnerUpstashCache'
 
 const DECK_RESPONSE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 type DeckResponseCacheEntry = { expiresAt: number; data: { deck: any } }
@@ -32,7 +33,7 @@ const normalizeDeckCacheBase = (value: string) => {
 }
 
 const mergeFromPlayerDecks = async (deck: any) => {
-  const owner =
+  let owner =
     deck?.playerName ||
     deck?.username ||
     deck?.userName ||
@@ -40,6 +41,12 @@ const mergeFromPlayerDecks = async (deck: any) => {
     deck?.users?.[0]?.username ||
     deck?.Users?.[0]?.UserName ||
     undefined
+
+  if (!owner) {
+    owner =
+      (await getDeckOwnerFromUpstashCache(deck?.id || deck?.deckId || deck?.deck_id || '')) ||
+      undefined
+  }
 
   if (!owner) return deck
 
@@ -164,7 +171,7 @@ export async function GET(
         }
         try {
           const deck = normalizeDeck(raw)
-          const owner =
+          let owner =
             raw.playerName ||
             raw.player_name ||
             raw.username ||
@@ -175,12 +182,23 @@ export async function GET(
             raw?.users?.[0]?.user?.username ||
             raw?.Users?.[0]?.UserName ||
             undefined
+          if (!owner) {
+            owner =
+              (await getDeckOwnerFromUpstashCache(rawId)) ||
+              (await getDeckOwnerFromUpstashCache(deckId)) ||
+              undefined
+          }
           const username = raw?.myUser?.username || raw?.username || raw?.userName || owner
           if (owner && !(deck as any).playerName) {
             ;(deck as any).playerName = owner
           }
           if (username && !(deck as any).username) {
             ;(deck as any).username = username
+          }
+          if (owner) {
+            void putDeckOwnerToUpstashCache(rawId, owner).catch(() => {
+              // Best-effort cache write; ignore errors.
+            })
           }
           const enriched = skipOwnerMerge ? deck : await mergeFromPlayerDecks(deck)
           const responseData = { deck: enriched }
@@ -206,7 +224,7 @@ export async function GET(
       }
 
       const fusedRaw = await fusedRes.json()
-      const owner =
+      let owner =
         fusedRaw.playerName ||
         fusedRaw.player_name ||
         fusedRaw.username ||
@@ -217,7 +235,18 @@ export async function GET(
         fusedRaw?.users?.[0]?.user?.username ||
         fusedRaw?.Users?.[0]?.UserName ||
         undefined
+      if (!owner) {
+        owner =
+          (await getDeckOwnerFromUpstashCache(fusedRaw.id || fusedCandidate)) ||
+          (await getDeckOwnerFromUpstashCache(deckId)) ||
+          undefined
+      }
       const username = fusedRaw?.myUser?.username || fusedRaw?.username || fusedRaw?.userName || owner
+      if (owner) {
+        void putDeckOwnerToUpstashCache(fusedRaw.id || fusedCandidate, owner).catch(() => {
+          // Best-effort cache write; ignore errors.
+        })
+      }
 
       const normalizeId = (val?: string | null) =>
         (val || '')

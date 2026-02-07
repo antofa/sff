@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import DeckPageClient from './DeckPageClient'
 import { fetchDeckDetails, getCardInfo, normalizeDeck } from '@/lib/api'
+import { getDeckOwnerFromUpstashCache, putDeckOwnerToUpstashCache } from '@/lib/deckOwnerUpstashCache'
 import { OG_IMAGE_VERSION } from '@/lib/ogVersion'
 
 export const dynamic = 'force-dynamic'
@@ -543,13 +544,15 @@ const buildDeckSummaryLine = (deckLike: any, enrichedHalves: any[]) => {
   return `${countsPart}\n${rarityPart}\n${creatureTypesPart}`
 }
 
-const buildHalfSummary = (halfDeck: any): string | null => {
+const buildHalfSummary = (halfDeck: any, options?: { includeOwner?: boolean }): string | null => {
   const faction = hasValue(halfDeck?.faction) ? String(halfDeck.faction).trim() : null
+  const ownerName = options?.includeOwner ? getDeckOwnerName(halfDeck) : null
   const setLabel = getSetLabel(halfDeck)
   const score = getRoundedScore(halfDeck)
   const elo = getRoundedElo(halfDeck)
   const expireLabel = getExpireLabel(halfDeck)
   const details: string[] = []
+  if (hasValue(ownerName)) details.push(`owner: ${String(ownerName).trim()}`)
   if (faction) details.push(faction)
   if (setLabel) details.push(`Set: ${setLabel}`)
   if (score !== null) details.push(`Score: ${score}`)
@@ -621,7 +624,7 @@ const buildFusedDescription = async (deckLike: any, normalizedDeck: any, baseUrl
 
 const buildRegularDescription = (deckLike: any, normalizedDeck: any) => {
   const mergedDeck = mergeDeckLike(deckLike, normalizedDeck)
-  const details = buildHalfSummary(mergedDeck)
+  const details = buildHalfSummary(mergedDeck, { includeOwner: true })
   const deckSummaryLine = buildDeckSummaryLine(mergedDeck, [])
   if (details && deckSummaryLine) return `${details}\n${deckSummaryLine}`
   return details || deckSummaryLine || 'SolForge Fusion deck overview.'
@@ -682,17 +685,34 @@ const buildDeckPreviewCore = async (
   titleFallback: string,
   baseUrl: string | null
 ): Promise<DeckPreviewCore | null> => {
-  const rawDeck = await fetchRawDeckForPreview(deckId, baseUrl)
+  let rawDeck = await fetchRawDeckForPreview(deckId, baseUrl)
   if (!rawDeck) return null
 
-  const deck = normalizeDeck(rawDeck)
+  let deck = normalizeDeck(rawDeck)
   const forgebornName = rawDeck?.forgeborn?.name || deck?.forgeborn?.name || deck?.forgebornId
+  let ownerName = getDeckOwnerName(rawDeck) || getDeckOwnerName(deck)
+  if (!ownerName) {
+    ownerName =
+      (await getDeckOwnerFromUpstashCache(rawDeck?.id || rawDeck?.deckId || rawDeck?.deck_id || deck?.id || deckId)) ||
+      (await getDeckOwnerFromUpstashCache(deckId))
+  }
+  if (ownerName) {
+    rawDeck = {
+      ...rawDeck,
+      ownerName: rawDeck.ownerName ?? ownerName,
+      owner: rawDeck.owner ?? ownerName,
+      playerName: rawDeck.playerName ?? ownerName,
+      username: rawDeck.username ?? ownerName,
+    }
+    void putDeckOwnerToUpstashCache(rawDeck?.id || deck?.id || deckId, ownerName).catch(() => {
+      // Best-effort cache write; ignore errors.
+    })
+  }
   const isFusedDeck = isFusedDeckLike(rawDeck) || isFusedDeckLike(deck)
   const description = isFusedDeck
     ? await buildFusedDescription(rawDeck, deck, baseUrl)
     : buildRegularDescription(rawDeck, deck)
   const baseTitle = deck?.name || titleFallback
-  const ownerName = getDeckOwnerName(rawDeck) || getDeckOwnerName(deck)
   const title = buildFusedTitle(baseTitle, forgebornName, ownerName)
 
   return {
