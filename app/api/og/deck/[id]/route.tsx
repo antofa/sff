@@ -1505,8 +1505,7 @@ export async function GET(
     return Math.max(minScale, Math.min(maxScale, low))
   }
 
-  const shouldShowSectionLabel = (label: string) =>
-    !(showFusedColumns && /^(creatures|spells)\b/i.test(label))
+  const shouldShowSectionLabel = (label: string) => !/^(creatures|spells)\b/i.test(label)
 
   const estimateCardColumnHeight = (
     column: CardColumn | undefined,
@@ -2111,7 +2110,7 @@ export async function GET(
               gap: '4px',
             }}
           >
-            {!(showFusedColumns && /^(creatures|spells)\b/i.test(section.label)) ? (
+            {shouldShowSectionLabel(section.label) ? (
               <span
                 style={{
                   color: '#94a3b8',

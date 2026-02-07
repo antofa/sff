@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-07 UTC) Removed `Creatures` and `Spells` section labels from non-fused OG card columns (the same behavior already used for fused), so regular deck OG images show only card rows without those headers.
 - (2026-02-07 UTC) Matched OG deck description creature-type counting to modal logic for all decks by using whitespace-based subtype tokenization (for example, `Zombie Warrior` now counts as `Zombie` + `Warrior`) and the same spell exclusion rules.
 - (2026-02-07 UTC) Improved half-deck OG auto-layout to optimize both height and width: added width-usage scoring for non-fused two-column balancing, expanded flex candidate ranges to shift more space to the ability column when needed, and strengthened final non-fused bottom-clipping safeguards.
 - (2026-02-07 UTC) Hardened half-deck OG forgeborn column fitting to prevent second-column bottom clipping on long ability text by using a more conservative width reserve, tighter non-fused height budget, and a final non-fused render-scale safeguard.
