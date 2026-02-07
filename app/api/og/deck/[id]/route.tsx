@@ -1559,7 +1559,7 @@ export async function GET(
       return fontSize * lineHeight
     }
     const scaledLevelIconSize = levelIconSize * forgebornAbilityIconScale
-    const textWidth = Math.max(40, maxWidth - scaledLevelIconSize - 6)
+    const textWidth = Math.max(40, maxWidth - scaledLevelIconSize - (showFusedColumns ? 6 : 14))
     const total = visible.reduce((sum, ability) => {
       const lines = Math.max(1, estimateLinesForText(ability.text || '', fontSize, textWidth))
       const rowHeight = Math.max(scaledLevelIconSize, lines * fontSize * lineHeight)
@@ -1624,9 +1624,9 @@ export async function GET(
   const fitMinScale = 0.75
   const maxVisualScale = showFusedColumns ? 3.6 : 2.4
   const heightBudget = innerHeight
-  const safeHeightBudget = heightBudget - (showFusedColumns ? 10 : 6)
+  const safeHeightBudget = heightBudget - (showFusedColumns ? 10 : 12)
   const cardEstimateAllowance = showFusedColumns ? 0.95 : 0.96
-  const forgebornEstimateAllowance = showFusedColumns ? 0.92 : 0.96
+  const forgebornEstimateAllowance = showFusedColumns ? 0.92 : 0.9
 
   let fusedCardColumnFlexes: [number, number] = [...defaultFusedCardColumnFlexes]
   let fusedForgebornColumnFlex = defaultFusedForgebornColumnFlex
@@ -1920,11 +1920,20 @@ export async function GET(
       cardColumnSpacings = [getCardColumnSpacing(cardColumns[0], cardColumnScales[0], selectedSingleCardColumnWidth)]
       forgebornSpacing = getForgebornSpacing(forgebornColumnScale, selectedForgebornColumnWidth)
     }
+
+    // Final conservative guard for half-deck forgeborn column to avoid bottom clipping
+    // on long multi-line ability text in real OG rendering.
+    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 18)
+    forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
+      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.9 <= safeHeightBudget
+    )
   }
 
-  const forgebornAbilityFont = Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * 10) / 10
+  const forgebornRenderScale = showFusedColumns ? 1 : 0.94
+  const forgebornAbilityFont =
+    Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * forgebornRenderScale * 10) / 10
   const forgebornLevelIconSize = `${Math.round(
-    baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * forgebornColumnScale
+    baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * forgebornColumnScale * forgebornRenderScale
   )}px`
   const secondaryForgebornAbilityFont = Math.round(forgebornAbilityFont * 0.85 * 10) / 10
   const secondaryForgebornLevelIconSize = `${Math.round(baseForgebornLevelIconSize * 0.8 * forgebornColumnScale)}px`
