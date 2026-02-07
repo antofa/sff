@@ -824,3 +824,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 14569c4
   Request: Owner still did not appear in regular-deck OG description after verification; fix reliability so owner is consistently available.
   Date: 2026-02-07
+- Commit: 51a51da
+  Request: Next.js dev overlay shows SSE error and HTTP 502 from deck stream in `store/deckStore.ts`; reduce noisy console errors and handle stream failures more gracefully.
+  Date: 2026-02-07
