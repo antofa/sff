@@ -1,5 +1,6 @@
 import { logErrorToFile } from './errorLogger'
 import { logWithTimestamp } from './logger'
+import { isBrowserExtensionError } from './clientErrorFilters'
 
 /**
  * Global error handler for Next.js
@@ -21,6 +22,16 @@ export function setupErrorHandling() {
         // Silently ignore ResizeObserver errors - don't log or console.error
         return
       }
+
+      if (
+        isBrowserExtensionError({
+          message: event.message,
+          filename: event.filename,
+          stack: event.error?.stack,
+        })
+      ) {
+        return
+      }
       
       console.error('[Error Handler] Window error caught:', event.message, event.filename, event.lineno)
       const error = event.error || new Error(event.message || 'Unknown error')
@@ -33,6 +44,9 @@ export function setupErrorHandling() {
     })
 
     window.addEventListener('unhandledrejection', (event) => {
+      if (isBrowserExtensionError({ reason: event.reason })) {
+        return
+      }
       console.error('[Error Handler] Unhandled rejection caught:', event.reason)
       const error = event.reason instanceof Error 
         ? event.reason 
