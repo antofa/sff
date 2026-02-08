@@ -1,44 +1,43 @@
-# Быстрый старт
+# Quick Start
 
-## Установка зависимостей
+## Install Dependencies
 
 ```bash
 npm install
 ```
 
-## Запуск в режиме разработки
+## Run in Development Mode
 
 ```bash
 npm run dev
 ```
 
-Откройте [http://localhost:3000](http://localhost:3000) в браузере.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## Использование
+## Usage
 
-1. Введите ник игрока в поле поиска
-2. Нажмите "Поиск колод" или Enter
-3. Просмотрите список колод игрока
+1. Enter a player nickname in the search field
+2. Click "Load Decks" or press Enter
+3. Browse the player's deck list
 
-## Настройка реального API
+## Configure the Real API
 
-По умолчанию приложение использует мок-данные для демонстрации.
+By default, the app uses mock data for demonstration.
 
-Для подключения к реальному API SolForge Fusion:
+To connect to the real SolForge Fusion API:
 
-1. Создайте файл `.env.local`:
+1. Create a `.env.local` file:
 ```bash
 cp .env.example .env.local
 ```
 
-2. Заполните переменные окружения в `.env.local`
+2. Fill in the environment variables in `.env.local`
 
-3. Обновите функцию `getPlayerDecks` в `lib/api.ts` согласно документации API SolForge Fusion
+3. Update `getPlayerDecks` in `lib/api.ts` according to the SolForge Fusion API documentation
 
-## Сборка для продакшена
+## Build for Production
 
 ```bash
 npm run build
 npm start
 ```
-

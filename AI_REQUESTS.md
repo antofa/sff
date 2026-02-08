@@ -9,19 +9,19 @@ This file tracks requests made to the coding agent and the commit that resulted 
 
 ## Entries
 - Commit: 8a7cf8c
-  Request: при поиске колод игрока появился пункт saving decks to database он не должен блокировать отображение уже найденных колод и должен выполняться в фоне
+  Request: During player deck search, a "saving decks to database" step appeared; it must not block showing already found decks and should run in the background.
   Date: 2026-02-08
 - Commit: 826757a
-  Request: исправь второй и третий пункт
+  Request: Fix the second and third points.
   Date: 2026-02-08
 - Commit: e679242
-  Request: при отрытии fused колоды по прямой ссылке есть возможность посмотреть половину колоды нажав на неё, при этом нельзя вернуться назад (нет такой кнопки Back to Fused, которая есть при открытии этой же fused колоды из списка загруженных колод игрока)
+  Request: When opening a fused deck by direct link, you can open a half deck by clicking it, but cannot navigate back (the "Back to Fused" button is missing; it exists when opening the same fused deck from the player's loaded deck list).
   Date: 2026-02-08
 - Commit: 7692b8a
-  Request: [2026-02-08T17:40:14.384Z] GET /deck/Fused_1d4jjh2mkpba06f?sdf=234egvc 200 in 9.8s (proxy.ts: 598ms) как ускорить это
+  Request: [2026-02-08T17:40:14.384Z] GET /deck/Fused_1d4jjh2mkpba06f?sdf=234egvc 200 in 9.8s (proxy.ts: 598ms) — how can this be sped up?
   Date: 2026-02-08
 - Commit: d7d2960
-  Request: убери тень текста и замерь результаты на трёх любых колодах игрока fong
+  Request: Remove text shadow and measure results on any three decks of player `fong`.
   Date: 2026-02-08
 - Commit: 8098e5a
   Request: Add precise OG generation stage profiling to explain why rendering takes ~8 seconds, then test and show the timing breakdown.
@@ -876,17 +876,17 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Request: Review 10 regular and 10 fused OG images for cutiehammer and ensure all cards/abilities are fully visible without bottom clipping; fix any remaining clipping cases.
   Date: 2026-02-07
 - Commit: 6ab82cd
-  Request: при открытии колоды по прямой ссылке идёт долгая загрузка, это можно как-то исправить?
+  Request: Opening a deck by direct link is slow; can this be improved?
   Date: 2026-02-08
 - Commit: 6ac9e35
-  Request: можем ускорить формирование og image для всех колод?
+  Request: Can we speed up OG image generation for all decks?
   Date: 2026-02-08
 - Commit: 651b3eb
-  Request: 3 секунды как-то много, можем ускорить? что жрёт больше всего времени?
+  Request: 3 seconds seems too long. Can we speed it up, and what takes the most time?
   Date: 2026-02-08
 - Commit: 1f6e578
-  Request: 3 секунды как-то много, можем ускорить? что жрёт больше всего времени?
+  Request: 3 seconds seems too long. Can we speed it up, and what takes the most time?
   Date: 2026-02-08
 - Commit: d06ab12
-  Request: давай
+  Request: Let's do it.
   Date: 2026-02-08

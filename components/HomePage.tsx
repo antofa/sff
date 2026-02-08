@@ -167,8 +167,8 @@ export default function Home() {
     }
 
     if (activeStepForMessage?.key === 'tags') {
-      // В фазе тегов показываем текущее сообщение по тегам или метку шага,
-      // не подменяя его прошлым статусом загрузки колод.
+      // During the tag phase, show the current tag message or step label
+      // without replacing it with older deck-loading status text.
       if (msg) return msg
       return activeStepForMessage.label || 'Collecting tags'
     }
@@ -423,7 +423,7 @@ export default function Home() {
 
     if (autoSearchTriggeredRef.current && searchedNameRef.current === trimmed) return
     autoSearchTriggeredRef.current = true
-    // Автозапуск поиска по параметрам: допускаем вызов setState внутри эффекта
+    // Auto-run search from URL params; this effect intentionally triggers state updates.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void handleSearch(trimmed, forceValue)
   }, [handleSearch, searchParams, currentPlayer, decks.length, fusedDecks.length, progress.status, loading, isTyping, playerName])
