@@ -857,3 +857,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 6ab82cd
   Request: при открытии колоды по прямой ссылке идёт долгая загрузка, это можно как-то исправить?
   Date: 2026-02-08
+- Commit: 6ac9e35
+  Request: можем ускорить формирование og image для всех колод?
+  Date: 2026-02-08
