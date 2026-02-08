@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 9cf2bb9
+  Request: Change direct deck-link loading so data priority is external API first, then missing fields from Upstash, then from Supabase, with no full owner-wide deck search; also clarify whether expire date and tags can be read directly from the external deck API.
+  Date: 2026-02-08
 - Commit: 1af0f2c
   Request: All information in all files must be in English, including `AI_REQUESTS.md`.
   Date: 2026-02-08
