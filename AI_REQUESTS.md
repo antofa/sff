@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 826757a
+  Request: исправь второй и третий пункт
+  Date: 2026-02-08
 - Commit: e679242
   Request: при отрытии fused колоды по прямой ссылке есть возможность посмотреть половину колоды нажав на неё, при этом нельзя вернуться назад (нет такой кнопки Back to Fused, которая есть при открытии этой же fused колоды из списка загруженных колод игрока)
   Date: 2026-02-08
