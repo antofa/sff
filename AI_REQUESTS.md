@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 2e10096
+  Request: Decks are fetched quickly in stream logs, but in the UI they appear only after late background stages (`supabase sync done` and `owner cache done`); remove this perceived blocking.
+  Date: 2026-02-08
 - Commit: 27e7e83
   Request: Fused deck navigation became unstable: after switching between fused and half decks, header/meta and card content could stay from a previous view, and opening the second half from a direct fused link sometimes required multiple clicks.
   Date: 2026-02-08
