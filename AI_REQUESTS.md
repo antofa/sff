@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: e679242
+  Request: при отрытии fused колоды по прямой ссылке есть возможность посмотреть половину колоды нажав на неё, при этом нельзя вернуться назад (нет такой кнопки Back to Fused, которая есть при открытии этой же fused колоды из списка загруженных колод игрока)
+  Date: 2026-02-08
 - Commit: 7692b8a
   Request: [2026-02-08T17:40:14.384Z] GET /deck/Fused_1d4jjh2mkpba06f?sdf=234egvc 200 in 9.8s (proxy.ts: 598ms) как ускорить это
   Date: 2026-02-08
