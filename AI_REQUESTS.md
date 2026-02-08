@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 61a0250
+  Request: Let's fix the OG image issue; Forgeborn abilities are clipped in deck previews.
+  Date: 2026-02-08
 - Commit: 1f3ba68
   Request: Revert the latest changes related to Forgeborn image sizing; this was intended for OG deck image issues where Forgeborn abilities are clipped.
   Date: 2026-02-08
