@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 27cd78f
+  Request: Reduce cold OG image generation time for all decks; auto-fit can be simplified/removed, but all text (all card names and all forgeborn abilities) must always fit within the image bounds.
+  Date: 2026-02-08
 - Commit: 8cc11fc
   Request: For `http://trumpumpum.duckdns.org:3000/api/og/deck/s3-a9eaece4xe63ehdep8flqgcbgcrgiq?refresh=1`, improve non-fused OG auto-fit further: reduce remaining bottom empty space in the first column and reduce perceived empty space between columns by better per-column font and width balancing.
   Date: 2026-02-08
