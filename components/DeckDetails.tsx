@@ -1025,6 +1025,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
   // Log fused deck source decks data to server
   useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return
     if (!deck || !opened) return
     if (!isFusedDeckLike(deck)) return
     

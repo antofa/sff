@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Limited `DeckDetails` fused-source diagnostic logging to non-production builds by skipping `/api/log` dispatch when `NODE_ENV === 'production'`, removing this extra network request from production deck-detail opens.
 - (2026-02-08 UTC) Removed late UI blocking after streamed deck fetches: the client store now applies `decks-ready` payloads immediately (`loading=false`) and reuses that prepared result at `done` instead of running a second full validation/computation pass, so large player searches no longer wait for the final stream phase to show decks.
 - (2026-02-08 UTC) Fixed fused/half detail-view state races in `DeckDetails`: async responses are now ignored when deck context changes, and full-deck payload merging now requires matching deck IDs, preventing stale header/meta/card data from leaking between half and fused views and improving half-link click reliability.
 - (2026-02-08 UTC) Added short-lived in-memory page-state caching in `DeckPageClient` so returning from a half deck back to a recently opened fused deck restores enriched data immediately instead of replaying a cold fast-to-full repaint sequence.
