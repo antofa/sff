@@ -1275,7 +1275,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
     return null
   }, [])
 
-  const factionSets: Array<{ faction: string; setNo: string | number | null }> = useMemo(() => {
+  const factionSets: Array<{ faction: string; setNo: string | number | null }> = (() => {
     const list: Array<{ faction: string; setNo: string | number | null }> = []
     pickedSources.forEach((src) => {
       if (src?.faction) {
@@ -1294,7 +1294,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
       list.push({ faction: deck.faction, setNo: deckSet || null })
     }
     return list
-  }, [pickedSources, deck, deriveSetFromId, allDecksMap])
+  })()
   // Collect cards for rarity counts and tags display
   const aggregateCards = useCallback((): any[] => {
     const cards: any[] = []

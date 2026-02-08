@@ -346,16 +346,24 @@ export default function Home() {
     if (!resetParam) return
 
     useDeckStore.getState().clearDecks()
-    setPlayerName('')
-    setForceRefresh(false)
-    setHasSearched(false)
-    setIsTyping(false)
-    setLastSearchedName('')
-    searchedNameRef.current = ''
-    lastSearchRef.current = ''
-    autoSearchTriggeredRef.current = false
-    autoSearchKeyRef.current = ''
-    router.replace('/')
+    const resetTimer = window.setTimeout(() => {
+      startTransition(() => {
+        setPlayerName('')
+        setForceRefresh(false)
+        setHasSearched(false)
+        setIsTyping(false)
+        setLastSearchedName('')
+        searchedNameRef.current = ''
+        lastSearchRef.current = ''
+        autoSearchTriggeredRef.current = false
+        autoSearchKeyRef.current = ''
+        router.replace('/')
+      })
+    }, 0)
+
+    return () => {
+      window.clearTimeout(resetTimer)
+    }
   }, [router, searchParams])
 
   // Do not restart searches on visibility changes to avoid resetting progress mid-search.
