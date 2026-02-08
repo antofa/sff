@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Fixed fused/half detail-view state races in `DeckDetails`: async responses are now ignored when deck context changes, and full-deck payload merging now requires matching deck IDs, preventing stale header/meta/card data from leaking between half and fused views and improving half-link click reliability.
 - (2026-02-08 UTC) Added short-lived in-memory page-state caching in `DeckPageClient` so returning from a half deck back to a recently opened fused deck restores enriched data immediately instead of replaying a cold fast-to-full repaint sequence.
 - (2026-02-08 UTC) Fixed fused direct-link half enrichment in `/api/deck/[id]`: source halves now also run through the fallback chain (external data, then Upstash, then Supabase by deck ID), so half-level fields such as `Expire date` are no longer skipped just because card and score data already exist.
 - (2026-02-08 UTC) Trimmed `DeckDetails` fused-source debug logging payload to compact diagnostics (counts + small ID samples + source presence flags) and limited this log path to fused decks only, reducing `/api/log` request size and noise.

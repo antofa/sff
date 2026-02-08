@@ -29,10 +29,26 @@ const hasMeaningfulDeckValue = (value: unknown): boolean => {
   return true
 }
 
+const normalizeDeckId = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value)
+  }
+  return null
+}
+
 const mergeDeckForDisplay = (deck: Deck | null, fullDeckData: Deck | null): Deck | null => {
   if (!deck && !fullDeckData) return null
   if (!fullDeckData) return deck
   if (!deck) return fullDeckData
+  const deckId = normalizeDeckId((deck as any)?.id)
+  const fullDeckId = normalizeDeckId((fullDeckData as any)?.id)
+  if (deckId && fullDeckId && deckId !== fullDeckId) {
+    return deck
+  }
 
   const merged: Record<string, unknown> = {
     ...(deck as Record<string, unknown>),
@@ -633,6 +649,10 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const imageRequestCacheRef = useRef<Map<string, Promise<string | null>>>(new Map())
   const fusedSourceDecksRef = useRef<string>('') // Track last merged source IDs to avoid re-setting state
   const fusedCardsMergedRef = useRef<boolean>(false) // Prevent repeated card merging for fused decks
+  const fullDeckLoadRequestRef = useRef<number>(0)
+  const fusedSourcesLoadRequestRef = useRef<number>(0)
+  const halfDetailsLoadRequestRef = useRef<number>(0)
+  const latestDeckIdRef = useRef<string | null>(normalizeDeckId(deck?.id))
   const isSmUp = useMediaQuery('(min-width: 48em)')
   const isMdUp = useMediaQuery('(min-width: 62em)')
   const modalBodyMaxHeight = isMdUp ? 'calc(80vh + 50px)' : 'calc(85vh - 24px)'
@@ -648,6 +668,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     : { position: 'static', alignSelf: 'stretch', maxHeight: 'none' }
   const detailPanelWidth = isMdUp ? 'min(60vw, 900px)' : '100%'
   const detailPanelMinWidth = isMdUp ? '520px' : '0'
+  latestDeckIdRef.current = normalizeDeckId(deck?.id)
   useEffect(() => {
     cardImagesRef.current = cardImages
   }, [cardImages])
@@ -676,15 +697,28 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
   }, [selectedCard, isMdUp])
 
+  const activeFullDeckData = useMemo(() => {
+    if (!fullDeckData) return null
+    const activeDeckId = normalizeDeckId(deck?.id)
+    const fullDeckId = normalizeDeckId(fullDeckData.id)
+    if (activeDeckId && fullDeckId && activeDeckId !== fullDeckId) {
+      return null
+    }
+    return fullDeckData
+  }, [deck?.id, fullDeckData])
+
   // Always use the richest deck payload; keep full deck details but preserve newer fallback fields.
   const deckForDisplay = useMemo(() => {
-    const base = mergeDeckForDisplay(deck, fullDeckData)
+    const base = mergeDeckForDisplay(deck, activeFullDeckData)
     if (!base) return null
     return addComputedFields(base)
-  }, [fullDeckData, deck])
+  }, [activeFullDeckData, deck])
 
   // Reset fused-specific caches when a different deck is opened
   useEffect(() => {
+    fullDeckLoadRequestRef.current += 1
+    fusedSourcesLoadRequestRef.current += 1
+    halfDetailsLoadRequestRef.current += 1
     fusedCardsMergedRef.current = false
     fusedSourceDecksRef.current = ''
     setFusedSourceDecks([])
@@ -784,7 +818,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
   // Helper function to get two source decks from fused deck
   const getFusedDeckSourceDecks = useMemo(() => {
-    const deckWithData = fullDeckData || deck
+    const deckWithData = activeFullDeckData || deck
     if (!deckWithData) return [null, null]
     
     const fusedDeckAny = deckWithData as any
@@ -850,7 +884,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     if (!deck2 && fusedSourceDecks.length > 1) deck2 = fusedSourceDecks[1] || null
 
     return [deck1, deck2]
-  }, [deck, fullDeckData, allDecks, fusedSourceDecks])
+  }, [deck, activeFullDeckData, allDecks, fusedSourceDecks])
 
   const renderSourceDeckMeta = (sourceDeck: Deck | null) => {
     if (!sourceDeck) return null
@@ -902,17 +936,19 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       // Don't reset fullDeckData on close - keep it cached for faster reopening
       return
     }
-    
-    // If cached data belongs to a different deck, reset it
-    if (fullDeckData && fullDeckData.id !== deck.id) {
-      setFullDeckData(null)
-    }
-    
+
+    const requestDeckId = normalizeDeckId(deck.id)
+    if (!requestDeckId) return
+    const requestId = ++fullDeckLoadRequestRef.current
+    const deckSnapshot = deck
+    const isStaleRequest = () =>
+      fullDeckLoadRequestRef.current !== requestId || latestDeckIdRef.current !== requestDeckId
+
     // If we already loaded full data for this deck, do nothing
-    if (fullDeckData && fullDeckData.id === deck.id) {
+    if (activeFullDeckData && normalizeDeckId(activeFullDeckData.id) === requestDeckId) {
       return
     }
-    
+
     // Check if we already have forgeborn.solbindCards in current deck
     const deckAny = deck as any
     const hasSolbindCards = deckAny.forgeborn && 
@@ -920,36 +956,42 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
                            deckAny.forgeborn.solbindCards && 
                            Array.isArray(deckAny.forgeborn.solbindCards) &&
                            deckAny.forgeborn.solbindCards.length > 0
-    
+
     if (hasSolbindCards) {
       // Use existing deck data
-      setFullDeckData(addComputedFields(deck))
+      if (!isStaleRequest()) {
+        setFullDeckData(addComputedFields(deckSnapshot))
+      }
       if (process.env.NODE_ENV === 'development') {
         logWithTimestamp('[DeckDetails] ✅ Deck already has forgeborn.solbindCards:', deckAny.forgeborn.solbindCards.length)
       }
     } else {
       // Fetch full deck details to get forgeborn.solbindCards
       if (process.env.NODE_ENV === 'development') {
-        logWithTimestamp('[DeckDetails] 🔄 Fetching full deck data for:', deck.id)
+        logWithTimestamp('[DeckDetails] 🔄 Fetching full deck data for:', requestDeckId)
       }
-      
-      fetchDeckDetails(deck.id).then((fullData) => {
-        if (fullData) {
+
+      fetchDeckDetails(requestDeckId).then((fullData) => {
+        if (!fullData || isStaleRequest()) return
+        const fullDataId = normalizeDeckId((fullData as any)?.id)
+        if (fullDataId && fullDataId !== requestDeckId) return
+
           // Merge forgeborn data with existing deck data
           const updatedDeck = {
-            ...deck,
+            ...deckSnapshot,
             ...fullData,
-            forgeborn: fullData.forgeborn || deck.forgeborn,
-            cards: fullData.cardList || fullData.cards || deck.cards,
-            myDecks: (fullData as any).myDecks || (deck as any).myDecks,
-            fusedDeckIds: (fullData as any).fusedDeckIds || (deck as any).fusedDeckIds
+            forgeborn: fullData.forgeborn || deckSnapshot.forgeborn,
+            cards: fullData.cardList || fullData.cards || deckSnapshot.cards,
+            myDecks: (fullData as any).myDecks || (deckSnapshot as any).myDecks,
+            fusedDeckIds: (fullData as any).fusedDeckIds || (deckSnapshot as any).fusedDeckIds
           } as Deck
-          
+
+          if (isStaleRequest()) return
           setFullDeckData(addComputedFields(updatedDeck))
-          
+
           if (process.env.NODE_ENV === 'development') {
             logWithTimestamp('[DeckDetails] ✅ Loaded full deck data:', {
-              deckId: deck.id,
+              deckId: requestDeckId,
               hasForgeborn: !!fullData.forgeborn,
               solbindCardsCount: fullData.forgeborn?.solbindCards?.length || 0,
               forgeborn: fullData.forgeborn ? {
@@ -963,8 +1005,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
               } : null
             })
           }
-          
-          if ((deck as any).format === 'Fused' && Array.isArray((fullData as any).myDecks)) {
+
+          if ((deckSnapshot as any).format === 'Fused' && Array.isArray((fullData as any).myDecks) && !isStaleRequest()) {
             const newSources = (fullData as any).myDecks as Deck[]
             const ids = newSources
               .map((d, idx) => `${d?.id || `idx-${idx}`}:${Array.isArray(d?.cards) ? d.cards.length : 0}:${Array.isArray((d as any)?.cardList) ? (d as any).cardList.length : 0}`)
@@ -972,14 +1014,14 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             fusedSourceDecksRef.current = ids
             setFusedSourceDecks(newSources)
           }
-        }
       }).catch((error) => {
+        if (isStaleRequest()) return
         console.warn('[DeckDetails] ❌ Error loading full deck data:', error)
         // Fallback to existing deck data
-        setFullDeckData(addComputedFields(deck))
+        setFullDeckData(addComputedFields(deckSnapshot))
       })
     }
-  }, [deck, opened, fullDeckData])
+  }, [deck, opened, activeFullDeckData])
 
   // Log fused deck source decks data to server
   useEffect(() => {
@@ -1031,7 +1073,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }).catch(err => {
       console.error('[DeckDetails] Failed to send log:', err)
     })
-  }, [deck, opened, getFusedDeckSourceDecks, allDecks, onDeckClick])
+  }, [deck, opened, getFusedDeckSourceDecks, allDecks])
 
   // Load source halves for fused decks when they lack card lists
   const isFusedDeck = useCallback((d: any) => {
@@ -1041,7 +1083,13 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
   useEffect(() => {
     if (!deck || !opened || !isFusedDeck(deck)) return
-    const deckAny = (fullDeckData || deck) as any
+    const requestDeckId = normalizeDeckId(deck.id)
+    if (!requestDeckId) return
+    const requestId = ++fusedSourcesLoadRequestRef.current
+    const isStaleRequest = () =>
+      fusedSourcesLoadRequestRef.current !== requestId || latestDeckIdRef.current !== requestDeckId
+
+    const deckAny = (activeFullDeckData || deck) as any
     const combinedSources = [...getFusedDeckSourceDecks, ...fusedSourceDecks].filter(Boolean) as Deck[]
     const uniqueMap = new Map<string, Deck>()
     combinedSources.forEach((src, idx) => {
@@ -1075,6 +1123,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     })
 
     const finalize = (merged: Deck[]) => {
+      if (isStaleRequest()) return
       const ids = merged
         .map((d, idx) => {
           const cardsLen = Array.isArray(d?.cards) ? d.cards.length : 0
@@ -1095,6 +1144,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     Promise.all(
       needsFetch.map(src => fetchDeckDetails(src!.id as string).catch(() => null))
     ).then(fetched => {
+      if (isStaleRequest()) return
       const fetchedMap = new Map<string, Deck>()
       fetched.forEach(d => {
         if (d?.id) fetchedMap.set(d.id, d)
@@ -1105,11 +1155,11 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       })
       finalize(merged)
     })
-  }, [deck, opened, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks, isFusedDeck])
+  }, [deck, opened, activeFullDeckData, getFusedDeckSourceDecks, fusedSourceDecks, isFusedDeck])
 
   // If fused deck still has no cards but sources do, merge source cards into fullDeckData
   useEffect(() => {
-    const deckToUse = fullDeckData || deck
+    const deckToUse = activeFullDeckData || deck
     if (!deckToUse || !opened || !isFusedDeck(deckToUse)) return
     if (fusedCardsMergedRef.current) return
     const hasCards =
@@ -1127,14 +1177,20 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     if (combinedCards.length === 0) return
 
     fusedCardsMergedRef.current = true
-    const mergedDeck = { ...(fullDeckData || deck), cards: combinedCards } as Deck
+    const mergedDeck = { ...(activeFullDeckData || deck), cards: combinedCards } as Deck
     setFullDeckData(mergedDeck)
-  }, [deck, opened, fullDeckData, fusedSourceDecks, isFusedDeck])
+  }, [deck, opened, activeFullDeckData, fusedSourceDecks, isFusedDeck])
 
   // Fetch and cache half details with cardIds if local candidates lack them
   useEffect(() => {
     if (!deck || !opened || !isFusedDeck(deck)) return
-    const deckAny = (fullDeckData || deck) as any
+    const requestDeckId = normalizeDeckId(deck.id)
+    if (!requestDeckId) return
+    const requestId = ++halfDetailsLoadRequestRef.current
+    const isStaleRequest = () =>
+      halfDetailsLoadRequestRef.current !== requestId || latestDeckIdRef.current !== requestDeckId
+
+    const deckAny = (activeFullDeckData || deck) as any
 
     const pool: any[] = []
     if (Array.isArray(deckAny?.myDecks)) deckAny.myDecks.forEach((s: any) => s && pool.push(s))
@@ -1207,8 +1263,9 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         if (res) merged[id] = res
       })
 
-      if (Object.keys(merged).length === 0) return
+      if (Object.keys(merged).length === 0 || isStaleRequest()) return
       setHalfDetails((prev) => {
+        if (isStaleRequest()) return prev
         const next = { ...prev }
         Object.entries(merged).forEach(([id, val]) => {
           const incomingHasIds =
@@ -1229,7 +1286,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     }
 
     load().catch(() => {})
-  }, [deck, opened, isFusedDeck, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, allDecks, halfDetails])
+  }, [deck, opened, isFusedDeck, activeFullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, allDecks, halfDetails])
 
   // Assemble cards for the modal (clean merge for fused decks).
   const normalizedCards: CardInfo[] = useMemo(() => {
@@ -1274,8 +1331,8 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     const collectFused = (): any[] => {
       let candidates: any[] = []
       // 1) myDecks from full data
-      if (Array.isArray((fullDeckData as any)?.myDecks)) {
-        (fullDeckData as any).myDecks.forEach((s: any) => s && candidates.push(s))
+      if (Array.isArray((activeFullDeckData as any)?.myDecks)) {
+        (activeFullDeckData as any).myDecks.forEach((s: any) => s && candidates.push(s))
       }
       // 2) myDecks from the original deck (often with cardIds)
       if (Array.isArray((deck as any)?.myDecks)) {
@@ -1361,7 +1418,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       }
       return getCardInfo(`card-${index}`)
     })
-  }, [deck, deckForDisplay, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, isFusedDeck, halfDetails, allDecks])
+  }, [deck, deckForDisplay, activeFullDeckData, fusedSourceDecks, getFusedDeckSourceDecks, isFusedDeck, halfDetails, allDecks])
 
   // Deduplicate after normalization (id lowercased).
   const uniqueNormalizedCards: CardInfo[] = useMemo(() => {
@@ -1407,7 +1464,7 @@ const originalCardMeta = useMemo(() => {
       }
   })
   return map
-}, [deck, deckForDisplay, fullDeckData, fusedSourceDecks, getFusedDeckSourceDecks])
+}, [deck, deckForDisplay, fusedSourceDecks, getFusedDeckSourceDecks])
 
   const markLevelsLoading = useCallback((cardId: string, levels: number[]) => {
     setLoadingLevels(prev => {
@@ -1440,7 +1497,7 @@ const originalCardMeta = useMemo(() => {
   // First, extract all solbind card IDs to avoid circular dependency
   // Use a stable string representation for dependencies
   const solbindCardIdsSet = useMemo(() => {
-    const deckToUse = fullDeckData || deck
+    const deckToUse = activeFullDeckData || deck
     if (!deckToUse) return new Set<string>()
     const ids = new Set<string>()
 
@@ -1526,7 +1583,7 @@ const originalCardMeta = useMemo(() => {
     }
     
     return ids
-  }, [uniqueNormalizedCards, deck, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks, halfDetails])
+  }, [uniqueNormalizedCards, deck, activeFullDeckData, getFusedDeckSourceDecks, fusedSourceDecks, halfDetails])
 
   // Create a stable string representation for use in dependencies
   const solbindCardIdsKey = useMemo(() => {
@@ -1670,7 +1727,7 @@ const originalCardMeta = useMemo(() => {
 
   const deckTags = useMemo(() => {
     const tagSet = new Set<string>()
-    const deckAny = (fullDeckData || deck) as any
+    const deckAny = (activeFullDeckData || deck) as any
 
     if (Array.isArray(deckAny?.computed?.displayTags) && deckAny.computed.displayTags.length > 0) {
       deckAny.computed.displayTags.forEach((t: string) => {
@@ -1711,10 +1768,10 @@ const originalCardMeta = useMemo(() => {
     }
 
     return Array.from(tagSet)
-  }, [deck, fullDeckData, uniqueNormalizedCards])
+  }, [deck, activeFullDeckData, uniqueNormalizedCards])
 
   const creatureTypeEntries = useMemo(() => {
-    const deckLike = fullDeckData || deck
+    const deckLike = activeFullDeckData || deck
     if (!deckLike) return []
     if (isFusedDeckLike(deckLike)) {
       const fusedEntries = buildFusedCreatureTypeEntries(deckLike, { deckCreatureTypesMap, deckCreatureTypeOverrides, allDecks })
@@ -1722,7 +1779,7 @@ const originalCardMeta = useMemo(() => {
       return []
     }
     return buildCreatureTypeEntries(deckLike, { fallbackCards: uniqueNormalizedCards })
-  }, [fullDeckData, deck, uniqueNormalizedCards, deckCreatureTypesMap, deckCreatureTypeOverrides, allDecks])
+  }, [activeFullDeckData, deck, uniqueNormalizedCards, deckCreatureTypesMap, deckCreatureTypeOverrides, allDecks])
 
   const fusedHalfIds = useMemo(() => {
     const ids = new Set<string>()
@@ -1730,7 +1787,7 @@ const originalCardMeta = useMemo(() => {
       const trimmed = (value || '').trim()
       if (trimmed) ids.add(trimmed)
     }
-    const deckAny = (fullDeckData || deck) as any
+    const deckAny = (activeFullDeckData || deck) as any
     if (Array.isArray(deckAny?.myDecks)) {
       deckAny.myDecks.forEach((d: any) => addId(d?.id || d?.deckId || d?.deck_id))
     }
@@ -1740,7 +1797,7 @@ const originalCardMeta = useMemo(() => {
     getFusedDeckSourceDecks.forEach((d) => addId((d as any)?.id || (d as any)?.deckId || (d as any)?.deck_id))
     fusedSourceDecks.forEach((d) => addId((d as any)?.id || (d as any)?.deckId || (d as any)?.deck_id))
     return Array.from(ids)
-  }, [fullDeckData, deck, getFusedDeckSourceDecks, fusedSourceDecks])
+  }, [activeFullDeckData, deck, getFusedDeckSourceDecks, fusedSourceDecks])
 
   useEffect(() => {
     if (!opened || fusedHalfIds.length === 0) return
@@ -2053,7 +2110,7 @@ const originalCardMeta = useMemo(() => {
       }
 
       // Use full deck data if available
-      const deckForUse = fullDeckData || deck
+      const deckForUse = activeFullDeckData || deck
 
       // Categorize cards (we need to compute these here since useMemo hooks are defined later)
       const forgebornCardsList: CardInfo[] = []
@@ -2666,7 +2723,7 @@ const originalCardMeta = useMemo(() => {
 
   // Group cards by categories - must be before any conditional returns
   const forgebornCards: CardInfo[] = useMemo(() => {
-    const deckForUse = fullDeckData || deck
+    const deckForUse = activeFullDeckData || deck
     if (!deckForUse) return []
     
     const forgebornList: CardInfo[] = []
@@ -3043,10 +3100,10 @@ const originalCardMeta = useMemo(() => {
     })
     
     return forgebornList
-  }, [normalizedCards, deck, fullDeckData, getFusedDeckSourceDecks])
+  }, [normalizedCards, deck, activeFullDeckData, getFusedDeckSourceDecks])
 
   const solbindCards: CardInfo[] = useMemo(() => {
-    const deckForUse = fullDeckData || deck
+    const deckForUse = activeFullDeckData || deck
     if (!deckForUse) return []
 
     const solbindCardObjects: CardInfo[] = []
@@ -3189,7 +3246,7 @@ const originalCardMeta = useMemo(() => {
     })
 
     return Array.from(dedupMap.values())
-  }, [uniqueNormalizedCards, forgebornCards, solbindCardIdsSet, deck, fullDeckData, getFusedDeckSourceDecks, fusedSourceDecks, halfDetails])
+  }, [uniqueNormalizedCards, forgebornCards, solbindCardIdsSet, deck, activeFullDeckData, getFusedDeckSourceDecks, fusedSourceDecks, halfDetails])
 
   // Merge rarity summary with Solbind count (make sure Solbind shows up if we have Solbind cards)
   const displayRaritySummary = useMemo(() => {
