@@ -854,3 +854,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 3e2781a
   Request: Review 10 regular and 10 fused OG images for cutiehammer and ensure all cards/abilities are fully visible without bottom clipping; fix any remaining clipping cases.
   Date: 2026-02-07
+- Commit: 6ab82cd
+  Request: при открытии колоды по прямой ссылке идёт долгая загрузка, это можно как-то исправить?
+  Date: 2026-02-08
