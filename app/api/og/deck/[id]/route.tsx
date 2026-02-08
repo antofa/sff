@@ -1551,9 +1551,9 @@ export async function GET(
   const primaryAbilityScale = 1
   const forgebornAbilityIconScale = 1.5
   const cardTopSafetyPx = showFusedColumns ? 3 : 3
-  const cardBottomSafetyPx = showFusedColumns ? 14 : 16
+  const cardBottomSafetyPx = showFusedColumns ? 10 : 12
   const forgebornTopSafetyPx = showFusedColumns ? 3 : 3
-  const forgebornBottomSafetyPx = showFusedColumns ? 22 : 20
+  const forgebornBottomSafetyPx = showFusedColumns ? 14 : 14
   const forgebornAbilityLineHeight = hasSecondaryForgeborn
     ? Math.max(1.08, baseForgebornAbilityLineHeight - 0.05)
     : baseForgebornAbilityLineHeight
@@ -1579,7 +1579,7 @@ export async function GET(
   const estimateLinesForText = (text: string, fontSize: number, maxWidth: number) => {
     const normalized = String(text || '').trim()
     if (!normalized) return 0
-    const widthLimit = Math.max(1, maxWidth * (showFusedColumns ? 0.92 : 0.9))
+    const widthLimit = Math.max(1, maxWidth * (showFusedColumns ? 0.98 : 0.96))
     const words = normalized.split(/\s+/)
     const spaceWidth = fontSize * 0.33
 
@@ -1663,7 +1663,7 @@ export async function GET(
         items.length > 0
           ? items.reduce((sum, item) => {
               const lines = Math.max(1, estimateLinesForText(item.name, cardFontSize, textWidth))
-              const lineBlockHeight = lines * cardFontSize * lineHeight + cardFontSize * (showFusedColumns ? 0.18 : 0.22)
+              const lineBlockHeight = lines * cardFontSize * lineHeight + cardFontSize * (showFusedColumns ? 0.1 : 0.14)
               return sum + lineBlockHeight
             }, 0) +
             (items.length - 1) * listGap
@@ -1701,7 +1701,7 @@ export async function GET(
     scaledLevelIconSize: number,
     scaledStatIconSize: number
   ) => {
-    const safety = showFusedColumns ? 1.1 : 1.08
+    const safety = showFusedColumns ? 1.03 : 1.02
     if (token.kind === 'text') {
       return estimateTextWidth(`${token.text} `, fontSize) * safety
     }
@@ -1757,7 +1757,7 @@ export async function GET(
     }
     const scaledLevelIconSize = levelIconSize * forgebornAbilityIconScale
     const scaledStatIconSize = 20 * forgebornAbilityIconScale
-    const textWidth = Math.max(40, maxWidth - (showFusedColumns ? 4 : 8))
+    const textWidth = Math.max(40, maxWidth - (showFusedColumns ? 2 : 6))
     const total = visible.reduce((sum, ability) => {
       const level = ability.level && ability.level >= 1 && ability.level <= 4 ? ability.level : null
       const rawText = ability.text || ''
@@ -1774,11 +1774,11 @@ export async function GET(
       )
       const lineHeightPx = fontSize * lineHeight
       const iconLineHeight = Math.max(scaledLevelIconSize, scaledStatIconSize) * 1.02
-      const lineBlockHeight = lines * Math.max(lineHeightPx, iconLineHeight) + fontSize * (showFusedColumns ? 0.34 : 0.28)
+      const lineBlockHeight = lines * Math.max(lineHeightPx, iconLineHeight) + fontSize * (showFusedColumns ? 0.2 : 0.16)
       const rowHeight = lineBlockHeight
       return sum + rowHeight
     }, 0)
-    return total + (visible.length - 1) * gap + fontSize * (showFusedColumns ? 0.2 : 0.14)
+    return total + (visible.length - 1) * gap + fontSize * (showFusedColumns ? 0.1 : 0.08)
   }
 
   type ForgebornSpacing = {
@@ -1856,9 +1856,9 @@ export async function GET(
   const fitMinScale = 0.54
   const maxVisualScale = showFusedColumns ? 3.6 : 2.4
   const heightBudget = innerHeight
-  const safeHeightBudget = heightBudget - (showFusedColumns ? 16 : 28)
-  const cardEstimateAllowance = showFusedColumns ? 0.94 : 0.92
-  const forgebornEstimateAllowance = showFusedColumns ? 0.9 : 0.84
+  const safeHeightBudget = heightBudget - (showFusedColumns ? 12 : 20)
+  const cardEstimateAllowance = showFusedColumns ? 1.0 : 0.99
+  const forgebornEstimateAllowance = showFusedColumns ? 0.99 : 0.97
 
   let fusedCardColumnFlexes: [number, number] = [...defaultFusedCardColumnFlexes]
   let fusedForgebornColumnFlex = defaultFusedForgebornColumnFlex
@@ -1877,12 +1877,12 @@ export async function GET(
     : getHalfDeckColumnWidths(defaultHalfDeckCardColumnFlex, defaultHalfDeckForgebornColumnFlex).forgebornColumnWidth
   let cardColumnScales: number[] = showFusedColumns ? [1, 1] : [1]
   let forgebornColumnScale = 1
-  let cardRenderScaleFactors: number[] = showFusedColumns ? [0.972, 0.972] : [0.965]
-  let forgebornRenderScale = showFusedColumns ? 0.89 : 0.92
+  let cardRenderScaleFactors: number[] = showFusedColumns ? [1, 1] : [1]
+  let forgebornRenderScale = 1
 
   if (showFusedColumns) {
-    const cardFlexCandidates = [0.75, 0.9, 1.05, 1.2, 1.35]
-    const forgebornFlexCandidates = [0.85, 1.0, 1.15, 1.3, 1.45]
+    const cardFlexCandidates = [0.75, 0.85, 0.95, 1.05, 1.15, 1.25, 1.35]
+    const forgebornFlexCandidates = [0.85, 0.95, 1.05, 1.15, 1.25, 1.35]
 
     const evaluateCandidate = (cardFlexes: [number, number], forgebornFlex: number) => {
       const { cardColumnWidths, forgebornColumnWidth } = getFusedColumnWidths(cardFlexes, forgebornFlex)
@@ -1914,19 +1914,23 @@ export async function GET(
       const avgFill = (fillRatios[0] + fillRatios[1] + fillRatios[2]) / 3
       const maxFill = Math.max(fillRatios[0], fillRatios[1], fillRatios[2])
       const minFill = Math.min(fillRatios[0], fillRatios[1], fillRatios[2])
-      const fullColumns = fillRatios.filter((value) => value >= 0.985).length
       const spread = maxFill - minFill
+      const underFillPenalty = fillRatios.reduce((sum, ratio) => {
+        return sum + Math.max(0, 0.995 - ratio)
+      }, 0)
+      const cardMinFill = Math.min(fillRatios[0], fillRatios[1])
       const widthPenalty =
         Math.abs(cardFlexes[0] - defaultFusedCardColumnFlexes[0]) +
         Math.abs(cardFlexes[1] - defaultFusedCardColumnFlexes[1]) +
         Math.abs(forgebornFlex - defaultFusedForgebornColumnFlex)
       const score =
-        fullColumns * 80 +
-        maxFill * 20 +
-        avgFill * 8 +
-        minFill * 2 -
-        spread * 1.8 -
-        widthPenalty * 0.9
+        cardMinFill * 95 +
+        minFill * 170 +
+        avgFill * 70 +
+        maxFill * 20 -
+        spread * 18 -
+        underFillPenalty * 140 -
+        widthPenalty * 0.35
 
       return {
         cardFlexes,
@@ -1958,8 +1962,8 @@ export async function GET(
     cardColumnScales = bestCandidate.cardScales
     forgebornColumnScale = bestCandidate.forgebornScale
   } else {
-    const cardFlexCandidates = [0.8, 0.95, 1.1, 1.25, 1.4]
-    const forgebornFlexCandidates = [0.9, 1.05, 1.2, 1.35, 1.5]
+    const cardFlexCandidates = [0.85, 0.95, 1.05, 1.15, 1.25, 1.35]
+    const forgebornFlexCandidates = [0.95, 1.05, 1.15, 1.25, 1.35, 1.45]
 
     const evaluateCandidate = (cardFlex: number, forgebornFlex: number) => {
       const { cardColumnWidth, forgebornColumnWidth } = getHalfDeckColumnWidths(cardFlex, forgebornFlex)
@@ -1986,22 +1990,24 @@ export async function GET(
       const avgFill = (fillRatios[0] + fillRatios[1]) / 2
       const maxFill = Math.max(fillRatios[0], fillRatios[1])
       const minFill = Math.min(fillRatios[0], fillRatios[1])
-      const fullColumns = fillRatios.filter((value) => value >= 0.985).length
       const spread = maxFill - minFill
       const avgWidthUsage = (widthUsage[0] + widthUsage[1]) / 2
       const minWidthUsage = Math.min(widthUsage[0], widthUsage[1])
+      const underFillPenalty = fillRatios.reduce((sum, ratio) => {
+        return sum + Math.max(0, 0.995 - ratio)
+      }, 0)
       const widthPenalty =
         Math.abs(cardFlex - defaultHalfDeckCardColumnFlex) +
         Math.abs(forgebornFlex - defaultHalfDeckForgebornColumnFlex)
       const score =
-        fullColumns * 70 +
-        maxFill * 20 +
-        avgFill * 10 +
-        minFill * 4 -
-        spread * 2 +
-        avgWidthUsage * 18 +
+        minFill * 180 +
+        avgFill * 55 +
+        maxFill * 20 -
+        spread * 20 -
+        underFillPenalty * 145 +
+        avgWidthUsage * 14 +
         minWidthUsage * 8 -
-        widthPenalty * 0.45
+        widthPenalty * 0.25
 
       return {
         cardFlex,
@@ -2037,7 +2043,7 @@ export async function GET(
     if (!column || column.sections.length === 0) return defaults
 
     const estimatedDefault = estimateCardColumnHeight(column, scale, columnWidth, defaults)
-    const targetHeight = safeHeightBudget * 0.992
+    const targetHeight = safeHeightBudget * 0.997
     const extraHeight = targetHeight - estimatedDefault
     if (extraHeight <= 6) return defaults
 
@@ -2072,7 +2078,7 @@ export async function GET(
   const getForgebornSpacing = (scale: number, forgebornWidth: number): ForgebornSpacing => {
     const defaults = defaultForgebornSpacing
     const estimatedDefault = estimateForgebornHeight(scale, forgebornWidth, defaults)
-    const targetHeight = safeHeightBudget * 0.99
+    const targetHeight = safeHeightBudget * 0.997
     const extraHeight = targetHeight - estimatedDefault
     if (extraHeight <= 4) return defaults
 
@@ -2148,37 +2154,37 @@ export async function GET(
 
     // Final conservative guard for fused forgeborn column to prevent descender clipping
     // with long wrapped ability text and inline icons.
-    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 30)
+    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 22)
     forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
-      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.83 <= safeHeightBudget
+      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.94 <= safeHeightBudget
     )
 
     // Final render-fit for fused columns:
     // allow each column to fill vertically while guaranteeing bottom-safe rendering.
     cardRenderScaleFactors = [
-      fitScale(0.8, 1.0, (renderScale) =>
+      fitScale(0.82, 1.08, (renderScale) =>
         estimateCardColumnHeight(
           cardColumns[0],
           cardColumnScales[0] * renderScale,
           Math.max(40, selectedCardColumnWidths[0] - 6),
           cardColumnSpacings[0]
-        ) * 1.02 <= safeHeightBudget
+        ) * 1.006 <= safeHeightBudget
       ),
-      fitScale(0.8, 1.0, (renderScale) =>
+      fitScale(0.82, 1.08, (renderScale) =>
         estimateCardColumnHeight(
           cardColumns[1],
           cardColumnScales[1] * renderScale,
           Math.max(40, selectedCardColumnWidths[1] - 6),
           cardColumnSpacings[1]
-        ) * 1.02 <= safeHeightBudget
+        ) * 1.006 <= safeHeightBudget
       ),
     ]
-    forgebornRenderScale = fitScale(0.6, 0.97, (renderScale) =>
+    forgebornRenderScale = fitScale(0.72, 1.03, (renderScale) =>
       estimateForgebornHeight(
         forgebornColumnScale * renderScale,
         conservativeForgebornWidth,
         forgebornSpacing
-      ) <= safeHeightBudget
+      ) * 1.004 <= safeHeightBudget
     )
   } else {
     for (let i = 0; i < 2; i += 1) {
@@ -2200,29 +2206,29 @@ export async function GET(
 
     // Final conservative guard for half-deck forgeborn column to avoid bottom clipping
     // on long multi-line ability text in real OG rendering.
-    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 32)
+    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 24)
     forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
-      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.78 <= safeHeightBudget
+      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.92 <= safeHeightBudget
     )
 
     // Final render-fit for regular (non-fused) columns:
     // maximize per-column fill while guaranteeing no bottom clipping.
     cardRenderScaleFactors = [
-      fitScale(0.82, 1.0, (renderScale) =>
+      fitScale(0.84, 1.1, (renderScale) =>
         estimateCardColumnHeight(
           cardColumns[0],
           cardColumnScales[0] * renderScale,
           Math.max(40, selectedSingleCardColumnWidth - 8),
           cardColumnSpacings[0]
-        ) * 1.03 <= safeHeightBudget
+        ) * 1.008 <= safeHeightBudget
       ),
     ]
-    forgebornRenderScale = fitScale(0.6, 0.97, (renderScale) =>
+    forgebornRenderScale = fitScale(0.72, 1.05, (renderScale) =>
       estimateForgebornHeight(
         forgebornColumnScale * renderScale,
         conservativeForgebornWidth,
         forgebornSpacing
-      ) <= safeHeightBudget
+      ) * 1.004 <= safeHeightBudget
     )
   }
 

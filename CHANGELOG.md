@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Retuned OG column auto-fit to maximize vertical fill in each column (cards and forgeborn) with reduced conservative estimation overhead and adaptive width balancing, so fused and regular previews use much more of the available height without clipping text.
 - (2026-02-08 UTC) Ignored browser-extension runtime errors (including MetaMask `chrome-extension://...` failures) in global client error handlers so those external errors are no longer forwarded to `/api/log-error` and server error logs.
 - (2026-02-07 UTC) Hardened regular (non-fused) OG bottom-safety fitting on live player samples: separated card/forgeborn safety padding, increased non-fused vertical reserve, and tightened final forgeborn conservative guards to prevent clipped descenders in the right ability column.
 - (2026-02-07 UTC) Improved regular (non-fused) OG per-column auto-fit: card and ability columns now get independent final render-fit scaling, with stricter bottom safety to prevent clipped descenders while maximizing vertical fill per column.
