@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 8a7cf8c
+  Request: при поиске колод игрока появился пункт saving decks to database он не должен блокировать отображение уже найденных колод и должен выполняться в фоне
+  Date: 2026-02-08
 - Commit: 826757a
   Request: исправь второй и третий пункт
   Date: 2026-02-08
