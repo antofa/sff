@@ -15,6 +15,56 @@ type DeckPageClientProps = {
   initialDeck?: Deck | null
 }
 
+type DeckPageState = {
+  deck: Deck
+  allDecks: Deck[]
+}
+
+type DeckPageStateCacheEntry = {
+  expiresAt: number
+  data: DeckPageState
+}
+
+const DECK_PAGE_STATE_CACHE_TTL_MS = 10 * 60 * 1000
+const DECK_PAGE_STATE_CACHE_MAX_ENTRIES = 120
+const deckPageStateCache = new Map<string, DeckPageStateCacheEntry>()
+
+const normalizeDeckStateCacheKey = (deckId: string) => deckId.toString().trim().toLowerCase()
+
+const trimDeckPageStateCache = () => {
+  while (deckPageStateCache.size > DECK_PAGE_STATE_CACHE_MAX_ENTRIES) {
+    const oldestKey = deckPageStateCache.keys().next().value
+    if (oldestKey === undefined) return
+    deckPageStateCache.delete(oldestKey)
+  }
+}
+
+const getCachedDeckPageState = (deckId: string): DeckPageState | null => {
+  const key = normalizeDeckStateCacheKey(deckId)
+  const cached = deckPageStateCache.get(key)
+  if (!cached) return null
+  if (cached.expiresAt < Date.now()) {
+    deckPageStateCache.delete(key)
+    return null
+  }
+  return cached.data
+}
+
+const setCachedDeckPageState = (deckId: string, state: DeckPageState) => {
+  const key = normalizeDeckStateCacheKey(deckId)
+  deckPageStateCache.delete(key)
+  deckPageStateCache.set(key, {
+    expiresAt: Date.now() + DECK_PAGE_STATE_CACHE_TTL_MS,
+    data: state,
+  })
+  trimDeckPageStateCache()
+}
+
+const isSameDeckId = (left?: string | null, right?: string | null): boolean => {
+  if (!left || !right) return false
+  return normalizeDeckStateCacheKey(left) === normalizeDeckStateCacheKey(right)
+}
+
 const buildDeckStateFromRaw = (rawDeck: Deck) => {
   const enriched = addComputedFields(rawDeck)
   const enrichedSources =
@@ -35,9 +85,11 @@ export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageC
   const deckId = routeDeckId || initialDeckId
   const canUseInitialDeck = !!initialDeck && !!initialDeckId && (!routeDeckId || routeDeckId === initialDeckId)
   const initialState = canUseInitialDeck ? buildDeckStateFromRaw(initialDeck as Deck) : null
+  const cachedState = deckId ? getCachedDeckPageState(deckId) : null
+  const bootstrapState = cachedState ?? initialState
 
-  const [deck, setDeck] = useState<Deck | null>(initialState?.deck ?? null)
-  const [allDecks, setAllDecks] = useState<Deck[]>(initialState?.allDecks ?? [])
+  const [deck, setDeck] = useState<Deck | null>(bootstrapState?.deck ?? null)
+  const [allDecks, setAllDecks] = useState<Deck[]>(bootstrapState?.allDecks ?? [])
   const parentFusedFromQueryRaw = searchParams?.get('parentFused') || ''
   const parentFusedIdFromQuery = parentFusedFromQueryRaw.trim()
   const isCurrentDeckFused = String(((deck as any)?.format || '')).toLowerCase() === 'fused'
@@ -49,7 +101,7 @@ export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageC
           format: 'Fused',
         })
       : null
-  const [loading, setLoading] = useState(!initialState)
+  const [loading, setLoading] = useState(!bootstrapState)
   const [error, setError] = useState<string | null>(null)
   const sourcesLoadedRef = useRef<string | null>(null)
 
@@ -90,6 +142,17 @@ export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageC
 
     const load = async () => {
       setError(null)
+      const cachedForDeck = getCachedDeckPageState(deckId)
+      if (cachedForDeck) {
+        if (!cancelled) {
+          setDeck(cachedForDeck.deck)
+          setAllDecks(cachedForDeck.allDecks)
+        }
+        setLoading(false)
+        void fetchFullInBackground()
+        return
+      }
+
       const hasMatchingInitialDeck = !!initialDeck && !!initialDeckId && initialDeckId === deckId
 
       if (hasMatchingInitialDeck) {
@@ -127,6 +190,16 @@ export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageC
   useEffect(() => {
     sourcesLoadedRef.current = null
   }, [deckId])
+
+  useEffect(() => {
+    if (!deckId || !deck?.id) return
+    if (!isSameDeckId(deckId, deck.id)) return
+    const normalizedAllDecks = allDecks.length > 0 ? allDecks : [deck]
+    setCachedDeckPageState(deckId, {
+      deck,
+      allDecks: normalizedAllDecks,
+    })
+  }, [deckId, deck, allDecks])
 
   useEffect(() => {
     if (!deckId) return
