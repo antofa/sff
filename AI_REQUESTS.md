@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 1af0f2c
+  Request: All information in all files must be in English, including `AI_REQUESTS.md`.
+  Date: 2026-02-08
 - Commit: 8a7cf8c
   Request: During player deck search, a "saving decks to database" step appeared; it must not block showing already found decks and should run in the background.
   Date: 2026-02-08
