@@ -1511,12 +1511,13 @@ export async function GET(
   const innerWidth = imageWidth - containerPaddingX * 2
   const innerHeight = imageHeight - containerPaddingY * 2
   const fusedColumnGap = 18
+  const halfDeckColumnGap = 12
   const defaultFusedCardColumnFlexes: [number, number] = [1.1, 1.1]
   const defaultFusedForgebornColumnFlex = 1.0
-  const defaultHalfDeckCardColumnFlex = 1.0
-  const defaultHalfDeckForgebornColumnFlex = 1.25
+  const defaultHalfDeckCardColumnFlex = 1.22
+  const defaultHalfDeckForgebornColumnFlex = 0.78
   const fusedAvailableWidth = innerWidth - fusedColumnGap * 2
-  const halfDeckAvailableWidth = innerWidth - fusedColumnGap
+  const halfDeckAvailableWidth = innerWidth - halfDeckColumnGap
   const getFusedColumnWidths = (cardFlexes: [number, number], forgebornFlex: number) => {
     const totalFlex = cardFlexes[0] + cardFlexes[1] + forgebornFlex
     return {
@@ -1546,8 +1547,8 @@ export async function GET(
   const baseNoCardsFontSize = scaleFont(18)
   const baseCardFontSize = scaleFont(20 * cardListFontScale)
   const cardRowLineHeight = showFusedColumns ? 1.19 : 1.15
-  const baseForgebornAbilityFont = baseCardFontSize
-  const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
+  const baseForgebornAbilityFont = baseCardFontSize * (showFusedColumns ? 1 : 0.86)
+  const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.22
   const primaryAbilityScale = 1
   const forgebornAbilityIconScale = 1.5
   const cardTopSafetyPx = showFusedColumns ? 3 : 3
@@ -1558,7 +1559,7 @@ export async function GET(
     ? Math.max(1.08, baseForgebornAbilityLineHeight - 0.05)
     : baseForgebornAbilityLineHeight
   const secondaryForgebornAbilityLineHeight = Math.max(1.05, forgebornAbilityLineHeight - 0.05)
-  const baseForgebornLevelIconSize = showFusedColumns ? 18 : 20
+  const baseForgebornLevelIconSize = showFusedColumns ? 18 : 16
 
   const estimateTextWidth = (text: string, fontSize: number) => {
     const normalized = String(text || '').trim()
@@ -1962,8 +1963,8 @@ export async function GET(
     cardColumnScales = bestCandidate.cardScales
     forgebornColumnScale = bestCandidate.forgebornScale
   } else {
-    const cardFlexCandidates = [0.85, 0.95, 1.05, 1.15, 1.25, 1.35]
-    const forgebornFlexCandidates = [0.95, 1.05, 1.15, 1.25, 1.35, 1.45]
+    const cardFlexCandidates = [1.12, 1.22, 1.32, 1.42]
+    const forgebornFlexCandidates = [0.68, 0.78, 0.88, 0.98]
 
     const evaluateCandidate = (cardFlex: number, forgebornFlex: number) => {
       const { cardColumnWidth, forgebornColumnWidth } = getHalfDeckColumnWidths(cardFlex, forgebornFlex)
@@ -1990,9 +1991,18 @@ export async function GET(
       const avgFill = (fillRatios[0] + fillRatios[1]) / 2
       const maxFill = Math.max(fillRatios[0], fillRatios[1])
       const minFill = Math.min(fillRatios[0], fillRatios[1])
+      const cardFill = fillRatios[0]
+      const forgebornFill = fillRatios[1]
+      const totalFlex = Math.max(0.001, cardFlex + forgebornFlex)
+      const cardWidthShare = cardFlex / totalFlex
+      const forgebornWidthShare = forgebornFlex / totalFlex
       const spread = maxFill - minFill
       const avgWidthUsage = (widthUsage[0] + widthUsage[1]) / 2
       const minWidthUsage = Math.min(widthUsage[0], widthUsage[1])
+      const cardUnderfillPenalty = Math.max(0, 0.992 - cardFill)
+      const forgebornUnderfillPenalty = Math.max(0, 0.86 - forgebornFill)
+      const cardNarrowPenalty = Math.max(0, 0.6 - cardWidthShare)
+      const forgebornWidePenalty = Math.max(0, forgebornWidthShare - 0.4)
       const underFillPenalty = fillRatios.reduce((sum, ratio) => {
         return sum + Math.max(0, 0.995 - ratio)
       }, 0)
@@ -2000,14 +2010,20 @@ export async function GET(
         Math.abs(cardFlex - defaultHalfDeckCardColumnFlex) +
         Math.abs(forgebornFlex - defaultHalfDeckForgebornColumnFlex)
       const score =
-        minFill * 180 +
-        avgFill * 55 +
-        maxFill * 20 -
-        spread * 20 -
-        underFillPenalty * 145 +
-        avgWidthUsage * 14 +
+        cardFill * 280 +
+        forgebornFill * 84 +
+        minFill * 96 +
+        avgFill * 36 +
+        maxFill * 8 -
+        spread * 26 -
+        underFillPenalty * 150 -
+        cardUnderfillPenalty * 180 -
+        forgebornUnderfillPenalty * 120 +
+        avgWidthUsage * 12 +
         minWidthUsage * 8 -
-        widthPenalty * 0.25
+        widthPenalty * 0.6 -
+        cardNarrowPenalty * 320 -
+        forgebornWidePenalty * 300
 
       return {
         cardFlex,
@@ -2206,30 +2222,77 @@ export async function GET(
 
     // Final conservative guard for half-deck forgeborn column to avoid bottom clipping
     // on long multi-line ability text in real OG rendering.
-    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 24)
+    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 28)
     forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
-      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.92 <= safeHeightBudget
+      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.91 <= safeHeightBudget
     )
 
     // Final render-fit for regular (non-fused) columns:
     // maximize per-column fill while guaranteeing no bottom clipping.
     cardRenderScaleFactors = [
-      fitScale(0.84, 1.1, (renderScale) =>
+      fitScale(0.9, 1.2, (renderScale) =>
         estimateCardColumnHeight(
           cardColumns[0],
           cardColumnScales[0] * renderScale,
-          Math.max(40, selectedSingleCardColumnWidth - 8),
+          Math.max(40, selectedSingleCardColumnWidth - 2),
           cardColumnSpacings[0]
-        ) * 1.008 <= safeHeightBudget
+        ) * 1.001 <= safeHeightBudget
       ),
     ]
-    forgebornRenderScale = fitScale(0.72, 1.05, (renderScale) =>
+    forgebornRenderScale = fitScale(0.62, 0.94, (renderScale) =>
       estimateForgebornHeight(
         forgebornColumnScale * renderScale,
         conservativeForgebornWidth,
         forgebornSpacing
-      ) * 1.004 <= safeHeightBudget
+      ) * 1.012 <= safeHeightBudget
     )
+
+    // Final non-fused pass: recompute spacing using render-scale-adjusted typography,
+    // then re-fit scales against that spacing so each column better fills vertical space
+    // without clipping on actual OG output.
+    for (let i = 0; i < 2; i += 1) {
+      const effectiveCardScale = cardColumnScales[0] * cardRenderScaleFactors[0]
+      cardColumnSpacings = [getCardColumnSpacing(cardColumns[0], effectiveCardScale, selectedSingleCardColumnWidth)]
+      cardRenderScaleFactors = [
+        fitScale(0.9, 1.2, (renderScale) =>
+          estimateCardColumnHeight(
+            cardColumns[0],
+            cardColumnScales[0] * renderScale,
+            Math.max(40, selectedSingleCardColumnWidth - 2),
+            cardColumnSpacings[0]
+          ) * 1.001 <= safeHeightBudget
+        ),
+      ]
+
+      const effectiveForgebornScale = forgebornColumnScale * forgebornRenderScale
+      forgebornSpacing = getForgebornSpacing(effectiveForgebornScale, selectedForgebornColumnWidth)
+      forgebornRenderScale = fitScale(0.62, 0.94, (renderScale) =>
+        estimateForgebornHeight(
+          forgebornColumnScale * renderScale,
+          conservativeForgebornWidth,
+          forgebornSpacing
+        ) * 1.012 <= safeHeightBudget
+      )
+    }
+
+    // Prefer using vertical space in the non-fused card column by slightly increasing
+    // list/section spacing and then re-fitting render scale under the same safety limit.
+    const boostedCardSpacing = {
+      sectionGap: cardColumnSpacings[0].sectionGap * 1.12,
+      listGap: cardColumnSpacings[0].listGap * 1.16,
+    }
+    const boostedCardRenderScale = fitScale(0.9, 1.2, (renderScale) =>
+      estimateCardColumnHeight(
+        cardColumns[0],
+        cardColumnScales[0] * renderScale,
+        Math.max(40, selectedSingleCardColumnWidth - 2),
+        boostedCardSpacing
+      ) * 1.001 <= safeHeightBudget
+    )
+    if (boostedCardRenderScale >= fitMinScale + 0.03) {
+      cardColumnSpacings = [boostedCardSpacing]
+      cardRenderScaleFactors = [boostedCardRenderScale]
+    }
   }
 
   const forgebornAbilityFont =
@@ -2489,7 +2552,7 @@ export async function GET(
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'stretch',
-              gap: `${fusedColumnGap}px`,
+              gap: `${halfDeckColumnGap}px`,
               width: '100%',
               height: '100%',
               minHeight: 0,
