@@ -397,33 +397,46 @@ export async function GET(
               const srcId = resolveDeckId(src)
               if (!srcId) return src
 
+              let hydratedSource = src
               const hasMeta =
                 (src as any)?.deckRank ||
                 (src as any)?.deckScore !== undefined ||
                 (src as any)?.elo !== undefined
-              if (hasMeta) return src
+              const hasExpire = hasMeaningfulValue(resolveExpireAt(src))
+              if (!hasMeta || !hasExpire) {
+                try {
+                  const full = await fetchDeckDetails(srcId)
+                  if (full) {
+                    const normalized = normalizeDeck(full)
+                    const resolvedCardSetNo = resolveCardSetNo(
+                      (src as any)?.cardSetNo ?? (normalized as any)?.cardSetNo,
+                      (src as any)?.cardSetId ?? (normalized as any)?.cardSetId
+                    )
+                    hydratedSource = {
+                      ...src,
+                      ...normalized,
+                      cards: Array.isArray(src.cards) && src.cards.length > 0 ? src.cards : normalized.cards,
+                      cardSetNo: resolvedCardSetNo,
+                      cardSetId: (src as any)?.cardSetId ?? (normalized as any)?.cardSetId ?? (normalized as any)?.cardSetNo,
+                      forgeborn: (src as any)?.forgeborn || (normalized as any)?.forgeborn,
+                      forgebornId: (src as any)?.forgebornId || (normalized as any)?.forgebornId,
+                    }
+                  }
+                } catch (error) {
+                  console.warn('[API] Failed to hydrate fused source deck', srcId, error)
+                }
+              }
 
               try {
-                const full = await fetchDeckDetails(srcId)
-                if (!full) return src
-                const normalized = normalizeDeck(full)
-                const resolvedCardSetNo = resolveCardSetNo(
-                  (src as any)?.cardSetNo ?? (normalized as any)?.cardSetNo,
-                  (src as any)?.cardSetId ?? (normalized as any)?.cardSetId
-                )
-                return {
-                  ...src,
-                  ...normalized,
-                  cards: Array.isArray(src.cards) && src.cards.length > 0 ? src.cards : normalized.cards,
-                  cardSetNo: resolvedCardSetNo,
-                  cardSetId: (src as any)?.cardSetId ?? (normalized as any)?.cardSetId ?? (normalized as any)?.cardSetNo,
-                  forgeborn: (src as any)?.forgeborn || (normalized as any)?.forgeborn,
-                  forgebornId: (src as any)?.forgebornId || (normalized as any)?.forgebornId,
-                }
+                hydratedSource = await enrichDeckFromFallbacks(hydratedSource, {
+                  requestedDeckId: srcId,
+                  isFused: false,
+                })
               } catch (error) {
-                console.warn('[API] Failed to hydrate fused source deck', srcId, error)
-                return src
+                console.warn('[API] Failed to enrich fused source deck from fallback chain', srcId, error)
               }
+
+              return hydratedSource
             })
           )
 

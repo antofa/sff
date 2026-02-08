@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Fixed fused direct-link half enrichment in `/api/deck/[id]`: source halves now also run through the fallback chain (external data, then Upstash, then Supabase by deck ID), so half-level fields such as `Expire date` are no longer skipped just because card and score data already exist.
 - (2026-02-08 UTC) Trimmed `DeckDetails` fused-source debug logging payload to compact diagnostics (counts + small ID samples + source presence flags) and limited this log path to fused decks only, reducing `/api/log` request size and noise.
 - (2026-02-08 UTC) Fixed fused deck `Expire date` visibility for direct links by prioritizing internal `/api/deck/[id]` lookups (with fallback enrichment) when `DeckDetails` loads source halves, so half-deck expiry data is no longer lost when the upstream deck endpoint omits it.
 - (2026-02-08 UTC) Fixed direct non-fused deck view data precedence in `DeckDetails`: when full external details load first, UI now preserves enriched fields from `/api/deck/[id]` (including `Expire date`) instead of dropping them.
