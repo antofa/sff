@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Trimmed `DeckDetails` fused-source debug logging payload to compact diagnostics (counts + small ID samples + source presence flags) and limited this log path to fused decks only, reducing `/api/log` request size and noise.
 - (2026-02-08 UTC) Fixed fused deck `Expire date` visibility for direct links by prioritizing internal `/api/deck/[id]` lookups (with fallback enrichment) when `DeckDetails` loads source halves, so half-deck expiry data is no longer lost when the upstream deck endpoint omits it.
 - (2026-02-08 UTC) Fixed direct non-fused deck view data precedence in `DeckDetails`: when full external details load first, UI now preserves enriched fields from `/api/deck/[id]` (including `Expire date`) instead of dropping them.
 - (2026-02-08 UTC) Reworked direct `/api/deck/[id]` loading to use strict source priority (external deck API first, then Upstash fallback data, then Supabase by deck ID), removed owner-wide deck listing lookups, and kept fused half enrichment on direct ID requests only.

@@ -984,28 +984,36 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   // Log fused deck source decks data to server
   useEffect(() => {
     if (!deck || !opened) return
+    if (!isFusedDeckLike(deck)) return
     
     const [deck1, deck2] = getFusedDeckSourceDecks
     const fusedDeckAny = deck as any
+    const myDecks = Array.isArray(fusedDeckAny.myDecks) ? fusedDeckAny.myDecks : []
+    const fusedDeckIds = Array.isArray(fusedDeckAny.fusedDeckIds) ? fusedDeckAny.fusedDeckIds : []
+    const myDeckIdSample = myDecks
+      .map((d: any) => d?.id || d?.deckId || null)
+      .filter(Boolean)
+      .slice(0, 4)
+    const fusedDeckIdsSample = fusedDeckIds.filter(Boolean).slice(0, 4)
+    const allDecksIdSample = allDecks.map((d) => d.id).filter(Boolean).slice(0, 6)
+    const sourceIdsToCheck = Array.from(new Set([...myDeckIdSample, ...fusedDeckIdsSample])) as string[]
+    const sourcePresence = sourceIdsToCheck.map((id) => ({
+      id,
+      inAllDecks: allDecks.some((candidate) => candidate.id === id),
+    }))
     
     const logData = {
       deckName: deck.name,
       deckId: deck.id,
       deckFormat: fusedDeckAny.format,
-      hasMyDecks: !!(fusedDeckAny.myDecks),
-      myDecksLength: Array.isArray(fusedDeckAny.myDecks) ? fusedDeckAny.myDecks.length : 0,
-      myDecksData: Array.isArray(fusedDeckAny.myDecks) ? fusedDeckAny.myDecks.map((d: any) => ({
-        id: d?.id,
-        deckId: d?.deckId,
-        name: d?.name,
-        hasName: !!d?.name,
-        hasId: !!d?.id,
-        type: typeof d
-      })) : null,
-      hasFusedDeckIds: !!(fusedDeckAny.fusedDeckIds),
-      fusedDeckIds: Array.isArray(fusedDeckAny.fusedDeckIds) ? fusedDeckAny.fusedDeckIds : null,
+      hasMyDecks: myDecks.length > 0,
+      myDecksCount: myDecks.length,
+      myDeckIdSample,
+      hasFusedDeckIds: fusedDeckIds.length > 0,
+      fusedDeckIdsSample,
       allDecksCount: allDecks.length,
-      allDecksIds: allDecks.map(d => d.id),
+      allDecksIdSample,
+      sourcePresence,
       foundDeck1: deck1 ? { id: deck1.id, name: deck1.name } : null,
       foundDeck2: deck2 ? { id: deck2.id, name: deck2.name } : null,
       hasOnDeckClick: true
