@@ -46,12 +46,25 @@ type IconSrcCacheEntry = {
   src: string | null
 }
 
+type OgTimingEntry = {
+  stage: string
+  durationMs: number
+}
+
 const ogPayloadCache = new Map<string, OgPayloadCacheEntry>()
 const ogPayloadInFlight = new Map<string, Promise<OgPayload>>()
 const ogImageCache = new Map<string, OgImageCacheEntry>()
 const iconSrcCache = new Map<string, IconSrcCacheEntry>()
 const iconSrcInFlight = new Map<string, Promise<string | null>>()
 const localAssetDataCache = new Map<string, string>()
+
+const nowPerfMs = () => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now())
+const roundTimingMs = (value: number) => Math.round(value * 100) / 100
+const toServerTimingStage = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '_')
+const buildServerTimingHeader = (timings: OgTimingEntry[], totalMs: number) =>
+  [...timings, { stage: 'total', durationMs: totalMs }]
+    .map((entry) => `${toServerTimingStage(entry.stage)};dur=${roundTimingMs(entry.durationMs)}`)
+    .join(', ')
 
 const toTitleCase = (value: string) =>
   value
@@ -1320,6 +1333,36 @@ export async function GET(
 ) {
   const { id } = await context.params
   const deckId = id || ''
+  const requestStartMs = nowPerfMs()
+  const traceTiming = request.nextUrl.searchParams.get('trace') === '1'
+  const timingEntries: OgTimingEntry[] = []
+  const pushTiming = (stage: string, startMs: number) => {
+    timingEntries.push({ stage, durationMs: nowPerfMs() - startMs })
+  }
+  const measureStage = async <T,>(stage: string, action: () => Promise<T> | T) => {
+    const stageStart = nowPerfMs()
+    try {
+      return await action()
+    } finally {
+      pushTiming(stage, stageStart)
+    }
+  }
+  let finalizedTiming: { headers: Record<string, string>; totalMs: number } | null = null
+  const finalizeTiming = (outcome: string) => {
+    if (finalizedTiming) return finalizedTiming
+    const totalMs = nowPerfMs() - requestStartMs
+    const headers = {
+      'Server-Timing': buildServerTimingHeader(timingEntries, totalMs),
+    }
+    if (traceTiming) {
+      const breakdown = timingEntries.map((entry) => `${entry.stage}=${roundTimingMs(entry.durationMs)}ms`).join(' ')
+      console.info(
+        `[OG Timing] deck=${deckId || 'unknown'} outcome=${outcome} total=${roundTimingMs(totalMs)}ms ${breakdown}`
+      )
+    }
+    finalizedTiming = { headers, totalMs }
+    return finalizedTiming
+  }
   const hasQueryVariantBuster = !!request.nextUrl.searchParams.get('uq')
   const hardRefresh = request.nextUrl.searchParams.get('hardRefresh') === '1'
   const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1' || hasQueryVariantBuster
@@ -1329,33 +1372,41 @@ export async function GET(
   if (forceRefresh) {
     ogImageCache.delete(imageCacheKey)
   } else {
-    const localCachedImage = getCachedOgImage(imageCacheKey)
+    const localCachedImage = await measureStage('cache.memory.get', () => getCachedOgImage(imageCacheKey))
     if (localCachedImage) {
+      const timing = finalizeTiming('memory-hit')
       return new Response(toArrayBuffer(localCachedImage), {
         headers: {
           'Content-Type': 'image/png',
           'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
           'X-OG-Cache': 'memory-hit',
+          ...timing.headers,
         },
       })
     }
   }
 
   if (!forceRefresh && isOgUpstashCacheConfigured()) {
-    const cachedImage = await getOgImageFromUpstashCache(deckId, { version: OG_IMAGE_VERSION })
+    const cachedImage = await measureStage('cache.upstash.get', () =>
+      getOgImageFromUpstashCache(deckId, { version: OG_IMAGE_VERSION })
+    )
     if (cachedImage) {
-      setCachedOgImage(imageCacheKey, cachedImage)
+      await measureStage('cache.memory.set', () => setCachedOgImage(imageCacheKey, cachedImage))
+      const timing = finalizeTiming('upstash-hit')
       return new Response(toArrayBuffer(cachedImage), {
         headers: {
           'Content-Type': 'image/png',
           'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
           'X-OG-Cache': 'upstash-hit',
+          ...timing.headers,
         },
       })
     }
   }
 
-  const payload = await getOgPayload(deckId, { forceRefresh, origin, bypassFetchCache: hardRefresh })
+  const payload = await measureStage('payload.fetch', () =>
+    getOgPayload(deckId, { forceRefresh, origin, bypassFetchCache: hardRefresh })
+  )
   const cardColumns = payload.cardColumns
   const forgebornAbilities = payload.forgebornAbilities.map((ability, index) => ({
     ...ability,
@@ -1438,7 +1489,9 @@ export async function GET(
   ) as string[]
   const cardIconMap = new Map<string, string | null>()
   if (cardIconPaths.length > 0) {
-    const loaded = await Promise.all(cardIconPaths.map((path) => loadIconSrc(resolveAssetUrl(path))))
+    const loaded = await measureStage('icons.cards.load', () =>
+      Promise.all(cardIconPaths.map((path) => loadIconSrc(resolveAssetUrl(path))))
+    )
     loaded.forEach((src, idx) => {
       const path = cardIconPaths[idx]
       cardIconMap.set(path, src || resolveAssetUrl(path))
@@ -1483,7 +1536,9 @@ export async function GET(
     .map((level) => ({ level, url: `${origin}/images/icons/levels/lv${level}-icon.png` }))
   const levelIconMap = new Map<number, string | null>()
   if (levelIconEntries.length > 0) {
-    const loaded = await Promise.all(levelIconEntries.map((entry) => loadIconSrc(entry.url)))
+    const loaded = await measureStage('icons.levels.load', () =>
+      Promise.all(levelIconEntries.map((entry) => loadIconSrc(entry.url)))
+    )
     loaded.forEach((src, idx) => {
       const entry = levelIconEntries[idx]
       levelIconMap.set(entry.level, src || null)
@@ -1497,7 +1552,9 @@ export async function GET(
   ]
   const statIconMap = new Map<string, string | null>()
   if (statIconEntries.length > 0) {
-    const loaded = await Promise.all(statIconEntries.map((entry) => loadIconSrc(entry.url)))
+    const loaded = await measureStage('icons.stats.load', () =>
+      Promise.all(statIconEntries.map((entry) => loadIconSrc(entry.url)))
+    )
     loaded.forEach((src, idx) => {
       const entry = statIconEntries[idx]
       statIconMap.set(entry.key, src || null)
@@ -1511,15 +1568,18 @@ export async function GET(
     forgebornAbilities.some((ability) => !!ability?.text?.trim()) ||
     secondaryForgebornAbilities.some((ability) => !!ability?.text?.trim())
   if (!hasRenderableCards || !hasRenderableAbilities) {
+    const timing = finalizeTiming('data-unavailable')
     return new Response('OG data unavailable', {
       status: 503,
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-store, max-age=0',
+        ...timing.headers,
       },
     })
   }
 
+  const layoutSolveStartMs = nowPerfMs()
   const showFusedColumns = cardColumns.length > 1
   const imageWidth = 1200
   const imageHeight = 630
@@ -2368,110 +2428,116 @@ export async function GET(
     )
   }
 
-  const imageResponse = new ImageResponse(
-    (
-      <div
-        style={{
-          width: `${imageWidth}px`,
-          height: `${imageHeight}px`,
-          boxSizing: 'border-box',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'stretch',
-          gap: '8px',
-          padding: `${containerPaddingY}px ${containerPaddingX}px`,
-          backgroundColor: '#0f172a',
-        }}
-      >
-        {showFusedColumns ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'stretch',
-              gap: `${halfDeckColumnGap}px`,
-              width: '100%',
-              height: '100%',
-              minHeight: 0,
-            }}
-          >
-            <div style={{ display: 'flex', flex: fusedCardColumnFlexes[0], minWidth: 0 }}>
-              {renderCardColumn(cardColumns[0], 0, cardColumnScales[0], cardColumnSpacings[0])}
-            </div>
-            <div style={{ display: 'flex', flex: fusedCardColumnFlexes[1], minWidth: 0 }}>
-              {renderCardColumn(cardColumns[1], 1, cardColumnScales[1], cardColumnSpacings[1])}
-            </div>
+  pushTiming('layout.solve', layoutSolveStartMs)
+  const imageResponse = await measureStage('image.response.create', () =>
+    new ImageResponse(
+      (
+        <div
+          style={{
+            width: `${imageWidth}px`,
+            height: `${imageHeight}px`,
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            gap: '8px',
+            padding: `${containerPaddingY}px ${containerPaddingX}px`,
+            backgroundColor: '#0f172a',
+          }}
+        >
+          {showFusedColumns ? (
             <div
               style={{
                 display: 'flex',
-                flexDirection: 'column',
+                flexDirection: 'row',
                 alignItems: 'stretch',
-                flex: fusedForgebornColumnFlex,
-                minWidth: 0,
-                overflow: 'hidden',
+                gap: `${halfDeckColumnGap}px`,
+                width: '100%',
+                height: '100%',
+                minHeight: 0,
               }}
             >
-              {renderForgebornBlock()}
+              <div style={{ display: 'flex', flex: fusedCardColumnFlexes[0], minWidth: 0 }}>
+                {renderCardColumn(cardColumns[0], 0, cardColumnScales[0], cardColumnSpacings[0])}
+              </div>
+              <div style={{ display: 'flex', flex: fusedCardColumnFlexes[1], minWidth: 0 }}>
+                {renderCardColumn(cardColumns[1], 1, cardColumnScales[1], cardColumnSpacings[1])}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                  flex: fusedForgebornColumnFlex,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                }}
+              >
+                {renderForgebornBlock()}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'stretch',
-              gap: `${fusedColumnGap}px`,
-              width: '100%',
-              height: '100%',
-              minHeight: 0,
-            }}
-          >
-            <div style={{ display: 'flex', flex: halfDeckCardColumnFlex, minWidth: 0 }}>
-              {hasCardSections ? (
-                renderCardColumn(cardColumns[0], 0, cardColumnScales[0], cardColumnSpacings[0])
-              ) : (
-                <div style={{ color: '#94a3b8', fontSize: baseNoCardsFontSize }}>No cards available</div>
-              )}
-            </div>
+          ) : (
             <div
               style={{
                 display: 'flex',
-                flexDirection: 'column',
+                flexDirection: 'row',
                 alignItems: 'stretch',
-                flex: halfDeckForgebornColumnFlex,
-                minWidth: 0,
-                overflow: 'hidden',
+                gap: `${fusedColumnGap}px`,
+                width: '100%',
+                height: '100%',
+                minHeight: 0,
               }}
             >
-              {renderForgebornBlock()}
+              <div style={{ display: 'flex', flex: halfDeckCardColumnFlex, minWidth: 0 }}>
+                {hasCardSections ? (
+                  renderCardColumn(cardColumns[0], 0, cardColumnScales[0], cardColumnSpacings[0])
+                ) : (
+                  <div style={{ color: '#94a3b8', fontSize: baseNoCardsFontSize }}>No cards available</div>
+                )}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                  flex: halfDeckForgebornColumnFlex,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                }}
+              >
+                {renderForgebornBlock()}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-    ),
-    {
-      width: imageWidth,
-      height: imageHeight,
-      headers: {
-        'Cache-Control':
-          hasCardSections && forgebornAbilities.some((ability) => !!ability?.text?.trim())
-            ? 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400'
-            : 'no-store, max-age=0',
-      },
-    }
+          )}
+        </div>
+      ),
+      {
+        width: imageWidth,
+        height: imageHeight,
+        headers: {
+          'Cache-Control':
+            hasCardSections && forgebornAbilities.some((ability) => !!ability?.text?.trim())
+              ? 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400'
+              : 'no-store, max-age=0',
+        },
+      }
+    )
   )
-  const imageBuffer = await imageResponse.arrayBuffer()
+  const imageBuffer = await measureStage('image.png.render', () => imageResponse.arrayBuffer())
   const imageBytes = new Uint8Array(imageBuffer)
-  setCachedOgImage(imageCacheKey, imageBytes)
+  await measureStage('cache.memory.set', () => setCachedOgImage(imageCacheKey, imageBytes))
   if (isOgUpstashCacheConfigured() && hasRenderableCards && hasRenderableAbilities) {
-    void putOgImageToUpstashCache(deckId, imageBytes, {
-      ttlSeconds: OG_UPSTASH_IMAGE_TTL_SECONDS,
-      version: OG_IMAGE_VERSION,
-    }).catch(() => {
-      // Best-effort write; ignore cache upload errors.
-    })
+    void measureStage('cache.upstash.set', () =>
+      putOgImageToUpstashCache(deckId, imageBytes, {
+        ttlSeconds: OG_UPSTASH_IMAGE_TTL_SECONDS,
+        version: OG_IMAGE_VERSION,
+      }).catch(() => {
+        // Best-effort write; ignore cache upload errors.
+      })
+    )
   }
 
+  const timing = finalizeTiming('generated')
   return new Response(imageBuffer, {
     headers: {
       'Content-Type': 'image/png',
@@ -2479,6 +2545,7 @@ export async function GET(
         hasRenderableCards && hasRenderableAbilities
           ? 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400'
           : 'no-store, max-age=0',
+      ...timing.headers,
     },
   })
 }

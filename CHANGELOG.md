@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Added OG route stage profiling for precise latency breakdowns: responses now include `Server-Timing` metrics (payload fetch, icon loading, layout solve, image response creation, PNG render, cache stages), and `?trace=1` writes one-line server timing logs per request.
 - (2026-02-08 UTC) Reworked OG generation to a fast deterministic fit path: removed heavy multi-candidate auto-fit loops, switched to single-pass per-column scale/spacing solving with bounded width balancing, and tightened fused/regular API fetch routing (skip wrong-type probes and expensive fused half-detail fan-out) to cut cold OG render latency while keeping full text visible inside image bounds.
 - (2026-02-08 UTC) Added shared Upstash caching for deck page metadata preview payloads (`title`, `description`, OG alt text, owner/fused flags) so `generateMetadata` can reuse preview data across process restarts and across multiple app instances, not only from in-memory caches.
 - (2026-02-08 UTC) Reduced slow first-hit deck page metadata generation for fused decks by switching half-deck enrichment in `generateMetadata` to the fast internal deck API path (`fast=1`, `skipOwnerMerge=1`) and deduplicating repeated half-detail fetches within one metadata build.
