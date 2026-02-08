@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: df906ec
+  Request: Change OG generation so each column is maximally filled (allowing slight adaptive column-boundary shifts), then verify on the same 20 decks and tighten further for `Fused_1qrav2mfzdk9b9` where columns had too much bottom empty space.
+  Date: 2026-02-08
 - Commit: 461a001
   Request: Ignore browser-extension (MetaMask) runtime errors in global client error logging so they are not sent to `/api/log-error` or written to server logs.
   Date: 2026-02-08
