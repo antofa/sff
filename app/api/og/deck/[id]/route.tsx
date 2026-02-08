@@ -9,8 +9,8 @@ import { OG_IMAGE_VERSION } from '@/lib/ogVersion'
 export const runtime = 'nodejs'
 
 const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
-const OG_DECK_TIMEOUT_MS = 4500
-const OG_SOURCE_DECK_TIMEOUT_MS = 5200
+const OG_DECK_TIMEOUT_MS = 3200
+const OG_INTERNAL_DECK_TIMEOUT_MS = 1800
 const OG_ICON_TIMEOUT_MS = 500
 const OG_UPSTASH_IMAGE_TTL_SECONDS = 24 * 60 * 60
 const OG_PAYLOAD_TTL_MS = 24 * 60 * 60 * 1000
@@ -407,9 +407,14 @@ const getDeckFromUpstream = async (
 ) => {
   const origin = options?.origin
   const bypassFetchCache = options?.bypassFetchCache === true
-  const regularCandidates = Array.from(
-    new Set([stripDeckPrefixes(deckId), deckId].filter(Boolean))
-  )
+  const deckIdValue = String(deckId || '').trim()
+  const isLikelyFusedId =
+    /^fused[_-]/i.test(deckIdValue) ||
+    /^deck[_-]?fused[_-]?/i.test(deckIdValue) ||
+    /^deckfused[_-]?/i.test(deckIdValue)
+  const regularCandidates = isLikelyFusedId
+    ? []
+    : Array.from(new Set([stripDeckPrefixes(deckIdValue), deckIdValue].filter(Boolean)))
   const requestInit: RequestInit = bypassFetchCache
     ? {
         method: 'GET',
@@ -428,22 +433,16 @@ const getDeckFromUpstream = async (
     const params = new URLSearchParams()
     if (fast) params.set('fast', '1')
     params.set('skipOwnerMerge', '1')
-    const localUrl = `${origin}/api/deck/${encodeURIComponent(deckId)}?${params.toString()}`
-    const response = await fetchWithTimeout(localUrl, requestInit, Math.max(OG_DECK_TIMEOUT_MS, 3500))
+    const localUrl = `${origin}/api/deck/${encodeURIComponent(deckIdValue)}?${params.toString()}`
+    const response = await fetchWithTimeout(localUrl, requestInit, OG_INTERNAL_DECK_TIMEOUT_MS)
     if (!response?.ok) return null
-    const raw = await withTimeout(response.json().catch(() => null), Math.max(OG_DECK_TIMEOUT_MS, 3500), null)
+    const raw = await withTimeout(response.json().catch(() => null), OG_INTERNAL_DECK_TIMEOUT_MS, null)
     const deck = raw?.deck
     const rawId = deck?.id || deck?.deckId || deck?.deck_id
     if (!deck || !rawId) return null
     if (!isUsableDeckPayload(deck)) return null
     return normalizeDeckForOg(deck)
   }
-
-  const localFastDeck = await fetchFromInternalApi(true)
-  if (localFastDeck) return localFastDeck
-
-  const localFullDeck = await fetchFromInternalApi(false)
-  if (localFullDeck) return localFullDeck
 
   const buildDeckFetchInit = (): RequestInit => requestInit
 
@@ -461,7 +460,9 @@ const getDeckFromUpstream = async (
     return normalized
   }
 
-  const fusedCandidates = Array.from(new Set([toFusedApiId(deckId)].filter(Boolean)))
+  const fusedCandidates = isLikelyFusedId
+    ? Array.from(new Set([toFusedApiId(deckIdValue), deckIdValue].filter(Boolean)))
+    : []
   for (const fusedCandidate of fusedCandidates) {
     const url = `${API_BASE_URL}/fuseddeck/${encodeURIComponent(fusedCandidate)}?inclCards=true&inclUsers=true`
     const response = await fetchWithTimeout(url, buildDeckFetchInit(), OG_DECK_TIMEOUT_MS)
@@ -472,41 +473,10 @@ const getDeckFromUpstream = async (
     if (!rawId) continue
     if (!isUsableDeckPayload(raw)) continue
 
-    const sourceDecksRaw =
+    const sourceDecks =
       (Array.isArray(raw?.myDecks) && raw.myDecks) ||
       (Array.isArray(raw?.decks) && raw.decks) ||
       []
-    const sourceDecks = await Promise.all(
-      sourceDecksRaw.map(async (source: any) => {
-        const sourceId = source?.id || source?.deckId || source?.deck_id
-        if (!sourceId) return source
-
-        const detailUrl = `${API_BASE_URL}/deck/${encodeURIComponent(stripDeckPrefixes(String(sourceId)))}?inclCards=true&inclUsers=true`
-        const detailRes = await fetchWithTimeout(
-          detailUrl,
-          buildDeckFetchInit(),
-          OG_SOURCE_DECK_TIMEOUT_MS
-        )
-        if (!detailRes?.ok) return source
-        const detailRaw = await withTimeout(detailRes.json().catch(() => null), OG_SOURCE_DECK_TIMEOUT_MS, null)
-        if (!detailRaw || typeof detailRaw !== 'object') return source
-        const detailCards = extractDeckCards(detailRaw)
-
-        return {
-          ...source,
-          // Prefer source fields when present, but fill missing metadata from half-deck detail.
-          cardSetNo: source?.cardSetNo ?? detailRaw?.cardSetNo ?? null,
-          cardSetName: source?.cardSetName ?? detailRaw?.cardSetName ?? null,
-          deckScore: source?.deckScore ?? detailRaw?.deckScore ?? detailRaw?.score ?? null,
-          elo: source?.elo ?? detailRaw?.elo ?? null,
-          cards:
-            (Array.isArray(source?.cards) && source.cards.length > 0 && source.cards) ||
-            detailCards ||
-            source?.cards ||
-            [],
-        }
-      })
-    )
     const mergedCardsFromSources = sourceDecks.flatMap(extractDeckCards).filter(Boolean)
     const fusedCards = extractDeckCards(raw)
     const cards = mergedCardsFromSources.length > 0 ? mergedCardsFromSources : fusedCards
@@ -533,6 +503,17 @@ const getDeckFromUpstream = async (
       forgebornId: raw?.forgebornId || raw?.forgeborn?.id || sourceForgebornId || null,
     }
   }
+
+  const localFastDeck = await fetchFromInternalApi(true)
+  if (localFastDeck) return localFastDeck
+
+  if (isLikelyFusedId) {
+    // Avoid long fallback detail fan-out for fused IDs on cold requests.
+    return null
+  }
+
+  const localFullDeck = await fetchFromInternalApi(false)
+  if (localFullDeck) return localFullDeck
 
   return null
 }
@@ -1546,12 +1527,12 @@ export async function GET(
   const containerPaddingY = 12
   const innerWidth = imageWidth - containerPaddingX * 2
   const innerHeight = imageHeight - containerPaddingY * 2
-  const fusedColumnGap = 18
-  const halfDeckColumnGap = 4
-  const defaultFusedCardColumnFlexes: [number, number] = [1.1, 1.1]
-  const defaultFusedForgebornColumnFlex = 1.0
-  const defaultHalfDeckCardColumnFlex = 0.7
-  const defaultHalfDeckForgebornColumnFlex = 1.3
+  const fusedColumnGap = 10
+  const halfDeckColumnGap = 8
+  const defaultFusedCardColumnFlexes: [number, number] = [1.02, 1.02]
+  const defaultFusedForgebornColumnFlex = 0.96
+  const defaultHalfDeckCardColumnFlex = 0.49
+  const defaultHalfDeckForgebornColumnFlex = 0.51
   const fusedAvailableWidth = innerWidth - fusedColumnGap * 2
   const halfDeckAvailableWidth = innerWidth - halfDeckColumnGap
   const getFusedColumnWidths = (cardFlexes: [number, number], forgebornFlex: number) => {
@@ -1673,7 +1654,7 @@ export async function GET(
   }
 
   const fitScale = (minScale: number, maxScale: number, fits: (scale: number) => boolean) => {
-    const fitScaleIterations = 9
+    const fitScaleIterations = 6
     let low = minScale
     let high = maxScale
     for (let i = 0; i < fitScaleIterations; i += 1) {
@@ -1929,476 +1910,227 @@ export async function GET(
     return Math.max(0, Math.min(1, widest / Math.max(1, textWidth)))
   }
 
-  const fitMinScale = 0.54
-  const maxVisualScale = showFusedColumns ? 3.6 : 2.4
-  const heightBudget = innerHeight
-  const safeHeightBudget = heightBudget - (showFusedColumns ? 12 : 14)
-  const cardEstimateAllowance = showFusedColumns ? 1.0 : 0.97
-  const forgebornEstimateAllowance = showFusedColumns ? 0.99 : 0.97
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+  const getCardColumnComplexity = (column: CardColumn | undefined) => {
+    if (!column || column.sections.length === 0) return 1
+    let complexity = 0
+    column.sections.forEach((section) => {
+      const items = section.items || []
+      complexity += 6 + items.length * 5
+      items.forEach((item) => {
+        const name = String(item?.name || '').trim()
+        if (!name) return
+        const tokens = name.split(/\s+/).filter(Boolean)
+        const longestToken = tokens.reduce((maxLen, token) => Math.max(maxLen, token.length), 0)
+        complexity += name.length * 1.35 + Math.max(0, longestToken - 10) * 3
+      })
+    })
+    return Math.max(1, complexity)
+  }
+
+  const getAbilityComplexity = (abilities: AbilityEntry[]) => {
+    const visible = abilities.filter((ability) => !!ability?.text?.trim())
+    if (visible.length === 0) return 1
+    let complexity = 0
+    visible.forEach((ability) => {
+      const text = String(ability.text || '').trim()
+      const tokens = text.split(/\s+/).filter(Boolean)
+      const longestToken = tokens.reduce((maxLen, token) => Math.max(maxLen, token.length), 0)
+      complexity += text.length * 1.25 + tokens.length * 2 + Math.max(0, longestToken - 10) * 3.2
+    })
+    return Math.max(1, complexity)
+  }
+
+  const fitMinScale = 0.5
+  const maxVisualScale = showFusedColumns ? 2.8 : 2.5
+  const safeHeightBudget = innerHeight - (showFusedColumns ? 12 : 14)
+  const cardFitBudget = safeHeightBudget * (showFusedColumns ? 0.996 : 0.998)
+  const forgebornFitBudget = safeHeightBudget * (showFusedColumns ? 0.99 : 0.995)
 
   let fusedCardColumnFlexes: [number, number] = [...defaultFusedCardColumnFlexes]
   let fusedForgebornColumnFlex = defaultFusedForgebornColumnFlex
   let halfDeckCardColumnFlex = defaultHalfDeckCardColumnFlex
   let halfDeckForgebornColumnFlex = defaultHalfDeckForgebornColumnFlex
-  let selectedCardColumnWidths = getFusedColumnWidths(
-    defaultFusedCardColumnFlexes,
-    defaultFusedForgebornColumnFlex
-  ).cardColumnWidths
-  let selectedSingleCardColumnWidth = getHalfDeckColumnWidths(
-    defaultHalfDeckCardColumnFlex,
-    defaultHalfDeckForgebornColumnFlex
-  ).cardColumnWidth
-  let selectedForgebornColumnWidth = showFusedColumns
-    ? getFusedColumnWidths(defaultFusedCardColumnFlexes, defaultFusedForgebornColumnFlex).forgebornColumnWidth
-    : getHalfDeckColumnWidths(defaultHalfDeckCardColumnFlex, defaultHalfDeckForgebornColumnFlex).forgebornColumnWidth
-  let cardColumnScales: number[] = showFusedColumns ? [1, 1] : [1]
-  let forgebornColumnScale = 1
-  let cardRenderScaleFactors: number[] = showFusedColumns ? [1, 1] : [1]
-  let forgebornRenderScale = 1
 
   if (showFusedColumns) {
-    const cardFlexCandidates = [0.85, 0.95, 1.05, 1.15, 1.25]
-    const forgebornFlexCandidates = [0.9, 1.0, 1.1, 1.2, 1.3]
+    const baseFusedWidths = getFusedColumnWidths(defaultFusedCardColumnFlexes, defaultFusedForgebornColumnFlex)
+    const cardComplexity1 = getCardColumnComplexity(cardColumns[0])
+    const cardComplexity2 = getCardColumnComplexity(cardColumns[1])
+    const cardsAverageComplexity = Math.max(1, (cardComplexity1 + cardComplexity2) / 2)
+    const abilityComplexity =
+      getAbilityComplexity(forgebornAbilities) +
+      (hasSecondaryForgeborn ? getAbilityComplexity(secondaryForgebornAbilities) * 0.86 : 0)
 
-    const evaluateCandidate = (cardFlexes: [number, number], forgebornFlex: number) => {
-      const { cardColumnWidths, forgebornColumnWidth } = getFusedColumnWidths(cardFlexes, forgebornFlex)
-      const candidateCardScales = [
-        fitScale(fitMinScale, maxVisualScale, (scale) =>
-          estimateCardColumnHeight(cardColumns[0], scale, cardColumnWidths[0]) * cardEstimateAllowance <=
-          safeHeightBudget
-        ),
-        fitScale(fitMinScale, maxVisualScale, (scale) =>
-          estimateCardColumnHeight(cardColumns[1], scale, cardColumnWidths[1]) * cardEstimateAllowance <=
-          safeHeightBudget
-        ),
-      ]
-      const candidateForgebornScale = fitScale(fitMinScale, maxVisualScale, (scale) =>
-        estimateForgebornHeight(scale, forgebornColumnWidth) * forgebornEstimateAllowance <= safeHeightBudget
-      )
+    const cardWidthPressure1 = estimateCardColumnWidthUsage(cardColumns[0], 1, baseFusedWidths.cardColumnWidths[0])
+    const cardWidthPressure2 = estimateCardColumnWidthUsage(cardColumns[1], 1, baseFusedWidths.cardColumnWidths[1])
+    const forgebornWidthPressure = estimateForgebornWidthUsage(1, baseFusedWidths.forgebornColumnWidth)
 
-      const estimatedHeights = [
-        estimateCardColumnHeight(cardColumns[0], candidateCardScales[0], cardColumnWidths[0]),
-        estimateCardColumnHeight(cardColumns[1], candidateCardScales[1], cardColumnWidths[1]),
-        estimateForgebornHeight(candidateForgebornScale, forgebornColumnWidth),
-      ]
-      const fillRatios = [
-        Math.min(1.3, (estimatedHeights[0] * cardEstimateAllowance) / Math.max(1, safeHeightBudget)),
-        Math.min(1.3, (estimatedHeights[1] * cardEstimateAllowance) / Math.max(1, safeHeightBudget)),
-        Math.min(1.3, (estimatedHeights[2] * forgebornEstimateAllowance) / Math.max(1, safeHeightBudget)),
-      ]
+    const complexityDelta1 = clamp((cardComplexity1 - cardsAverageComplexity) / cardsAverageComplexity, -0.3, 0.3)
+    const complexityDelta2 = clamp((cardComplexity2 - cardsAverageComplexity) / cardsAverageComplexity, -0.3, 0.3)
+    const pressureDelta1 = clamp(cardWidthPressure1 - 0.9, -0.2, 0.2)
+    const pressureDelta2 = clamp(cardWidthPressure2 - 0.9, -0.2, 0.2)
+    const forgebornComplexityRatio =
+      abilityComplexity / Math.max(1, abilityComplexity + cardsAverageComplexity * 1.75)
+    const forgebornPressureDelta = clamp(forgebornWidthPressure - 0.85, -0.2, 0.2)
 
-      const avgFill = (fillRatios[0] + fillRatios[1] + fillRatios[2]) / 3
-      const maxFill = Math.max(fillRatios[0], fillRatios[1], fillRatios[2])
-      const minFill = Math.min(fillRatios[0], fillRatios[1], fillRatios[2])
-      const spread = maxFill - minFill
-      const underFillPenalty = fillRatios.reduce((sum, ratio) => {
-        return sum + Math.max(0, 0.995 - ratio)
-      }, 0)
-      const cardMinFill = Math.min(fillRatios[0], fillRatios[1])
-      const widthPenalty =
-        Math.abs(cardFlexes[0] - defaultFusedCardColumnFlexes[0]) +
-        Math.abs(cardFlexes[1] - defaultFusedCardColumnFlexes[1]) +
-        Math.abs(forgebornFlex - defaultFusedForgebornColumnFlex)
-      const score =
-        cardMinFill * 95 +
-        minFill * 170 +
-        avgFill * 70 +
-        maxFill * 20 -
-        spread * 18 -
-        underFillPenalty * 140 -
-        widthPenalty * 0.35
-
-      return {
-        cardFlexes,
-        forgebornFlex,
-        cardColumnWidths,
-        forgebornColumnWidth,
-        cardScales: candidateCardScales,
-        forgebornScale: candidateForgebornScale,
-        score,
-      }
-    }
-
-    let bestCandidate = evaluateCandidate(defaultFusedCardColumnFlexes, defaultFusedForgebornColumnFlex)
-    for (const cardFlex1 of cardFlexCandidates) {
-      for (const cardFlex2 of cardFlexCandidates) {
-        for (const forgebornFlex of forgebornFlexCandidates) {
-          const candidate = evaluateCandidate([cardFlex1, cardFlex2], forgebornFlex)
-          if (candidate.score > bestCandidate.score) {
-            bestCandidate = candidate
-          }
-        }
-      }
-    }
-
-    fusedCardColumnFlexes = bestCandidate.cardFlexes
-    fusedForgebornColumnFlex = bestCandidate.forgebornFlex
-    selectedCardColumnWidths = bestCandidate.cardColumnWidths
-    selectedForgebornColumnWidth = bestCandidate.forgebornColumnWidth
-    cardColumnScales = bestCandidate.cardScales
-    forgebornColumnScale = bestCandidate.forgebornScale
+    fusedCardColumnFlexes = [
+      Math.round(
+        clamp(defaultFusedCardColumnFlexes[0] * (1 + complexityDelta1 * 0.25 + pressureDelta1 * 0.2), 0.82, 1.32) * 1000
+      ) / 1000,
+      Math.round(
+        clamp(defaultFusedCardColumnFlexes[1] * (1 + complexityDelta2 * 0.25 + pressureDelta2 * 0.2), 0.82, 1.32) * 1000
+      ) / 1000,
+    ]
+    fusedForgebornColumnFlex =
+      Math.round(
+        clamp(
+          defaultFusedForgebornColumnFlex * (0.9 + forgebornComplexityRatio * 0.3 + forgebornPressureDelta * 0.25),
+          0.78,
+          1.05
+        ) * 1000
+      ) / 1000
   } else {
-    const cardFlexCandidates = [0.55, 0.65, 0.75, 0.85]
-    const forgebornFlexCandidates = [1.15, 1.25, 1.35, 1.45]
+    const baseHalfDeckWidths = getHalfDeckColumnWidths(defaultHalfDeckCardColumnFlex, defaultHalfDeckForgebornColumnFlex)
+    const cardComplexity = getCardColumnComplexity(cardColumns[0])
+    const forgebornComplexity =
+      getAbilityComplexity(forgebornAbilities) +
+      (hasSecondaryForgeborn ? getAbilityComplexity(secondaryForgebornAbilities) * 0.9 : 0)
+    const cardComplexityRatio = cardComplexity / Math.max(1, cardComplexity + forgebornComplexity)
+    const cardWidthPressure = estimateCardColumnWidthUsage(cardColumns[0], 1, baseHalfDeckWidths.cardColumnWidth)
+    const forgebornWidthPressure = estimateForgebornWidthUsage(1, baseHalfDeckWidths.forgebornColumnWidth)
+    const pressureBias = clamp(cardWidthPressure - forgebornWidthPressure, -0.35, 0.35)
+    const cardShare = clamp(0.49 + (cardComplexityRatio - 0.5) * 0.22 + pressureBias * 0.08, 0.42, 0.57)
 
-    const evaluateCandidate = (cardFlex: number, forgebornFlex: number) => {
-      const { cardColumnWidth, forgebornColumnWidth } = getHalfDeckColumnWidths(cardFlex, forgebornFlex)
-      const candidateCardScale = fitScale(fitMinScale, maxVisualScale, (scale) =>
-        estimateCardColumnHeight(cardColumns[0], scale, cardColumnWidth) * cardEstimateAllowance <= safeHeightBudget
-      )
-      const candidateForgebornScale = fitScale(fitMinScale, maxVisualScale, (scale) =>
-        estimateForgebornHeight(scale, forgebornColumnWidth) * forgebornEstimateAllowance <= safeHeightBudget
-      )
-
-      const estimatedHeights = [
-        estimateCardColumnHeight(cardColumns[0], candidateCardScale, cardColumnWidth),
-        estimateForgebornHeight(candidateForgebornScale, forgebornColumnWidth),
-      ]
-      const fillRatios = [
-        Math.min(1.3, (estimatedHeights[0] * cardEstimateAllowance) / Math.max(1, safeHeightBudget)),
-        Math.min(1.3, (estimatedHeights[1] * forgebornEstimateAllowance) / Math.max(1, safeHeightBudget)),
-      ]
-      const widthUsage = [
-        estimateCardColumnWidthUsage(cardColumns[0], candidateCardScale, cardColumnWidth),
-        estimateForgebornWidthUsage(candidateForgebornScale, forgebornColumnWidth),
-      ]
-
-      const avgFill = (fillRatios[0] + fillRatios[1]) / 2
-      const maxFill = Math.max(fillRatios[0], fillRatios[1])
-      const minFill = Math.min(fillRatios[0], fillRatios[1])
-      const cardFill = fillRatios[0]
-      const forgebornFill = fillRatios[1]
-      const totalFlex = Math.max(0.001, cardFlex + forgebornFlex)
-      const cardWidthShare = cardFlex / totalFlex
-      const forgebornWidthShare = forgebornFlex / totalFlex
-      const spread = maxFill - minFill
-      const avgWidthUsage = (widthUsage[0] + widthUsage[1]) / 2
-      const minWidthUsage = Math.min(widthUsage[0], widthUsage[1])
-      const cardUnderfillPenalty = Math.max(0, 0.992 - cardFill)
-      const forgebornUnderfillPenalty = Math.max(0, 0.86 - forgebornFill)
-      const cardWidePenalty = Math.max(0, cardWidthShare - 0.42)
-      const cardNarrowPenalty = Math.max(0, 0.26 - cardWidthShare)
-      const forgebornWidePenalty = Math.max(0, forgebornWidthShare - 0.72)
-      const cardWidthUnderusePenalty = Math.max(0, 0.98 - widthUsage[0])
-      const forgebornWidthUnderusePenalty = Math.max(0, 0.72 - widthUsage[1])
-      const underFillPenalty = fillRatios.reduce((sum, ratio) => {
-        return sum + Math.max(0, 0.995 - ratio)
-      }, 0)
-      const widthPenalty =
-        Math.abs(cardFlex - defaultHalfDeckCardColumnFlex) +
-        Math.abs(forgebornFlex - defaultHalfDeckForgebornColumnFlex)
-      const score =
-        cardFill * 275 +
-        forgebornFill * 88 +
-        minFill * 100 +
-        avgFill * 40 +
-        maxFill * 8 -
-        spread * 24 -
-        underFillPenalty * 150 -
-        cardUnderfillPenalty * 195 -
-        forgebornUnderfillPenalty * 120 +
-        avgWidthUsage * 11 +
-        minWidthUsage * 8 -
-        widthPenalty * 0.6 -
-        cardWidePenalty * 620 -
-        cardNarrowPenalty * 150 -
-        forgebornWidePenalty * 70 -
-        cardWidthUnderusePenalty * 620 -
-        forgebornWidthUnderusePenalty * 45
-
-      return {
-        cardFlex,
-        forgebornFlex,
-        cardColumnWidth,
-        forgebornColumnWidth,
-        cardScale: candidateCardScale,
-        forgebornScale: candidateForgebornScale,
-        score,
-      }
-    }
-
-    let bestCandidate = evaluateCandidate(defaultHalfDeckCardColumnFlex, defaultHalfDeckForgebornColumnFlex)
-    for (const cardFlex of cardFlexCandidates) {
-      for (const forgebornFlex of forgebornFlexCandidates) {
-        const candidate = evaluateCandidate(cardFlex, forgebornFlex)
-        if (candidate.score > bestCandidate.score) {
-          bestCandidate = candidate
-        }
-      }
-    }
-
-    halfDeckCardColumnFlex = bestCandidate.cardFlex
-    halfDeckForgebornColumnFlex = bestCandidate.forgebornFlex
-    selectedSingleCardColumnWidth = bestCandidate.cardColumnWidth
-    selectedForgebornColumnWidth = bestCandidate.forgebornColumnWidth
-    cardColumnScales = [bestCandidate.cardScale]
-    forgebornColumnScale = bestCandidate.forgebornScale
+    halfDeckCardColumnFlex = Math.round(cardShare * 1000) / 1000
+    halfDeckForgebornColumnFlex = Math.round((1 - cardShare) * 1000) / 1000
   }
 
+  const fusedWidths = getFusedColumnWidths(fusedCardColumnFlexes, fusedForgebornColumnFlex)
+  const halfDeckWidths = getHalfDeckColumnWidths(halfDeckCardColumnFlex, halfDeckForgebornColumnFlex)
+  const selectedCardColumnWidths: [number, number] = showFusedColumns
+    ? fusedWidths.cardColumnWidths
+    : [halfDeckWidths.cardColumnWidth, halfDeckWidths.cardColumnWidth]
+  const selectedSingleCardColumnWidth = halfDeckWidths.cardColumnWidth
+  const selectedForgebornColumnWidth = showFusedColumns ? fusedWidths.forgebornColumnWidth : halfDeckWidths.forgebornColumnWidth
+
   const getCardColumnSpacing = (column: CardColumn | undefined, scale: number, columnWidth: number) => {
-    const defaults = { sectionGap: 8, listGap: 4 }
+    const defaults = { sectionGap: showFusedColumns ? 7 : 8, listGap: showFusedColumns ? 3 : 4 }
     if (!column || column.sections.length === 0) return defaults
 
     const estimatedDefault = estimateCardColumnHeight(column, scale, columnWidth, defaults)
-    const targetHeight = safeHeightBudget * 0.997
+    const targetHeight = safeHeightBudget * 0.998
     const extraHeight = targetHeight - estimatedDefault
-    if (extraHeight <= 6) return defaults
+    if (extraHeight <= 2) return defaults
 
     const listSlots = column.sections.reduce((sum, section) => sum + Math.max(0, (section.items?.length || 0) - 1), 0)
     const sectionSlots = Math.max(0, column.sections.length - 1)
-    const weightedSlots = listSlots + sectionSlots * 0.7
-    const totalSlots = weightedSlots
-    if (totalSlots <= 0) return defaults
+    const weightedSlots = listSlots + sectionSlots * 0.62
+    if (weightedSlots <= 0) return defaults
 
-    const add = Math.min(28, extraHeight / totalSlots)
+    const add = Math.min(showFusedColumns ? 18 : 24, extraHeight / weightedSlots)
     const candidate = {
-      sectionGap: defaults.sectionGap + add * 0.7,
+      sectionGap: defaults.sectionGap + add * 0.62,
       listGap: defaults.listGap + add,
     }
     const estimatedCandidate = estimateCardColumnHeight(column, scale, columnWidth, candidate)
     if (estimatedCandidate <= safeHeightBudget) return candidate
 
-    const safeAdd = fitScale(0, add, (value) => {
-      const spacing = {
-        sectionGap: defaults.sectionGap + value * 0.7,
-        listGap: defaults.listGap + value,
-      }
-      return estimateCardColumnHeight(column, scale, columnWidth, spacing) <= safeHeightBudget
-    })
-
+    const safeHeadroom = Math.max(0, safeHeightBudget - estimatedDefault)
+    const candidateDelta = Math.max(0.0001, estimatedCandidate - estimatedDefault)
+    const ratio = clamp(safeHeadroom / candidateDelta, 0, 1)
     return {
-      sectionGap: defaults.sectionGap + safeAdd * 0.7,
-      listGap: defaults.listGap + safeAdd,
+      sectionGap: defaults.sectionGap + (candidate.sectionGap - defaults.sectionGap) * ratio,
+      listGap: defaults.listGap + (candidate.listGap - defaults.listGap) * ratio,
     }
   }
 
   const getForgebornSpacing = (scale: number, forgebornWidth: number): ForgebornSpacing => {
     const defaults = defaultForgebornSpacing
     const estimatedDefault = estimateForgebornHeight(scale, forgebornWidth, defaults)
-    const targetHeight = safeHeightBudget * 0.997
+    const targetHeight = safeHeightBudget * 0.998
     const extraHeight = targetHeight - estimatedDefault
-    if (extraHeight <= 4) return defaults
+    if (extraHeight <= 2) return defaults
 
     const primarySlots = Math.max(0, primaryPreparedAbilityMetrics.length - 1)
-    const secondarySlots = hasSecondaryForgeborn
-      ? Math.max(0, secondaryPreparedAbilityMetrics.length - 1)
-      : 0
+    const secondarySlots = hasSecondaryForgeborn ? Math.max(0, secondaryPreparedAbilityMetrics.length - 1) : 0
     const bridgeSlots = hasSecondaryForgeborn ? 2 : 0
     const totalSlots = primarySlots + secondarySlots + bridgeSlots
     if (totalSlots <= 0) return defaults
 
-    const add = Math.min(24, extraHeight / totalSlots)
+    const add = Math.min(showFusedColumns ? 12 : 18, extraHeight / totalSlots)
     const candidate = {
       primaryGap: defaults.primaryGap + add,
-      secondaryGap: defaults.secondaryGap + add * 0.85,
-      secondaryTopMargin: defaults.secondaryTopMargin + add * 0.6,
-      secondaryInnerGap: defaults.secondaryInnerGap + add * 0.7,
+      secondaryGap: defaults.secondaryGap + add * 0.8,
+      secondaryTopMargin: defaults.secondaryTopMargin + add * 0.55,
+      secondaryInnerGap: defaults.secondaryInnerGap + add * 0.65,
     }
-    if (estimateForgebornHeight(scale, forgebornWidth, candidate) <= safeHeightBudget) return candidate
+    const estimatedCandidate = estimateForgebornHeight(scale, forgebornWidth, candidate)
+    if (estimatedCandidate <= safeHeightBudget) return candidate
 
-    const safeAdd = fitScale(0, add, (value) => {
-      const spacing = {
-        primaryGap: defaults.primaryGap + value,
-        secondaryGap: defaults.secondaryGap + value * 0.85,
-        secondaryTopMargin: defaults.secondaryTopMargin + value * 0.6,
-        secondaryInnerGap: defaults.secondaryInnerGap + value * 0.7,
-      }
-      return estimateForgebornHeight(scale, forgebornWidth, spacing) <= safeHeightBudget
-    })
-
+    const safeHeadroom = Math.max(0, safeHeightBudget - estimatedDefault)
+    const candidateDelta = Math.max(0.0001, estimatedCandidate - estimatedDefault)
+    const ratio = clamp(safeHeadroom / candidateDelta, 0, 1)
     return {
-      primaryGap: defaults.primaryGap + safeAdd,
-      secondaryGap: defaults.secondaryGap + safeAdd * 0.85,
-      secondaryTopMargin: defaults.secondaryTopMargin + safeAdd * 0.6,
-      secondaryInnerGap: defaults.secondaryInnerGap + safeAdd * 0.7,
+      primaryGap: defaults.primaryGap + (candidate.primaryGap - defaults.primaryGap) * ratio,
+      secondaryGap: defaults.secondaryGap + (candidate.secondaryGap - defaults.secondaryGap) * ratio,
+      secondaryTopMargin: defaults.secondaryTopMargin + (candidate.secondaryTopMargin - defaults.secondaryTopMargin) * ratio,
+      secondaryInnerGap: defaults.secondaryInnerGap + (candidate.secondaryInnerGap - defaults.secondaryInnerGap) * ratio,
     }
   }
 
+  const solveCardScale = (
+    column: CardColumn | undefined,
+    columnWidth: number,
+    spacing: { sectionGap: number; listGap: number }
+  ) =>
+    fitScale(fitMinScale, maxVisualScale, (scale) =>
+      estimateCardColumnHeight(column, scale, Math.max(40, columnWidth - 6), spacing) <= cardFitBudget
+    )
+
+  const solveForgebornScale = (forgebornWidth: number, spacing: ForgebornSpacing) =>
+    fitScale(fitMinScale, maxVisualScale, (scale) =>
+      estimateForgebornHeight(scale, Math.max(40, forgebornWidth - (showFusedColumns ? 18 : 24)), spacing) <=
+      forgebornFitBudget
+    )
+
+  let cardColumnScales: number[] = showFusedColumns ? [1, 1] : [1]
+  let forgebornColumnScale = 1
   let cardColumnSpacings = showFusedColumns
     ? [
-        getCardColumnSpacing(cardColumns[0], cardColumnScales[0], selectedCardColumnWidths[0]),
-        getCardColumnSpacing(cardColumns[1], cardColumnScales[1], selectedCardColumnWidths[1]),
+        { sectionGap: showFusedColumns ? 7 : 8, listGap: showFusedColumns ? 3 : 4 },
+        { sectionGap: showFusedColumns ? 7 : 8, listGap: showFusedColumns ? 3 : 4 },
       ]
-    : [getCardColumnSpacing(cardColumns[0], cardColumnScales[0], selectedSingleCardColumnWidth)]
-
-  let forgebornSpacing = getForgebornSpacing(forgebornColumnScale, selectedForgebornColumnWidth)
+    : [{ sectionGap: showFusedColumns ? 7 : 8, listGap: showFusedColumns ? 3 : 4 }]
+  let forgebornSpacing = defaultForgebornSpacing
 
   if (showFusedColumns) {
-    for (let i = 0; i < 2; i += 1) {
-      cardColumnScales = [
-        fitScale(cardColumnScales[0], maxVisualScale, (scale) =>
-          estimateCardColumnHeight(cardColumns[0], scale, selectedCardColumnWidths[0], cardColumnSpacings[0]) *
-            cardEstimateAllowance <=
-          safeHeightBudget
-        ),
-        fitScale(cardColumnScales[1], maxVisualScale, (scale) =>
-          estimateCardColumnHeight(cardColumns[1], scale, selectedCardColumnWidths[1], cardColumnSpacings[1]) *
-            cardEstimateAllowance <=
-          safeHeightBudget
-        ),
-      ]
-      forgebornColumnScale = fitScale(forgebornColumnScale, maxVisualScale, (scale) =>
-        estimateForgebornHeight(scale, selectedForgebornColumnWidth, forgebornSpacing) * forgebornEstimateAllowance <=
-        safeHeightBudget
-      )
-
-      cardColumnSpacings = [
-        getCardColumnSpacing(cardColumns[0], cardColumnScales[0], selectedCardColumnWidths[0]),
-        getCardColumnSpacing(cardColumns[1], cardColumnScales[1], selectedCardColumnWidths[1]),
-      ]
-      forgebornSpacing = getForgebornSpacing(forgebornColumnScale, selectedForgebornColumnWidth)
-    }
-
-    // Final conservative guard for fused forgeborn column to prevent descender clipping
-    // with long wrapped ability text and inline icons.
-    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 22)
-    forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
-      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.94 <= safeHeightBudget
-    )
-
-    // Final render-fit for fused columns:
-    // allow each column to fill vertically while guaranteeing bottom-safe rendering.
-    cardRenderScaleFactors = [
-      fitScale(0.82, 1.08, (renderScale) =>
-        estimateCardColumnHeight(
-          cardColumns[0],
-          cardColumnScales[0] * renderScale,
-          Math.max(40, selectedCardColumnWidths[0] - 6),
-          cardColumnSpacings[0]
-        ) * 1.006 <= safeHeightBudget
-      ),
-      fitScale(0.82, 1.08, (renderScale) =>
-        estimateCardColumnHeight(
-          cardColumns[1],
-          cardColumnScales[1] * renderScale,
-          Math.max(40, selectedCardColumnWidths[1] - 6),
-          cardColumnSpacings[1]
-        ) * 1.006 <= safeHeightBudget
-      ),
+    cardColumnScales = [
+      solveCardScale(cardColumns[0], selectedCardColumnWidths[0], cardColumnSpacings[0]),
+      solveCardScale(cardColumns[1], selectedCardColumnWidths[1], cardColumnSpacings[1]),
     ]
-    forgebornRenderScale = fitScale(0.72, 1.03, (renderScale) =>
-      estimateForgebornHeight(
-        forgebornColumnScale * renderScale,
-        conservativeForgebornWidth,
-        forgebornSpacing
-      ) * 1.004 <= safeHeightBudget
-    )
+    forgebornColumnScale = solveForgebornScale(selectedForgebornColumnWidth, forgebornSpacing)
+    cardColumnSpacings = [
+      getCardColumnSpacing(cardColumns[0], cardColumnScales[0], selectedCardColumnWidths[0]),
+      getCardColumnSpacing(cardColumns[1], cardColumnScales[1], selectedCardColumnWidths[1]),
+    ]
+    forgebornSpacing = getForgebornSpacing(forgebornColumnScale, selectedForgebornColumnWidth)
+    cardColumnScales = [
+      solveCardScale(cardColumns[0], selectedCardColumnWidths[0], cardColumnSpacings[0]),
+      solveCardScale(cardColumns[1], selectedCardColumnWidths[1], cardColumnSpacings[1]),
+    ]
+    forgebornColumnScale = solveForgebornScale(selectedForgebornColumnWidth, forgebornSpacing)
   } else {
-    for (let i = 0; i < 2; i += 1) {
-      cardColumnScales = [
-        fitScale(cardColumnScales[0], maxVisualScale, (scale) =>
-          estimateCardColumnHeight(cardColumns[0], scale, selectedSingleCardColumnWidth, cardColumnSpacings[0]) *
-            cardEstimateAllowance <=
-          safeHeightBudget
-        ),
-      ]
-      forgebornColumnScale = fitScale(forgebornColumnScale, maxVisualScale, (scale) =>
-        estimateForgebornHeight(scale, selectedForgebornColumnWidth, forgebornSpacing) * forgebornEstimateAllowance <=
-        safeHeightBudget
-      )
-
-      cardColumnSpacings = [getCardColumnSpacing(cardColumns[0], cardColumnScales[0], selectedSingleCardColumnWidth)]
-      forgebornSpacing = getForgebornSpacing(forgebornColumnScale, selectedForgebornColumnWidth)
-    }
-
-    // Final conservative guard for half-deck forgeborn column to avoid bottom clipping
-    // on long multi-line ability text in real OG rendering.
-    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 28)
-    forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
-      estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.91 <= safeHeightBudget
-    )
-
-    // Final render-fit for regular (non-fused) columns:
-    // maximize per-column fill while guaranteeing no bottom clipping.
-    cardRenderScaleFactors = [
-      fitScale(0.9, 1.46, (renderScale) =>
-        estimateCardColumnHeight(
-          cardColumns[0],
-          cardColumnScales[0] * renderScale,
-          Math.max(40, selectedSingleCardColumnWidth - 1),
-          cardColumnSpacings[0]
-        ) * 1.001 <= safeHeightBudget
-      ),
-    ]
-    forgebornRenderScale = fitScale(0.62, 0.94, (renderScale) =>
-      estimateForgebornHeight(
-        forgebornColumnScale * renderScale,
-        conservativeForgebornWidth,
-        forgebornSpacing
-      ) * 1.012 <= safeHeightBudget
-    )
-
-    // Final non-fused pass: recompute spacing using render-scale-adjusted typography,
-    // then re-fit scales against that spacing so each column better fills vertical space
-    // without clipping on actual OG output.
-    for (let i = 0; i < 2; i += 1) {
-      const effectiveCardScale = cardColumnScales[0] * cardRenderScaleFactors[0]
-      cardColumnSpacings = [getCardColumnSpacing(cardColumns[0], effectiveCardScale, selectedSingleCardColumnWidth)]
-      cardRenderScaleFactors = [
-        fitScale(0.9, 1.46, (renderScale) =>
-          estimateCardColumnHeight(
-            cardColumns[0],
-            cardColumnScales[0] * renderScale,
-            Math.max(40, selectedSingleCardColumnWidth - 1),
-            cardColumnSpacings[0]
-          ) * 1.001 <= safeHeightBudget
-        ),
-      ]
-
-      const effectiveForgebornScale = forgebornColumnScale * forgebornRenderScale
-      forgebornSpacing = getForgebornSpacing(effectiveForgebornScale, selectedForgebornColumnWidth)
-      forgebornRenderScale = fitScale(0.62, 0.94, (renderScale) =>
-        estimateForgebornHeight(
-          forgebornColumnScale * renderScale,
-          conservativeForgebornWidth,
-          forgebornSpacing
-        ) * 1.012 <= safeHeightBudget
-      )
-    }
-
-    // Final adaptive non-fused pass:
-    // fill missing bottom space in the card column by expanding spacing according to
-    // the actual remaining height budget, then re-fit render scale safely.
-    for (let i = 0; i < 2; i += 1) {
-      const cardColumn = cardColumns[0]
-      if (!cardColumn || cardColumn.sections.length === 0) break
-      const effectiveCardScale = cardColumnScales[0] * cardRenderScaleFactors[0]
-      const currentSpacing = cardColumnSpacings[0]
-      const currentHeight = estimateCardColumnHeight(
-        cardColumn,
-        effectiveCardScale,
-        selectedSingleCardColumnWidth,
-        currentSpacing
-      )
-      const targetHeight = safeHeightBudget * 1.05
-      const missingHeight = targetHeight - currentHeight
-      if (missingHeight <= 4) break
-
-      const listSlots = cardColumn.sections.reduce((sum, section) => {
-        return sum + Math.max(0, (section.items?.length || 0) - 1)
-      }, 0)
-      const sectionSlots = Math.max(0, cardColumn.sections.length - 1)
-      const weightedSlots = listSlots + sectionSlots * 0.7
-      if (weightedSlots <= 0) break
-
-      const perSlotAdd = Math.min(32, missingHeight / weightedSlots)
-      const nextSpacing = {
-        sectionGap: currentSpacing.sectionGap + perSlotAdd * 0.65,
-        listGap: currentSpacing.listGap + perSlotAdd,
-      }
-      const nextRenderScale = fitScale(0.9, 1.46, (renderScale) =>
-        estimateCardColumnHeight(
-          cardColumn,
-          cardColumnScales[0] * renderScale,
-          Math.max(40, selectedSingleCardColumnWidth - 1),
-          nextSpacing
-        ) * 1.001 <= safeHeightBudget
-      )
-
-      cardColumnSpacings = [nextSpacing]
-      cardRenderScaleFactors = [nextRenderScale]
-    }
+    cardColumnScales = [solveCardScale(cardColumns[0], selectedSingleCardColumnWidth, cardColumnSpacings[0])]
+    forgebornColumnScale = solveForgebornScale(selectedForgebornColumnWidth, forgebornSpacing)
+    cardColumnSpacings = [getCardColumnSpacing(cardColumns[0], cardColumnScales[0], selectedSingleCardColumnWidth)]
+    forgebornSpacing = getForgebornSpacing(forgebornColumnScale, selectedForgebornColumnWidth)
+    cardColumnScales = [solveCardScale(cardColumns[0], selectedSingleCardColumnWidth, cardColumnSpacings[0])]
+    forgebornColumnScale = solveForgebornScale(selectedForgebornColumnWidth, forgebornSpacing)
   }
+
+  const cardRenderScaleFactors: number[] = showFusedColumns ? [1, 1] : [1]
+  const forgebornRenderScale = 1
 
   const forgebornAbilityFont =
     Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * forgebornRenderScale * 10) / 10
