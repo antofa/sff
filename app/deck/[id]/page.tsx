@@ -94,12 +94,20 @@ const buildCandidates = (rawId: string) => {
   )
 }
 
-const resolveBaseUrl = async () => {
-  const headersList = await headers()
+const resolveBaseUrlFromHeaders = (headersList: { get: (name: string) => string | null }) => {
   const host = headersList.get('host')
   if (!host) return null
   const proto = headersList.get('x-forwarded-proto') || 'http'
   return `${proto}://${host}`
+}
+
+const resolveBaseUrl = async () => resolveBaseUrlFromHeaders(await headers())
+
+const isCrawlerUserAgent = (value: string | null | undefined) => {
+  if (!value) return false
+  return /(bot|crawler|spider|discordbot|twitterbot|facebookexternalhit|slackbot|linkedinbot|whatsapp|telegrambot|vkshare|pinterest|applebot|bingbot|duckduckbot|yandexbot)/i.test(
+    value
+  )
 }
 
 const fetchDeckFromInternalApi = async (
@@ -856,9 +864,43 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const deckId = (await params).id
   const titleFallback = `Deck ${deckId}`
+  const headersList = await headers()
+  const baseUrl = resolveBaseUrlFromHeaders(headersList)
+
+  // Keep interactive deck page loads fast; reserve heavy metadata enrichment for bots/crawlers.
+  if (!isCrawlerUserAgent(headersList.get('user-agent'))) {
+    const quickOgImageUrl = baseUrl
+      ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}?v=${encodeURIComponent(OG_IMAGE_VERSION)}`
+      : undefined
+    const quickDescription = 'SolForge Fusion deck overview.'
+    return {
+      title: titleFallback,
+      description: quickDescription,
+      openGraph: {
+        title: titleFallback,
+        description: quickDescription,
+        type: 'website',
+        images: quickOgImageUrl
+          ? [
+              {
+                url: quickOgImageUrl,
+                width: 1200,
+                height: 630,
+                alt: 'Deck preview image',
+              },
+            ]
+          : undefined,
+      },
+      twitter: {
+        card: quickOgImageUrl ? 'summary_large_image' : 'summary',
+        title: titleFallback,
+        description: quickDescription,
+        images: quickOgImageUrl ? [quickOgImageUrl] : undefined,
+      },
+    }
+  }
 
   try {
-    const baseUrl = await resolveBaseUrl()
     const previewCore = await getDeckPreviewCore(deckId, titleFallback, baseUrl)
     if (!previewCore) {
       return { title: titleFallback, description: 'SolForge Fusion deck overview.' }

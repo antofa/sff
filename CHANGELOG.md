@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Sped up `/deck/[id]` page responses for regular browser visits by using a lightweight metadata path and reserving the heavier enriched metadata generation for social crawlers.
 - (2026-02-08 UTC) Removed OG text shadows from card and forgeborn text blocks to reduce PNG rendering cost and speed up `/api/og/deck/[id]` image generation.
 - (2026-02-08 UTC) Added OG route stage profiling for precise latency breakdowns: responses now include `Server-Timing` metrics (payload fetch, icon loading, layout solve, image response creation, PNG render, cache stages), and `?trace=1` writes one-line server timing logs per request.
 - (2026-02-08 UTC) Reworked OG generation to a fast deterministic fit path: removed heavy multi-candidate auto-fit loops, switched to single-pass per-column scale/spacing solving with bounded width balancing, and tightened fused/regular API fetch routing (skip wrong-type probes and expensive fused half-detail fan-out) to cut cold OG render latency while keeping full text visible inside image bounds.
