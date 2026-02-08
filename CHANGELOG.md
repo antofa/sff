@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Fixed direct non-fused deck view data precedence in `DeckDetails`: when full external details load first, UI now preserves enriched fields from `/api/deck/[id]` (including `Expire date`) instead of dropping them.
 - (2026-02-08 UTC) Reworked direct `/api/deck/[id]` loading to use strict source priority (external deck API first, then Upstash fallback data, then Supabase by deck ID), removed owner-wide deck listing lookups, and kept fused half enrichment on direct ID requests only.
 - (2026-02-08 UTC) Standardized repository text language to English for user-facing/project docs and notes by translating the Russian content in `QUICKSTART.md`, `AI_REQUESTS.md`, and remaining non-English inline comments in `components/HomePage.tsx`.
 - (2026-02-08 UTC) Made deck persistence non-blocking during player search: `/api/decks/stream` now emits deck results before Supabase save/owner-cache work, removed the blocking "Saving decks to database..." progress stage, and moved `/api/decks` persistence helpers to background execution; deck lists now render immediately when results arrive (including on the player profile page) while database writes continue in the background.
