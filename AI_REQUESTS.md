@@ -860,3 +860,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 6ac9e35
   Request: можем ускорить формирование og image для всех колод?
   Date: 2026-02-08
+- Commit: 651b3eb
+  Request: 3 секунды как-то много, можем ускорить? что жрёт больше всего времени?
+  Date: 2026-02-08
