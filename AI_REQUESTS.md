@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 9fc4566
+  Request: On `https://solforgefusion.netlify.app/deck/s4-abiaggaxrazxb1tb1ubnuboucg6cj7`, the Forgeborn ability text does not fit completely in the card frame.
+  Date: 2026-02-08
 - Commit: e498453
   Request: The changelog is missing details like OG image/title/description changes and the new filter; clarify whether the summary covered only today or the full period since the last merge.
   Date: 2026-02-08
