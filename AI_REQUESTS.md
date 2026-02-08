@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: b897745
+  Request: For fused deck `http://trumpumpum.duckdns.org:3000/deck/Fused_93hi52mfig65sm`, there is no `Expire date` tag even though one of its halves has an expiry date.
+  Date: 2026-02-08
 - Commit: a7de86a
   Request: I checked this deck URL and the non-fused deck `Expire date` still does not load in the background; is it missing in Supabase or is the issue elsewhere?
   Date: 2026-02-08
