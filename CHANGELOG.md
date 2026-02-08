@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Preserved fused-to-half navigation context on direct deck links: opening a fused source half now carries `parentFused` in the URL so the half view shows `Back to Fused` and returns to the original fused deck.
 - (2026-02-08 UTC) Sped up `/deck/[id]` page responses for regular browser visits by using a lightweight metadata path and reserving the heavier enriched metadata generation for social crawlers.
 - (2026-02-08 UTC) Removed OG text shadows from card and forgeborn text blocks to reduce PNG rendering cost and speed up `/api/og/deck/[id]` image generation.
 - (2026-02-08 UTC) Added OG route stage profiling for precise latency breakdowns: responses now include `Server-Timing` metrics (payload fetch, icon loading, layout solve, image response creation, PNG render, cache stages), and `?trace=1` writes one-line server timing logs per request.

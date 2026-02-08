@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Container, Loader, Paper, Stack, Text, Title, Button, Group } from '@mantine/core'
 import { IconArrowLeft, IconHash } from '@tabler/icons-react'
 import { BackgroundElements } from '@/components/BackgroundElements'
@@ -29,6 +29,7 @@ const buildDeckStateFromRaw = (rawDeck: Deck) => {
 
 export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageClientProps) {
   const params = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const routeDeckId = Array.isArray(params?.id) ? params.id[0] : params?.id
   const deckId = routeDeckId || initialDeckId
@@ -37,6 +38,17 @@ export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageC
 
   const [deck, setDeck] = useState<Deck | null>(initialState?.deck ?? null)
   const [allDecks, setAllDecks] = useState<Deck[]>(initialState?.allDecks ?? [])
+  const parentFusedFromQueryRaw = searchParams?.get('parentFused') || ''
+  const parentFusedIdFromQuery = parentFusedFromQueryRaw.trim()
+  const isCurrentDeckFused = String(((deck as any)?.format || '')).toLowerCase() === 'fused'
+  const parentFusedDeck: Deck | null =
+    parentFusedIdFromQuery && parentFusedIdFromQuery !== deckId && !isCurrentDeckFused
+      ? ((allDecks.find((candidate) => candidate?.id === parentFusedIdFromQuery) as Deck | undefined) || {
+          id: parentFusedIdFromQuery,
+          name: 'Fused Deck',
+          format: 'Fused',
+        })
+      : null
   const [loading, setLoading] = useState(!initialState)
   const [error, setError] = useState<string | null>(null)
   const sourcesLoadedRef = useRef<string | null>(null)
@@ -253,12 +265,20 @@ export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageC
           onClose={handleClose}
           onDeckClick={(d, parent) => {
             if (d?.id && d.id !== deckId) {
-              router.push(`/deck/${d.id}`)
+              const parentId = parent?.id || ''
+              const isParentFused =
+                !!parentId && String(((parent as any)?.format || '')).toLowerCase() === 'fused'
+              if (isParentFused) {
+                router.push(`/deck/${encodeURIComponent(d.id)}?parentFused=${encodeURIComponent(parentId)}`)
+                return
+              }
+              router.push(`/deck/${encodeURIComponent(d.id)}`)
             } else if (parent?.id && parent.id !== deckId) {
-              router.push(`/deck/${parent.id}`)
+              router.push(`/deck/${encodeURIComponent(parent.id)}`)
             }
           }}
           allDecks={allDecks.length > 0 ? allDecks : [deck]}
+          parentFusedDeck={parentFusedDeck}
         />
       )}
     </main>
