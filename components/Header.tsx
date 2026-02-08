@@ -31,31 +31,60 @@ const TOKENS: TokenInfo[] = [
   { id: 'solforge-fusion', symbol: 'SFG', label: 'SFG' },
 ]
 
-const CHANGELOG_SUMMARY = {
-  version: '0.0.1',
-  date: '2026-01-30',
+type ChangelogEntry = {
+  version: string
+  date: string
+  added: string[]
+  changed: string[]
+  fixed: string[]
 }
 
-const CHANGELOG_FULL = {
-  version: CHANGELOG_SUMMARY.version,
-  date: CHANGELOG_SUMMARY.date,
-  added: [
-    'Header now includes a quick "What\'s new" window with recent highlights.',
-    'New rarity icons for Darkforge sets (B1, S1–S4).',
-    'Deck links now generate a shareable preview image for social media.',
-  ],
-  changed: [
-    'Deck link preview images are cleaner and better centered, so shared links look polished.',
-    'Browsing decks feels smoother with clearer pagination, filters, and a more responsive details window.',
-    'Fused deck tags and creature types are now calculated more consistently.',
-    'Search is steadier with smarter refresh and caching behavior.',
-    "Features that need Supabase now stay quietly off when it isn't configured.",
-  ],
-  fixed: [
-    'Fused deck filtering and set detection now behave reliably.',
-    'Shared preview images for fused decks now show the correct art.',
-    'Share preview rendering no longer breaks on unsupported styles or missing icons.',
-  ],
+const CHANGELOG_HISTORY: ChangelogEntry[] = [
+  {
+    version: '0.0.2',
+    date: '2026-02-08',
+    added: [
+      'Direct deck links now open with richer details more often, including fused deck context.',
+      'Deck pages now preserve more useful details when you move between a fused deck and its halves.',
+      'Search progress now feels clearer while decks are being loaded.',
+    ],
+    changed: [
+      'Player deck search now shows found decks sooner while background saving continues quietly.',
+      'Deck detail windows open more smoothly and stay responsive on repeated navigation.',
+      'Fused deck information is now filled in more consistently when opened from a shared link.',
+    ],
+    fixed: [
+      'Fixed cases where fused deck and half-deck data could mix after switching views.',
+      'Back to Fused navigation from a half deck now works more reliably.',
+      'Expire date now appears more consistently for direct-link deck views.',
+    ],
+  },
+  {
+    version: '0.0.1',
+    date: '2026-01-30',
+    added: [
+      'Header now includes a quick "What\'s new" window with recent highlights.',
+      'New rarity icons for Darkforge sets (B1, S1-S4).',
+      'Deck links now generate a shareable preview image for social media.',
+    ],
+    changed: [
+      'Deck link preview images are cleaner and better centered, so shared links look polished.',
+      'Browsing decks feels smoother with clearer pagination, filters, and a more responsive details window.',
+      'Fused deck tags and creature types are now calculated more consistently.',
+      'Search is steadier with smarter refresh and caching behavior.',
+      "Features that need Supabase now stay quietly off when it isn't configured.",
+    ],
+    fixed: [
+      'Fused deck filtering and set detection now behave reliably.',
+      'Shared preview images for fused decks now show the correct art.',
+      'Share preview rendering no longer breaks on unsupported styles or missing icons.',
+    ],
+  },
+]
+
+const CHANGELOG_SUMMARY = {
+  version: CHANGELOG_HISTORY[0]?.version || '0.0.0',
+  date: CHANGELOG_HISTORY[0]?.date || '',
 }
 
 const formatPrice = (value?: number | null) => {
@@ -322,53 +351,74 @@ export function Header() {
       <Modal
         opened={changelogOpened}
         onClose={() => setChangelogOpened(false)}
-        title={`Changelog ${CHANGELOG_FULL.version}`}
+        title="Changelog"
         size="lg"
         centered
       >
         <Text size="xs" c="dimmed" mb="sm">
-          Release date: {releaseDate}
+          Latest release: v{CHANGELOG_SUMMARY.version} ({releaseDate})
         </Text>
         <ScrollArea h={420} offsetScrollbars>
-          <div className="space-y-4">
-            <div>
-              <Text size="xs" fw={700} c="teal.3" tt="uppercase">
-                Added
-              </Text>
-              <div className="mt-2 space-y-1">
-                {CHANGELOG_FULL.added.map((item) => (
-                  <Text key={`added-${item}`} size="xs" c="gray.1">
-                    • {item}
+          <div className="space-y-5">
+            {CHANGELOG_HISTORY.map((entry, index) => (
+              <div key={`changelog-${entry.version}-${entry.date}`} className="space-y-4">
+                <Group justify="space-between" align="center">
+                  <Text size="sm" fw={700} c="gray.0">
+                    Version {entry.version}
                   </Text>
-                ))}
-              </div>
-            </div>
-            <Divider />
-            <div>
-              <Text size="xs" fw={700} c="yellow.3" tt="uppercase">
-                Changed
-              </Text>
-              <div className="mt-2 space-y-1">
-                {CHANGELOG_FULL.changed.map((item) => (
-                  <Text key={`changed-${item}`} size="xs" c="gray.1">
-                    • {item}
+                  <Text size="xs" c="dimmed">
+                    {formatChangelogDate(entry.date)}
                   </Text>
-                ))}
+                </Group>
+
+                {entry.added.length > 0 && (
+                  <div>
+                    <Text size="xs" fw={700} c="teal.3" tt="uppercase">
+                      Added
+                    </Text>
+                    <div className="mt-2 space-y-1">
+                      {entry.added.map((item) => (
+                        <Text key={`added-${entry.version}-${item}`} size="xs" c="gray.1">
+                          • {item}
+                        </Text>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {entry.changed.length > 0 && (
+                  <div>
+                    <Text size="xs" fw={700} c="yellow.3" tt="uppercase">
+                      Changed
+                    </Text>
+                    <div className="mt-2 space-y-1">
+                      {entry.changed.map((item) => (
+                        <Text key={`changed-${entry.version}-${item}`} size="xs" c="gray.1">
+                          • {item}
+                        </Text>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {entry.fixed.length > 0 && (
+                  <div>
+                    <Text size="xs" fw={700} c="blue.3" tt="uppercase">
+                      Fixed
+                    </Text>
+                    <div className="mt-2 space-y-1">
+                      {entry.fixed.map((item) => (
+                        <Text key={`fixed-${entry.version}-${item}`} size="xs" c="gray.1">
+                          • {item}
+                        </Text>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {index < CHANGELOG_HISTORY.length - 1 && <Divider />}
               </div>
-            </div>
-            <Divider />
-            <div>
-              <Text size="xs" fw={700} c="blue.3" tt="uppercase">
-                Fixed
-              </Text>
-              <div className="mt-2 space-y-1">
-                {CHANGELOG_FULL.fixed.map((item) => (
-                  <Text key={`fixed-${item}`} size="xs" c="gray.1">
-                    • {item}
-                  </Text>
-                ))}
-              </div>
-            </div>
+            ))}
           </div>
         </ScrollArea>
       </Modal>
