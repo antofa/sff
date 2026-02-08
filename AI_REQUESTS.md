@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 27e7e83
+  Request: Fused deck navigation became unstable: after switching between fused and half decks, header/meta and card content could stay from a previous view, and opening the second half from a direct fused link sometimes required multiple clicks.
+  Date: 2026-02-08
 - Commit: 3a3777f
   Request: After opening a fused deck by direct link, going into a half deck, and returning via `Back to Fused`, the fused view repaints from scratch (expire date, faction icons, sets, ELO, score) as if full data was not already loaded.
   Date: 2026-02-08
