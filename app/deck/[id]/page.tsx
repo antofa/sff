@@ -617,11 +617,14 @@ const buildHalfSummary = (halfDeck: any, options?: { includeOwner?: boolean }): 
 
 const fetchHalfDeckFromInternalApi = async (halfId: string, baseUrl: string): Promise<any | null> => {
   try {
-    const response = await fetch(`${baseUrl}/api/deck/${encodeURIComponent(halfId)}`, {
+    const response = await fetch(
+      `${baseUrl}/api/deck/${encodeURIComponent(halfId)}?fast=1&skipOwnerMerge=1`,
+      {
       headers: { Accept: 'application/json' },
       cache: 'force-cache',
       next: { revalidate: 86400 },
-    })
+      }
+    )
     if (!response.ok) return null
     const json = await response.json()
     return json?.deck ?? null
@@ -633,6 +636,16 @@ const fetchHalfDeckFromInternalApi = async (halfId: string, baseUrl: string): Pr
 const buildFusedDescription = async (deckLike: any, normalizedDeck: any, baseUrl: string | null) => {
   const halfCandidates = extractFusedHalfCandidates(deckLike)
   if (halfCandidates.length === 0) return 'SolForge Fusion fused deck overview.'
+  const internalHalfCache = new Map<string, Promise<any | null>>()
+  const getInternalHalfDetails = (halfId: string) => {
+    if (!baseUrl) return Promise.resolve(null)
+    const cacheKey = halfId.trim().toLowerCase()
+    const existing = internalHalfCache.get(cacheKey)
+    if (existing) return existing
+    const promise = fetchHalfDeckFromInternalApi(halfId, baseUrl)
+    internalHalfCache.set(cacheKey, promise)
+    return promise
+  }
 
   const enrichedHalves = await Promise.all(
     halfCandidates.map(async (halfDeck) => {
@@ -648,14 +661,16 @@ const buildFusedDescription = async (deckLike: any, normalizedDeck: any, baseUrl
       let mergedHalf = halfDeck
 
       if (halfId && needsEnrichment) {
-        const details = await fetchDeckDetails(halfId, { timeoutMs: 2500, revalidateSeconds: 86400 })
+        const details = baseUrl
+          ? await getInternalHalfDetails(halfId)
+          : await fetchDeckDetails(halfId, { timeoutMs: 2500, revalidateSeconds: 86400 })
         if (details && typeof details === 'object') {
           mergedHalf = mergeDeckLike(mergedHalf, details)
         }
       }
 
       if (baseUrl && halfId && !hasValue(getExpireLabel(mergedHalf))) {
-        const internalDetails = await fetchHalfDeckFromInternalApi(halfId, baseUrl)
+        const internalDetails = await getInternalHalfDetails(halfId)
         if (internalDetails && typeof internalDetails === 'object') {
           mergedHalf = mergeDeckLike(mergedHalf, internalDetails)
         }
