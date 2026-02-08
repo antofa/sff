@@ -1042,6 +1042,14 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       } = {}
       let latestTagMessage: string | undefined
       let terminalErrorHandled = false
+      let preparedDecks:
+        | {
+            regular: Deck[]
+            fused: Deck[]
+            deckNameIndex: string[]
+            forgebornNameIndex: string[]
+          }
+        | null = null
 
       const deckPhaseDone = () => {
         const regularStatus = progressSteps.find((s) => s.key === 'fetchRegular')?.status
@@ -1245,10 +1253,18 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           const enhancedRegular = attachComputed(validatedRegularDecks)
           const enhancedFused = attachComputed(validatedFusedDecks)
           const names = buildNameIndexes(enhancedRegular, enhancedFused)
+          preparedDecks = {
+            regular: enhancedRegular,
+            fused: enhancedFused,
+            deckNameIndex: names.deckNameIndex,
+            forgebornNameIndex: names.forgebornNameIndex,
+          }
 
           set({
             decks: enhancedRegular,
             fusedDecks: enhancedFused,
+            loading: false,
+            error: null,
             deckNameIndex: names.deckNameIndex,
             forgebornNameIndex: names.forgebornNameIndex,
           })
@@ -1313,22 +1329,14 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         updateSteps('finalize', 'running', 'Validating response...')
 
         const owner = playerName.trim()
-        const taggedRegular = Array.isArray(regularDecks)
-          ? regularDecks.map(deck => ({ ...deck, playerName: owner }))
-          : []
-        const taggedFused = Array.isArray(fusedDecks)
-          ? fusedDecks.map(deck => ({ ...deck, playerName: owner }))
-          : []
-
-        try {
-          const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
-          const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
-          const enhancedRegular = attachComputed(validatedRegularDecks)
-          const enhancedFused = attachComputed(validatedFusedDecks)
-          const names = buildNameIndexes(enhancedRegular, enhancedFused)
+        const cacheDecks = (
+          regular: Deck[],
+          fused: Deck[],
+          names: { deckNameIndex: string[]; forgebornNameIndex: string[] }
+        ) => {
           set((state) => ({
-            decks: enhancedRegular,
-            fusedDecks: enhancedFused,
+            decks: regular,
+            fusedDecks: fused,
             loading: false,
             tagIndex: tagsPayload.uniqueTags || [],
             cardNameIndex: tagsPayload.uniqueCardNames || [],
@@ -1339,8 +1347,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             playerCache: {
               ...state.playerCache,
               [normalizedPlayer]: {
-                decks: enhancedRegular,
-                fusedDecks: enhancedFused,
+                decks: regular,
+                fusedDecks: fused,
                 tagIndex: tagsPayload.uniqueTags || [],
                 cardNameIndex: tagsPayload.uniqueCardNames || [],
                 deckNameIndex: names.deckNameIndex,
@@ -1351,44 +1359,48 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
               },
             },
           }))
-        } catch (validationError) {
-          console.error('[Store] Data validation error:', validationError)
-          if ((Array.isArray(regularDecks) && regularDecks.length > 0) || (Array.isArray(fusedDecks) && fusedDecks.length > 0)) {
-            console.warn('[Store] Using unvalidated data')
-          const fallbackRegular = attachComputed(Array.isArray(regularDecks) ? regularDecks : [])
-          const fallbackFused = attachComputed(Array.isArray(fusedDecks) ? fusedDecks : [])
-          const names = buildNameIndexes(fallbackRegular, fallbackFused)
-            set((state) => ({
-              decks: fallbackRegular,
-              fusedDecks: fallbackFused,
-              loading: false,
-              tagIndex: tagsPayload.uniqueTags || [],
-              cardNameIndex: tagsPayload.uniqueCardNames || [],
-              deckNameIndex: names.deckNameIndex,
-              forgebornNameIndex: names.forgebornNameIndex,
-              deckTags: tagsPayload.perDeck || {},
-              deckCreatureTypes: tagsPayload.perDeckCreatureTypes || {},
-              playerCache: {
-                ...state.playerCache,
-                [normalizedPlayer]: {
-                  decks: fallbackRegular,
-                  fusedDecks: fallbackFused,
-                  tagIndex: tagsPayload.uniqueTags || [],
-                  cardNameIndex: tagsPayload.uniqueCardNames || [],
-                  deckNameIndex: names.deckNameIndex,
-                  forgebornNameIndex: names.forgebornNameIndex,
-                  deckTags: tagsPayload.perDeck || {},
-                  deckCreatureTypes: tagsPayload.perDeckCreatureTypes || {},
-                  expiresAt: Date.now() + CACHE_TTL_MS,
-                },
-              },
-            }))
-          } else {
-            cleanup()
-            set({ loading: false })
-            finishProgress('Invalid data format from server', 'error')
-            reject(validationError)
-            return
+        }
+
+        const canReusePreparedDecks =
+          !!preparedDecks &&
+          preparedDecks.regular.length === regularDecks.length &&
+          preparedDecks.fused.length === fusedDecks.length
+
+        if (canReusePreparedDecks && preparedDecks) {
+          cacheDecks(preparedDecks.regular, preparedDecks.fused, {
+            deckNameIndex: preparedDecks.deckNameIndex,
+            forgebornNameIndex: preparedDecks.forgebornNameIndex,
+          })
+        } else {
+          const taggedRegular = Array.isArray(regularDecks)
+            ? regularDecks.map(deck => ({ ...deck, playerName: owner }))
+            : []
+          const taggedFused = Array.isArray(fusedDecks)
+            ? fusedDecks.map(deck => ({ ...deck, playerName: owner }))
+            : []
+
+          try {
+            const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
+            const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
+            const enhancedRegular = attachComputed(validatedRegularDecks)
+            const enhancedFused = attachComputed(validatedFusedDecks)
+            const names = buildNameIndexes(enhancedRegular, enhancedFused)
+            cacheDecks(enhancedRegular, enhancedFused, names)
+          } catch (validationError) {
+            console.error('[Store] Data validation error:', validationError)
+            if ((Array.isArray(regularDecks) && regularDecks.length > 0) || (Array.isArray(fusedDecks) && fusedDecks.length > 0)) {
+              console.warn('[Store] Using unvalidated data')
+              const fallbackRegular = attachComputed(Array.isArray(regularDecks) ? regularDecks : [])
+              const fallbackFused = attachComputed(Array.isArray(fusedDecks) ? fusedDecks : [])
+              const names = buildNameIndexes(fallbackRegular, fallbackFused)
+              cacheDecks(fallbackRegular, fallbackFused, names)
+            } else {
+              cleanup()
+              set({ loading: false })
+              finishProgress('Invalid data format from server', 'error')
+              reject(validationError)
+              return
+            }
           }
         }
 
