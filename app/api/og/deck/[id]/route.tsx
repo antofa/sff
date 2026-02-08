@@ -9,8 +9,8 @@ import { OG_IMAGE_VERSION } from '@/lib/ogVersion'
 export const runtime = 'nodejs'
 
 const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
-const OG_DECK_TIMEOUT_MS = 1200
-const OG_SOURCE_DECK_TIMEOUT_MS = 2200
+const OG_DECK_TIMEOUT_MS = 4500
+const OG_SOURCE_DECK_TIMEOUT_MS = 5200
 const OG_ICON_TIMEOUT_MS = 500
 const OG_UPSTASH_IMAGE_TTL_SECONDS = 24 * 60 * 60
 const OG_PAYLOAD_TTL_MS = 24 * 60 * 60 * 1000
@@ -250,7 +250,53 @@ const toFusedApiId = (value: string) => {
   return `Fused_${base}`
 }
 
+const buildDeckIdCandidates = (rawId: string) => {
+  const baseId = stripDeckPrefixes(rawId)
+  return Array.from(
+    new Set(
+      [
+        rawId,
+        baseId,
+        `Deck_${baseId}`,
+        `Deck-${baseId}`,
+        `Deck_Fused_${baseId}`,
+        `Deck-Fused-${baseId}`,
+        `Fused_${baseId}`,
+        `Fused-${baseId}`,
+      ].filter(Boolean)
+    )
+  )
+}
+
 const normalizeOgPayloadKey = (deckId: string) => stripDeckPrefixes(deckId).trim().toLowerCase()
+
+const hasDeckCards = (deckLike: any): boolean => {
+  if (!deckLike || typeof deckLike !== 'object') return false
+  if (Array.isArray(deckLike?.cards) && deckLike.cards.length > 0) return true
+  if (Array.isArray(deckLike?.cardList) && deckLike.cardList.length > 0) return true
+  if (Array.isArray(deckLike?.cardIds) && deckLike.cardIds.length > 0) return true
+  return false
+}
+
+const hasDeckForgebornData = (deckLike: any): boolean => {
+  if (!deckLike || typeof deckLike !== 'object') return false
+  if (deckLike?.forgeborn) return true
+  if (deckLike?.forgebornId) return true
+  return false
+}
+
+const hasSourceDeckCards = (deckLike: any): boolean => {
+  const sourceDecks =
+    (Array.isArray(deckLike?.myDecks) && deckLike.myDecks) ||
+    (Array.isArray(deckLike?.decks) && deckLike.decks) ||
+    []
+  return sourceDecks.some((source: any) => hasDeckCards(source))
+}
+
+const hasAnyDeckCards = (deckLike: any): boolean => hasDeckCards(deckLike) || hasSourceDeckCards(deckLike)
+
+const isUsableDeckPayload = (deckLike: any): boolean =>
+  hasAnyDeckCards(deckLike) || hasDeckForgebornData(deckLike)
 
 function trimLru<T>(cache: Map<string, T>, maxEntries: number) {
   while (cache.size > maxEntries) {
@@ -291,33 +337,53 @@ const setCachedOgPayload = (key: string, payload: OgPayload) => {
   trimLru(ogPayloadCache, OG_PAYLOAD_CACHE_MAX_ENTRIES)
 }
 
-const getDeckFromUpstream = async (deckId: string) => {
+const getDeckFromUpstream = async (
+  deckId: string,
+  options?: {
+    origin?: string
+    bypassFetchCache?: boolean
+  }
+) => {
+  const origin = options?.origin
+  const bypassFetchCache = options?.bypassFetchCache === true
   const baseId = stripDeckPrefixes(deckId)
-  const regularCandidates = Array.from(new Set([baseId, deckId].filter(Boolean)))
+  const deckCandidates = buildDeckIdCandidates(deckId)
+  const regularCandidates = Array.from(
+    new Set(deckCandidates.map((candidate) => stripDeckPrefixes(candidate)).filter(Boolean))
+  )
+
+  const buildDeckFetchInit = (): RequestInit => {
+    if (bypassFetchCache) {
+      return {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      }
+    }
+    return {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'force-cache',
+      next: { revalidate: 300 },
+    }
+  }
 
   for (const candidate of regularCandidates) {
     const url = `${API_BASE_URL}/deck/${encodeURIComponent(stripDeckPrefixes(candidate))}?inclCards=true&inclUsers=true`
-    const response = await fetchWithTimeout(
-      url,
-      {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        cache: 'force-cache',
-        next: { revalidate: 300 },
-      },
-      OG_DECK_TIMEOUT_MS
-    )
+    const response = await fetchWithTimeout(url, buildDeckFetchInit(), OG_DECK_TIMEOUT_MS)
     if (!response?.ok) continue
     const raw = await withTimeout(response.json().catch(() => null), OG_DECK_TIMEOUT_MS, null)
     if (!raw) continue
     const rawId = raw?.id || raw?.deckId || raw?.deck_id
     if (!rawId) continue
+    if (!isUsableDeckPayload(raw)) continue
     const cards =
       Array.isArray(raw?.cards) && raw.cards.length > 0
         ? raw.cards
         : Array.isArray(raw?.cardList) && raw.cardList.length > 0
           ? raw.cardList
           : []
+    if (cards.length === 0) continue
     return {
       ...raw,
       cards,
@@ -326,24 +392,16 @@ const getDeckFromUpstream = async (deckId: string) => {
     }
   }
 
-  const fusedCandidates = Array.from(new Set([toFusedApiId(deckId), `Fused_${baseId}`].filter(Boolean)))
+  const fusedCandidates = Array.from(new Set(deckCandidates.map((candidate) => toFusedApiId(candidate)).filter(Boolean)))
   for (const fusedCandidate of fusedCandidates) {
     const url = `${API_BASE_URL}/fuseddeck/${encodeURIComponent(fusedCandidate)}?inclCards=true&inclUsers=true`
-    const response = await fetchWithTimeout(
-      url,
-      {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        cache: 'force-cache',
-        next: { revalidate: 300 },
-      },
-      OG_DECK_TIMEOUT_MS
-    )
+    const response = await fetchWithTimeout(url, buildDeckFetchInit(), OG_DECK_TIMEOUT_MS)
     if (!response?.ok) continue
     const raw = await withTimeout(response.json().catch(() => null), OG_DECK_TIMEOUT_MS, null)
     if (!raw) continue
     const rawId = raw?.id || raw?.deckId || raw?.deck_id
     if (!rawId) continue
+    if (!isUsableDeckPayload(raw)) continue
 
     const sourceDecksRaw =
       (Array.isArray(raw?.myDecks) && raw.myDecks) ||
@@ -357,12 +415,7 @@ const getDeckFromUpstream = async (deckId: string) => {
         const detailUrl = `${API_BASE_URL}/deck/${encodeURIComponent(stripDeckPrefixes(String(sourceId)))}?inclCards=true&inclUsers=true`
         const detailRes = await fetchWithTimeout(
           detailUrl,
-          {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-            cache: 'force-cache',
-            next: { revalidate: 300 },
-          },
+          buildDeckFetchInit(),
           OG_SOURCE_DECK_TIMEOUT_MS
         )
         if (!detailRes?.ok) return source
@@ -399,6 +452,7 @@ const getDeckFromUpstream = async (deckId: string) => {
           ? raw.cards
           : []
     const cards = mergedCardsFromSources.length > 0 ? mergedCardsFromSources : fusedCards
+    if (cards.length === 0) continue
 
     let sourceForgeborn: any = null
     let sourceForgebornId: string | null = null
@@ -419,6 +473,40 @@ const getDeckFromUpstream = async (deckId: string) => {
       cards,
       forgeborn: raw?.forgeborn || sourceForgeborn || null,
       forgebornId: raw?.forgebornId || raw?.forgeborn?.id || sourceForgebornId || null,
+    }
+  }
+
+  if (origin) {
+    for (const candidate of deckCandidates) {
+      const localUrl = `${origin}/api/deck/${encodeURIComponent(candidate)}?skipOwnerMerge=1`
+      const response = await fetchWithTimeout(
+        localUrl,
+        {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        },
+        Math.max(OG_DECK_TIMEOUT_MS, 3500)
+      )
+      if (!response?.ok) continue
+      const raw = await withTimeout(response.json().catch(() => null), Math.max(OG_DECK_TIMEOUT_MS, 3500), null)
+      const deck = raw?.deck
+      const rawId = deck?.id || deck?.deckId || deck?.deck_id
+      if (!deck || !rawId) continue
+      if (!isUsableDeckPayload(deck)) continue
+      const cards =
+        Array.isArray(deck?.cards) && deck.cards.length > 0
+          ? deck.cards
+          : Array.isArray(deck?.cardList) && deck.cardList.length > 0
+            ? deck.cardList
+            : []
+      if (cards.length === 0) continue
+      return {
+        ...deck,
+        cards,
+        forgeborn: deck?.forgeborn || null,
+        forgebornId: deck?.forgebornId || deck?.forgeborn?.id || null,
+      }
     }
   }
 
@@ -569,7 +657,10 @@ const buildOgPayload = (deck: any): OgPayload => {
   }
 }
 
-const getOgPayload = async (deckId: string, options?: { forceRefresh?: boolean }): Promise<OgPayload> => {
+const getOgPayload = async (
+  deckId: string,
+  options?: { forceRefresh?: boolean; origin?: string; bypassFetchCache?: boolean }
+): Promise<OgPayload> => {
   const forceRefresh = options?.forceRefresh === true
   const cacheKey = normalizeOgPayloadKey(deckId)
   if (!forceRefresh) {
@@ -583,7 +674,10 @@ const getOgPayload = async (deckId: string, options?: { forceRefresh?: boolean }
   }
 
   const promise = (async () => {
-    const deck = await getDeckFromUpstream(deckId)
+    const deck = await getDeckFromUpstream(deckId, {
+      origin: options?.origin,
+      bypassFetchCache: options?.bypassFetchCache,
+    })
     const payload = deck
       ? buildOgPayload(deck)
       : {
@@ -1240,7 +1334,7 @@ export async function GET(
     }
   }
 
-  const payload = await getOgPayload(deckId, { forceRefresh })
+  const payload = await getOgPayload(deckId, { forceRefresh, origin, bypassFetchCache: forceRefresh })
   const cardColumns = payload.cardColumns
   const forgebornAbilities = payload.forgebornAbilities.map((ability, index) => ({
     ...ability,
@@ -1393,6 +1487,22 @@ export async function GET(
     })
   }
   const hasCardSections = cardColumns.some((column) => column.sections.length > 0)
+  const hasRenderableCards = cardColumns.some((column) =>
+    column.sections.some((section) => Array.isArray(section.items) && section.items.length > 0)
+  )
+  const hasRenderableAbilities =
+    forgebornAbilities.some((ability) => !!ability?.text?.trim()) ||
+    secondaryForgebornAbilities.some((ability) => !!ability?.text?.trim())
+  if (!hasRenderableCards || !hasRenderableAbilities) {
+    return new Response('OG data unavailable', {
+      status: 503,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    })
+  }
+
   const showFusedColumns = cardColumns.length > 1
   const imageWidth = 1200
   const imageHeight = 630
@@ -1435,14 +1545,15 @@ export async function GET(
   const baseLabelFontSize = scaleFont(12)
   const baseNoCardsFontSize = scaleFont(18)
   const baseCardFontSize = scaleFont(20 * cardListFontScale)
+  const cardRowLineHeight = showFusedColumns ? 1.19 : 1.15
   const baseForgebornAbilityFont = baseCardFontSize
   const baseForgebornAbilityLineHeight = showFusedColumns ? 1.18 : 1.25
   const primaryAbilityScale = 1
   const forgebornAbilityIconScale = 1.5
-  const cardTopSafetyPx = showFusedColumns ? 2 : 2
-  const cardBottomSafetyPx = showFusedColumns ? 8 : 10
+  const cardTopSafetyPx = showFusedColumns ? 3 : 3
+  const cardBottomSafetyPx = showFusedColumns ? 14 : 16
   const forgebornTopSafetyPx = showFusedColumns ? 3 : 3
-  const forgebornBottomSafetyPx = showFusedColumns ? 18 : 16
+  const forgebornBottomSafetyPx = showFusedColumns ? 22 : 20
   const forgebornAbilityLineHeight = hasSecondaryForgeborn
     ? Math.max(1.08, baseForgebornAbilityLineHeight - 0.05)
     : baseForgebornAbilityLineHeight
@@ -1468,7 +1579,7 @@ export async function GET(
   const estimateLinesForText = (text: string, fontSize: number, maxWidth: number) => {
     const normalized = String(text || '').trim()
     if (!normalized) return 0
-    const widthLimit = Math.max(1, maxWidth)
+    const widthLimit = Math.max(1, maxWidth * (showFusedColumns ? 0.92 : 0.9))
     const words = normalized.split(/\s+/)
     const spaceWidth = fontSize * 0.33
 
@@ -1536,11 +1647,11 @@ export async function GET(
     const labelFontSize = baseLabelFontSize * scale
     const cardFontSize = baseCardFontSize * scale
     const iconSize = Math.round(cardFontSize)
-    const textWidth = Math.max(40, columnWidth - iconSize - 12)
+    const textWidth = Math.max(40, columnWidth - iconSize - (showFusedColumns ? 14 : 16))
     const sectionGap = spacing?.sectionGap ?? 8
     const labelGap = 4
     const listGap = spacing?.listGap ?? 4
-    const lineHeight = 1.15
+    const lineHeight = cardRowLineHeight
     const labelLineHeight = 1.1
 
     let totalHeight = 0
@@ -1552,7 +1663,8 @@ export async function GET(
         items.length > 0
           ? items.reduce((sum, item) => {
               const lines = Math.max(1, estimateLinesForText(item.name, cardFontSize, textWidth))
-              return sum + lines * cardFontSize * lineHeight
+              const lineBlockHeight = lines * cardFontSize * lineHeight + cardFontSize * (showFusedColumns ? 0.18 : 0.22)
+              return sum + lineBlockHeight
             }, 0) +
             (items.length - 1) * listGap
           : cardFontSize * lineHeight
@@ -1589,17 +1701,18 @@ export async function GET(
     scaledLevelIconSize: number,
     scaledStatIconSize: number
   ) => {
+    const safety = showFusedColumns ? 1.1 : 1.08
     if (token.kind === 'text') {
-      return estimateTextWidth(`${token.text} `, fontSize)
+      return estimateTextWidth(`${token.text} `, fontSize) * safety
     }
     const suffixWidth = estimateTextWidth(`${token.suffix || ''} `, fontSize)
     if (token.kind === 'level') {
-      return scaledLevelIconSize + 3 + suffixWidth
+      return (scaledLevelIconSize + 3 + suffixWidth) * safety
     }
     if (token.kind === 'statLetter') {
-      return scaledStatIconSize + 1 + suffixWidth
+      return (scaledStatIconSize + 1 + suffixWidth) * safety
     }
-    return estimateTextWidth(token.number, fontSize) + scaledStatIconSize + 2 + suffixWidth
+    return (estimateTextWidth(token.number, fontSize) + scaledStatIconSize + 2 + suffixWidth) * safety
   }
 
   const estimateAbilityLinesFromRenderTokens = (
@@ -1661,7 +1774,7 @@ export async function GET(
       )
       const lineHeightPx = fontSize * lineHeight
       const iconLineHeight = Math.max(scaledLevelIconSize, scaledStatIconSize) * 1.02
-      const lineBlockHeight = lines * Math.max(lineHeightPx, iconLineHeight) + fontSize * (showFusedColumns ? 0.26 : 0.22)
+      const lineBlockHeight = lines * Math.max(lineHeightPx, iconLineHeight) + fontSize * (showFusedColumns ? 0.34 : 0.28)
       const rowHeight = lineBlockHeight
       return sum + rowHeight
     }, 0)
@@ -1718,7 +1831,7 @@ export async function GET(
       totalHeight += spacing.secondaryTopMargin + 1 + spacing.secondaryInnerGap + secondaryAbilityHeight
     }
 
-    return totalHeight
+    return totalHeight + forgebornTopSafetyPx + forgebornBottomSafetyPx
   }
 
   const estimateForgebornWidthUsage = (scale: number, forgebornWidth: number) => {
@@ -1743,9 +1856,9 @@ export async function GET(
   const fitMinScale = 0.54
   const maxVisualScale = showFusedColumns ? 3.6 : 2.4
   const heightBudget = innerHeight
-  const safeHeightBudget = heightBudget - (showFusedColumns ? 12 : 24)
-  const cardEstimateAllowance = showFusedColumns ? 0.95 : 0.93
-  const forgebornEstimateAllowance = showFusedColumns ? 0.92 : 0.86
+  const safeHeightBudget = heightBudget - (showFusedColumns ? 16 : 28)
+  const cardEstimateAllowance = showFusedColumns ? 0.94 : 0.92
+  const forgebornEstimateAllowance = showFusedColumns ? 0.9 : 0.84
 
   let fusedCardColumnFlexes: [number, number] = [...defaultFusedCardColumnFlexes]
   let fusedForgebornColumnFlex = defaultFusedForgebornColumnFlex
@@ -1845,8 +1958,8 @@ export async function GET(
     cardColumnScales = bestCandidate.cardScales
     forgebornColumnScale = bestCandidate.forgebornScale
   } else {
-    const cardFlexCandidates = [0.75, 0.9, 1.0, 1.1, 1.2, 1.3]
-    const forgebornFlexCandidates = [1.0, 1.15, 1.3, 1.45, 1.6]
+    const cardFlexCandidates = [0.8, 0.95, 1.1, 1.25, 1.4]
+    const forgebornFlexCandidates = [0.9, 1.05, 1.2, 1.35, 1.5]
 
     const evaluateCandidate = (cardFlex: number, forgebornFlex: number) => {
       const { cardColumnWidth, forgebornColumnWidth } = getHalfDeckColumnWidths(cardFlex, forgebornFlex)
@@ -1924,7 +2037,7 @@ export async function GET(
     if (!column || column.sections.length === 0) return defaults
 
     const estimatedDefault = estimateCardColumnHeight(column, scale, columnWidth, defaults)
-    const targetHeight = safeHeightBudget * 0.995
+    const targetHeight = safeHeightBudget * 0.992
     const extraHeight = targetHeight - estimatedDefault
     if (extraHeight <= 6) return defaults
 
@@ -1959,7 +2072,7 @@ export async function GET(
   const getForgebornSpacing = (scale: number, forgebornWidth: number): ForgebornSpacing => {
     const defaults = defaultForgebornSpacing
     const estimatedDefault = estimateForgebornHeight(scale, forgebornWidth, defaults)
-    const targetHeight = safeHeightBudget * 0.995
+    const targetHeight = safeHeightBudget * 0.99
     const extraHeight = targetHeight - estimatedDefault
     if (extraHeight <= 4) return defaults
 
@@ -2035,9 +2148,37 @@ export async function GET(
 
     // Final conservative guard for fused forgeborn column to prevent descender clipping
     // with long wrapped ability text and inline icons.
-    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 20)
+    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 30)
     forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
       estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.83 <= safeHeightBudget
+    )
+
+    // Final render-fit for fused columns:
+    // allow each column to fill vertically while guaranteeing bottom-safe rendering.
+    cardRenderScaleFactors = [
+      fitScale(0.8, 1.0, (renderScale) =>
+        estimateCardColumnHeight(
+          cardColumns[0],
+          cardColumnScales[0] * renderScale,
+          Math.max(40, selectedCardColumnWidths[0] - 6),
+          cardColumnSpacings[0]
+        ) * 1.02 <= safeHeightBudget
+      ),
+      fitScale(0.8, 1.0, (renderScale) =>
+        estimateCardColumnHeight(
+          cardColumns[1],
+          cardColumnScales[1] * renderScale,
+          Math.max(40, selectedCardColumnWidths[1] - 6),
+          cardColumnSpacings[1]
+        ) * 1.02 <= safeHeightBudget
+      ),
+    ]
+    forgebornRenderScale = fitScale(0.6, 0.97, (renderScale) =>
+      estimateForgebornHeight(
+        forgebornColumnScale * renderScale,
+        conservativeForgebornWidth,
+        forgebornSpacing
+      ) <= safeHeightBudget
     )
   } else {
     for (let i = 0; i < 2; i += 1) {
@@ -2059,7 +2200,7 @@ export async function GET(
 
     // Final conservative guard for half-deck forgeborn column to avoid bottom clipping
     // on long multi-line ability text in real OG rendering.
-    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 22)
+    const conservativeForgebornWidth = Math.max(40, selectedForgebornColumnWidth - 32)
     forgebornColumnScale = fitScale(fitMinScale, forgebornColumnScale, (scale) =>
       estimateForgebornHeight(scale, conservativeForgebornWidth, forgebornSpacing) * 0.78 <= safeHeightBudget
     )
@@ -2067,21 +2208,21 @@ export async function GET(
     // Final render-fit for regular (non-fused) columns:
     // maximize per-column fill while guaranteeing no bottom clipping.
     cardRenderScaleFactors = [
-      fitScale(0.84, 1.08, (renderScale) =>
+      fitScale(0.82, 1.0, (renderScale) =>
         estimateCardColumnHeight(
           cardColumns[0],
           cardColumnScales[0] * renderScale,
-          selectedSingleCardColumnWidth,
+          Math.max(40, selectedSingleCardColumnWidth - 8),
           cardColumnSpacings[0]
-        ) <= safeHeightBudget
+        ) * 1.03 <= safeHeightBudget
       ),
     ]
-    forgebornRenderScale = fitScale(0.74, 1.0, (renderScale) =>
+    forgebornRenderScale = fitScale(0.6, 0.97, (renderScale) =>
       estimateForgebornHeight(
         forgebornColumnScale * renderScale,
         conservativeForgebornWidth,
         forgebornSpacing
-      ) * 0.97 <= safeHeightBudget
+      ) <= safeHeightBudget
     )
   }
 
@@ -2244,7 +2385,7 @@ export async function GET(
                 flexDirection: 'column',
                 gap: `${spacing.listGap}px`,
                 fontSize: Math.round(baseCardFontSize * renderScale * 10) / 10,
-                lineHeight: 1.15,
+                lineHeight: cardRowLineHeight,
                 fontWeight: ogBodyTextWeight,
                 textShadow: ogBodyTextShadow,
               }}
@@ -2256,11 +2397,16 @@ export async function GET(
                   : null
                 const rarityIconSizePx = itemFontSize
                 const rarityIconSize = `${rarityIconSizePx}px`
-                const rarityIconOffset = `${Math.round(itemFontSize * 0.12 * 10) / 10}px`
                 return (
                   <div
                     key={`${columnIndex}-${section.label}-${idx}`}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', minWidth: 0 }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      width: '100%',
+                      minWidth: 0,
+                    }}
                   >
                     {rarityIconSrc ? (
                       <img
@@ -2270,7 +2416,6 @@ export async function GET(
                           height: rarityIconSize,
                           objectFit: 'contain',
                           alignSelf: 'center',
-                          marginTop: rarityIconOffset,
                           flexShrink: 0,
                         }}
                       />
@@ -2283,7 +2428,6 @@ export async function GET(
                           backgroundColor: item.factionColor,
                           opacity: 0.8,
                           alignSelf: 'center',
-                          marginTop: rarityIconOffset,
                           flexShrink: 0,
                         }}
                       />
@@ -2291,10 +2435,13 @@ export async function GET(
                     <span
                       style={{
                         display: 'block',
+                        flex: 1,
+                        minWidth: 0,
+                        maxWidth: '100%',
                         whiteSpace: 'normal',
                         wordBreak: 'break-word',
-                        overflowWrap: 'anywhere',
-                        lineHeight: '1.15',
+                        overflowWrap: 'break-word',
+                        lineHeight: cardRowLineHeight,
                         color: item.factionTextColor,
                       }}
                     >
@@ -2400,12 +2547,15 @@ export async function GET(
       width: imageWidth,
       height: imageHeight,
       headers: {
-        'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+        'Cache-Control':
+          hasCardSections && forgebornAbilities.some((ability) => !!ability?.text?.trim())
+            ? 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400'
+            : 'no-store, max-age=0',
       },
     }
   )
   const imageBuffer = await imageResponse.arrayBuffer()
-  if (isOgUpstashCacheConfigured()) {
+  if (isOgUpstashCacheConfigured() && hasRenderableCards && hasRenderableAbilities) {
     void putOgImageToUpstashCache(deckId, new Uint8Array(imageBuffer), {
       ttlSeconds: OG_UPSTASH_IMAGE_TTL_SECONDS,
       version: OG_IMAGE_VERSION,
@@ -2417,7 +2567,10 @@ export async function GET(
   return new Response(imageBuffer, {
     headers: {
       'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+      'Cache-Control':
+        hasRenderableCards && hasRenderableAbilities
+          ? 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400'
+          : 'no-store, max-age=0',
     },
   })
 }
