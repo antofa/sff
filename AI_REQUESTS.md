@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 8ec860c
+  Request: Keep this log only in dev (`NODE_ENV !== 'production'`).
+  Date: 2026-02-08
 - Commit: 2e10096
   Request: Decks are fetched quickly in stream logs, but in the UI they appear only after late background stages (`supabase sync done` and `owner cache done`); remove this perceived blocking.
   Date: 2026-02-08
