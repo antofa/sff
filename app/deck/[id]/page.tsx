@@ -620,9 +620,9 @@ const fetchHalfDeckFromInternalApi = async (halfId: string, baseUrl: string): Pr
     const response = await fetch(
       `${baseUrl}/api/deck/${encodeURIComponent(halfId)}?fast=1&skipOwnerMerge=1`,
       {
-      headers: { Accept: 'application/json' },
-      cache: 'force-cache',
-      next: { revalidate: 86400 },
+        headers: { Accept: 'application/json' },
+        cache: 'force-cache',
+        next: { revalidate: 86400 },
       }
     )
     if (!response.ok) return null
