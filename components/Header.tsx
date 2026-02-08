@@ -19,42 +19,74 @@ type TokenPrice = {
   change24h: number | null
   change7d: number | null
   change30d: number | null
+  change1y: number | null
 }
 
 const PRICE_CACHE_KEY = 'sff:token-prices:v1'
 const PRICE_CACHE_TTL_MS = 60 * 1000
-const PRICE_HEADER_CELLS = ['', '1H', '1D', '1W', '1M']
+const PRICE_HEADER_CELLS = ['', '1H', '1D', '1W', '1M', '1Y']
 const TOKENS: TokenInfo[] = [
   { id: 'bitcoin', symbol: 'BTC', label: 'BTC' },
   { id: 'ethereum', symbol: 'ETH', label: 'ETH' },
   { id: 'solforge-fusion', symbol: 'SFG', label: 'SFG' },
 ]
 
-const CHANGELOG_SUMMARY = {
-  version: '0.0.1',
-  date: '—',
+type ChangelogEntry = {
+  version: string
+  date: string
+  added: string[]
+  changed: string[]
+  fixed: string[]
 }
 
-const CHANGELOG_FULL = {
-  version: CHANGELOG_SUMMARY.version,
-  date: CHANGELOG_SUMMARY.date,
-  added: [
-    'Header now includes a quick "What\'s new" window with recent highlights.',
-    'New rarity icons for Darkforge sets (B1, S1–S4).',
-    'Deck links now generate a shareable preview image for social media.',
-  ],
-  changed: [
-    'Deck link preview images are cleaner and better centered, so shared links look polished.',
-    'Browsing decks feels smoother with clearer pagination, filters, and a more responsive details window.',
-    'Fused deck tags and creature types are now calculated more consistently.',
-    'Search is steadier with smarter refresh and caching behavior.',
-    "Features that need Supabase now stay quietly off when it isn't configured.",
-  ],
-  fixed: [
-    'Fused deck filtering and set detection now behave reliably.',
-    'Shared preview images for fused decks now show the correct art.',
-    'Share preview rendering no longer breaks on unsupported styles or missing icons.',
-  ],
+const CHANGELOG_HISTORY: ChangelogEntry[] = [
+  {
+    version: '0.0.2',
+    date: '2026-02-08',
+    added: [
+      'New rarity filtering options were added, including exact rarity matching and keyword-based rarity search.',
+      'Min/Max controls were added to key filters to narrow large deck lists faster.',
+      'Direct deck links now open with richer details more often, including fused deck context.',
+    ],
+    changed: [
+      'Shared link previews (OG images) now load faster and look cleaner in messengers and social feeds.',
+      'Preview titles and descriptions are more informative: they now better reflect deck, forgeborn, owner, and summary details.',
+      'Preview image text fitting and readability were improved, so long names and ability text are less likely to look cramped.',
+      'Player deck search now shows found decks sooner while background saving continues quietly.',
+    ],
+    fixed: [
+      'Fixed multiple fused-preview issues where some shared links could show incomplete or inconsistent details.',
+      'Fixed several cases where direct-link deck views could miss important fields like expire date.',
+      'Fixed cases where fused deck and half-deck data could mix after switching views.',
+      'Back to Fused navigation from a half deck now works more reliably.',
+    ],
+  },
+  {
+    version: '0.0.1',
+    date: '2026-01-30',
+    added: [
+      'Header now includes a quick "What\'s new" window with recent highlights.',
+      'New rarity icons for Darkforge sets (B1, S1-S4).',
+      'Deck links now generate a shareable preview image for social media.',
+    ],
+    changed: [
+      'Deck link preview images are cleaner and better centered, so shared links look polished.',
+      'Browsing decks feels smoother with clearer pagination, filters, and a more responsive details window.',
+      'Fused deck tags and creature types are now calculated more consistently.',
+      'Search is steadier with smarter refresh and caching behavior.',
+      "Features that need Supabase now stay quietly off when it isn't configured.",
+    ],
+    fixed: [
+      'Fused deck filtering and set detection now behave reliably.',
+      'Shared preview images for fused decks now show the correct art.',
+      'Share preview rendering no longer breaks on unsupported styles or missing icons.',
+    ],
+  },
+]
+
+const CHANGELOG_SUMMARY = {
+  version: CHANGELOG_HISTORY[0]?.version || '0.0.0',
+  date: CHANGELOG_HISTORY[0]?.date || '',
 }
 
 const formatPrice = (value?: number | null) => {
@@ -70,6 +102,21 @@ const formatPrice = (value?: number | null) => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })}`
+}
+
+const formatChangelogDate = (value: string) => {
+  if (!value) return '—'
+  const parts = value.split('-').map((part) => Number(part))
+  if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return value
+  const [year, month, day] = parts
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
 }
 
 const renderChange = (value?: number | null) => {
@@ -127,6 +174,7 @@ const PriceRow = memo(function PriceRow({ token, quote, gridTemplate }: PriceRow
     { label: '1D', value: quote?.change24h },
     { label: '1W', value: quote?.change7d },
     { label: '1M', value: quote?.change30d },
+    { label: '1Y', value: quote?.change1y },
   ]
 
   return (
@@ -163,9 +211,9 @@ export function Header() {
   const [prices, setPrices] = useState<Record<string, TokenPrice>>({})
   const [loadingPrices, setLoadingPrices] = useState(false)
   const [errorPrices, setErrorPrices] = useState<string | null>(null)
-  const [releaseDate, setReleaseDate] = useState<string>(CHANGELOG_SUMMARY.date)
+  const releaseDate = formatChangelogDate(CHANGELOG_SUMMARY.date)
   const [changelogOpened, setChangelogOpened] = useState(false)
-  const logoSrc = '/images/solforge-logo.png'
+  const logoSrc = '/images/logo/too-many-decks-logo.png'
 
   const handleDiscordLogin = () => {
     signIn('discord')
@@ -176,21 +224,6 @@ export function Header() {
   }
 
   useEffect(() => {
-    let canceled = false
-    const fetchReleaseDate = async () => {
-      try {
-        const res = await fetch('/api/release', { cache: 'no-store' })
-        if (!res.ok) return
-        const data = await res.json()
-        if (!canceled && data?.mergeDate) {
-          setReleaseDate(String(data.mergeDate))
-        }
-      } catch {
-        // ignore
-      }
-    }
-    fetchReleaseDate()
-
     const readPriceCache = () => {
       if (typeof window === 'undefined') return null
       try {
@@ -262,7 +295,6 @@ export function Header() {
     window.addEventListener('storage', handleStorage)
 
     return () => {
-      canceled = true
       clearInterval(interval)
       window.removeEventListener('storage', handleStorage)
     }
@@ -271,8 +303,10 @@ export function Header() {
   const pricePanel = useMemo(() => {
     const bitcoinPrice = prices['bitcoin']?.price ?? null
     const isHighPrice = bitcoinPrice !== null && bitcoinPrice >= 100000
-    const gridTemplate = isHighPrice ? '30px 72px 45px 47px 47px' : '30px 56px 45px 47px 47px'
-    const minWidth = isHighPrice ? 280 : 260
+    const gridTemplate = isHighPrice
+      ? '30px 72px 45px 47px 47px 47px'
+      : '30px 56px 45px 47px 47px 47px'
+    const minWidth = isHighPrice ? 320 : 300
 
     return (
       <Paper
@@ -319,53 +353,74 @@ export function Header() {
       <Modal
         opened={changelogOpened}
         onClose={() => setChangelogOpened(false)}
-        title={`Changelog ${CHANGELOG_FULL.version}`}
+        title="Changelog"
         size="lg"
         centered
       >
         <Text size="xs" c="dimmed" mb="sm">
-          Merge date: {releaseDate}
+          Latest release: v{CHANGELOG_SUMMARY.version} ({releaseDate})
         </Text>
         <ScrollArea h={420} offsetScrollbars>
-          <div className="space-y-4">
-            <div>
-              <Text size="xs" fw={700} c="teal.3" tt="uppercase">
-                Added
-              </Text>
-              <div className="mt-2 space-y-1">
-                {CHANGELOG_FULL.added.map((item) => (
-                  <Text key={`added-${item}`} size="xs" c="gray.1">
-                    • {item}
+          <div className="space-y-5">
+            {CHANGELOG_HISTORY.map((entry, index) => (
+              <div key={`changelog-${entry.version}-${entry.date}`} className="space-y-4">
+                <Group justify="space-between" align="center">
+                  <Text size="sm" fw={700} c="gray.0">
+                    Version {entry.version}
                   </Text>
-                ))}
-              </div>
-            </div>
-            <Divider />
-            <div>
-              <Text size="xs" fw={700} c="yellow.3" tt="uppercase">
-                Changed
-              </Text>
-              <div className="mt-2 space-y-1">
-                {CHANGELOG_FULL.changed.map((item) => (
-                  <Text key={`changed-${item}`} size="xs" c="gray.1">
-                    • {item}
+                  <Text size="xs" c="dimmed">
+                    {formatChangelogDate(entry.date)}
                   </Text>
-                ))}
+                </Group>
+
+                {entry.added.length > 0 && (
+                  <div>
+                    <Text size="xs" fw={700} c="teal.3" tt="uppercase">
+                      Added
+                    </Text>
+                    <div className="mt-2 space-y-1">
+                      {entry.added.map((item) => (
+                        <Text key={`added-${entry.version}-${item}`} size="xs" c="gray.1">
+                          • {item}
+                        </Text>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {entry.changed.length > 0 && (
+                  <div>
+                    <Text size="xs" fw={700} c="yellow.3" tt="uppercase">
+                      Changed
+                    </Text>
+                    <div className="mt-2 space-y-1">
+                      {entry.changed.map((item) => (
+                        <Text key={`changed-${entry.version}-${item}`} size="xs" c="gray.1">
+                          • {item}
+                        </Text>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {entry.fixed.length > 0 && (
+                  <div>
+                    <Text size="xs" fw={700} c="blue.3" tt="uppercase">
+                      Fixed
+                    </Text>
+                    <div className="mt-2 space-y-1">
+                      {entry.fixed.map((item) => (
+                        <Text key={`fixed-${entry.version}-${item}`} size="xs" c="gray.1">
+                          • {item}
+                        </Text>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {index < CHANGELOG_HISTORY.length - 1 && <Divider />}
               </div>
-            </div>
-            <Divider />
-            <div>
-              <Text size="xs" fw={700} c="blue.3" tt="uppercase">
-                Fixed
-              </Text>
-              <div className="mt-2 space-y-1">
-                {CHANGELOG_FULL.fixed.map((item) => (
-                  <Text key={`fixed-${item}`} size="xs" c="gray.1">
-                    • {item}
-                  </Text>
-                ))}
-              </div>
-            </div>
+            ))}
           </div>
         </ScrollArea>
       </Modal>
@@ -375,7 +430,7 @@ export function Header() {
           <div
             style={{
               width: '100%',
-              maxWidth: '42rem', // align with search panel width
+              maxWidth: '36rem', // align with search panel width
               margin: '0 auto',
             }}
           >
@@ -383,17 +438,17 @@ export function Header() {
               justify="space-between"
               align="center"
               wrap="wrap"
-              gap="md"
+              gap="sm"
             >
             <Group gap="sm" align="center" wrap="nowrap">
               <Link href="/?reset=1" aria-label="Go to home" className="flex items-center no-underline">
                 {!logoError ? (
                   <Image
                     src={logoSrc}
-                    alt="SolForge Fusion"
-                    width={194}
-                    height={63}
-                    className="h-16 w-auto"
+                    alt="Too Many Decks"
+                    width={256}
+                    height={130}
+                    className="h-18 w-auto"
                     style={{ objectFit: 'contain' }}
                     onError={() => setLogoError(true)}
                     priority
@@ -407,7 +462,7 @@ export function Header() {
                       textShadow: '0 0 15px rgba(74, 144, 226, 0.4)',
                     }}
                   >
-                    SolForge Fusion
+                    Too Many Decks
                   </Text>
                 )}
               </Link>

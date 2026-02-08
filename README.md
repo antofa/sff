@@ -24,6 +24,38 @@ npm run dev
 # open http://localhost:3000
 ```
 
+## Optional: Upstash OG Cache Setup (Netlify)
+Use this to cache pre-rendered OG PNGs for 24 hours in Upstash Redis so link previews (Discord/X/etc.) are served from cache instead of rendering from scratch.
+
+### 1) Create Upstash Redis resources
+- Create a free Upstash Redis database.
+- Copy:
+  - REST URL
+  - REST Token
+
+### 2) Configure Netlify environment variables
+In Netlify `Site settings -> Environment variables`, add:
+
+```bash
+OG_UPSTASH_REDIS_REST_URL=<upstash-redis-rest-url>
+OG_UPSTASH_REDIS_REST_TOKEN=<upstash-redis-rest-token>
+```
+
+Then redeploy the site.
+
+### 3) Verify
+1. Force-generate and upload one image:
+   - `/api/og/deck/<deckId>?refresh=1`
+2. Request the normal OG URL:
+   - `/api/og/deck/<deckId>`
+3. Confirm response header:
+   - `X-OG-Cache: upstash-hit`
+
+### 4) Notes
+- If Upstash is not configured or unavailable, the app falls back to normal in-app OG rendering.
+- Opening `/deck/<deckId>` pre-warms the OG route in the background.
+- `?refresh=1` bypasses local/Upstash cache reads for manual refresh.
+
 ## API Notes
 - Endpoint: `https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/app`
 - Params: `?inclPve=true&username={username}`

@@ -308,6 +308,36 @@ const normalizeSetLabel = (value?: string | number | null): string | null => {
   return text
 }
 
+const normalizeRarityLabel = (rarity: string): string => {
+  const normalized = rarity.trim()
+  const lower = normalized.toLowerCase()
+  if (lower.includes('solbind')) return 'Solbind'
+  if (lower.includes('darkforge') && lower.includes('rare')) return 'Darkforge Rare'
+  if (lower.includes('darkforge') && lower.includes('common')) return 'Darkforge Common'
+  if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) return 'Darkforge LS'
+  if (lower.includes('common common')) return 'Common Common'
+  if (lower.includes('rare rare')) return 'Rare Rare'
+  if (lower.includes('rare') && lower.includes('common')) return 'Rare Common'
+  if (lower.includes('common') && lower.includes('rare')) return 'Common Rare'
+  if (lower.includes('darkforge')) return 'Darkforge'
+  if (lower.includes('common')) return 'Common'
+  if (lower.includes('rare')) return 'Rare'
+  if (lower.includes('ls') || lower.includes('legendary')) return 'LS'
+  return normalized
+}
+
+const normalizeRarityCounts = (counts: Record<string, unknown> | null | undefined): Map<string, number> => {
+  const normalized = new Map<string, number>()
+  if (!counts || typeof counts !== 'object') return normalized
+  Object.entries(counts).forEach(([label, count]) => {
+    const normalizedLabel = normalizeRarityLabel(String(label))
+    const num = Number(count)
+    if (!Number.isFinite(num)) return
+    normalized.set(normalizedLabel, (normalized.get(normalizedLabel) || 0) + num)
+  })
+  return normalized
+}
+
 function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null {
   if (!deck) return null
   const allDecks = options?.allDecks || []
@@ -975,7 +1005,9 @@ const RegularDeckCard = memo(function RegularDeckCard({
 
           {(() => {
             const counts = computedCounts || displayCounts
-            const rarityEntries = deck.computed?.rarityCounts ? Object.entries(deck.computed.rarityCounts) : []
+            const rarityEntries = deck.computed?.rarityCounts
+              ? Array.from(normalizeRarityCounts(deck.computed.rarityCounts).entries())
+              : []
             if (!counts && rarityEntries.length === 0) return null
             return (
               <Stack gap="xs">
@@ -1008,27 +1040,31 @@ const RegularDeckCard = memo(function RegularDeckCard({
                           Rare: 4,
                           'Rare Common': 5,
                           'Rare Rare': 6,
-                          'Darkforge Rare': 7,
-                          Darkforge: 8,
-                          LS: 9,
+                          'Darkforge Common': 7,
+                          'Darkforge Rare': 8,
+                          Darkforge: 9,
+                          'Darkforge LS': 10,
+                          LS: 11,
                         }
                         return (order[a] || 99) - (order[b] || 99)
                       })
                       .map(([rarity, count]) => {
                         const getRarityColor = (rarityName: string): string => {
-                          const key = rarityName.replace(/\s+/g, '').toLowerCase()
-                          const map: Record<string, string> = {
-                            commoncommon: '#2f92d0',
-                            common: '#1096e1',
-                            commonrare: '#e5b522',
-                            rarecommon: '#6a5320',
-                            rare: '#f0c320',
-                            rarerare: '#d9a600',
-                            darkforge: '#1a1a1a',
-                            darkforgerare: '#101010',
-                            ls: '#b00008',
-                            solbind: '#2fcad0',
-                          }
+                const key = rarityName.replace(/[\s_]+/g, '').toLowerCase()
+                const map: Record<string, string> = {
+                  commoncommon: '#2f92d0',
+                  common: '#1096e1',
+                  commonrare: '#e5b522',
+                  rarecommon: '#6a5320',
+                  rare: '#f0c320',
+                  rarerare: '#d9a600',
+                  darkforge: '#1a1a1a',
+                  darkforgecommon: '#1a1a1a',
+                  darkforgerare: '#101010',
+                  darkforgels: '#b00008',
+                  ls: '#b00008',
+                  solbind: '#2fcad0',
+                }
                           return map[key] || '#1199e3'
                         }
                         return (
@@ -1239,7 +1275,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
     return null
   }, [])
 
-  const factionSets: Array<{ faction: string; setNo: string | number | null }> = useMemo(() => {
+  const factionSets: Array<{ faction: string; setNo: string | number | null }> = (() => {
     const list: Array<{ faction: string; setNo: string | number | null }> = []
     pickedSources.forEach((src) => {
       if (src?.faction) {
@@ -1258,7 +1294,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
       list.push({ faction: deck.faction, setNo: deckSet || null })
     }
     return list
-  }, [pickedSources, deck, deriveSetFromId, allDecksMap])
+  })()
   // Collect cards for rarity counts and tags display
   const aggregateCards = useCallback((): any[] => {
     const cards: any[] = []
@@ -1523,7 +1559,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
 
   const rarityCounts = useMemo(() => {
     if (deck.computed?.rarityCounts) {
-      return new Map(Object.entries(deck.computed.rarityCounts))
+      return normalizeRarityCounts(deck.computed.rarityCounts)
     }
 
     const cards = aggregatedCards
@@ -1588,19 +1624,9 @@ const FusedDeckCard = memo(function FusedDeckCard({
       }
 
       if (rarity && typeof rarity === 'string') {
-        let normalized = rarity.trim()
-        const lower = normalized.toLowerCase()
+        const lower = rarity.toLowerCase()
         if (lower.includes('n/a')) return
-        if (lower.includes('darkforge') && lower.includes('rare')) normalized = 'Darkforge Rare'
-        else if (lower.includes('common common')) normalized = 'Common Common'
-        else if (lower.includes('rare rare')) normalized = 'Rare Rare'
-        else if (lower.includes('rare') && lower.includes('common')) normalized = 'Rare Common'
-        else if (lower.includes('common') && lower.includes('rare')) normalized = 'Common Rare'
-        else if (lower.includes('darkforge')) normalized = 'Darkforge'
-        else if (lower.includes('common')) normalized = 'Common'
-        else if (lower.includes('rare')) normalized = 'Rare'
-        else if (lower.includes('ls') || lower.includes('legendary')) normalized = 'LS'
-        else if (lower.includes('solbind')) normalized = 'Solbind'
+        const normalized = normalizeRarityLabel(rarity)
         counts.set(normalized, (counts.get(normalized) || 0) + 1)
       }
     })
@@ -1789,19 +1815,21 @@ const FusedDeckCard = memo(function FusedDeckCard({
           {(() => {
             if (rarityCounts.size === 0) return null
             const getRarityColor = (rarityName: string): string => {
-              const key = rarityName.replace(/\s+/g, '').toLowerCase()
-              const map: Record<string, string> = {
-                commoncommon: '#2f92d0',
-                common: '#1096e1',
-                commonrare: '#e5b522',
-                rarecommon: '#6a5320',
-                rare: '#f0c320',
-                rarerare: '#d9a600',
-                darkforge: '#1a1a1a',
-                darkforgerare: '#101010',
-                ls: '#b00008',
-                solbind: '#2fcad0',
-              }
+                          const key = rarityName.replace(/[\s_]+/g, '').toLowerCase()
+                          const map: Record<string, string> = {
+                            commoncommon: '#2f92d0',
+                            common: '#1096e1',
+                            commonrare: '#e5b522',
+                            rarecommon: '#6a5320',
+                            rare: '#f0c320',
+                            rarerare: '#d9a600',
+                            darkforge: '#1a1a1a',
+                            darkforgecommon: '#1a1a1a',
+                            darkforgerare: '#101010',
+                            darkforgels: '#b00008',
+                            ls: '#b00008',
+                            solbind: '#2fcad0',
+                          }
               return map[key] || '#1199e3'
             }
             return (
@@ -1816,9 +1844,11 @@ const FusedDeckCard = memo(function FusedDeckCard({
                       Rare: 4,
                       'Rare Common': 5,
                       'Rare Rare': 6,
-                      'Darkforge Rare': 7,
-                      Darkforge: 8,
-                      LS: 9,
+                      'Darkforge Common': 7,
+                      'Darkforge Rare': 8,
+                      Darkforge: 9,
+                      'Darkforge LS': 10,
+                      LS: 11,
                     }
                     return (order[a] || 99) - (order[b] || 99)
                   })
@@ -1829,7 +1859,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
                       size="sm"
                       style={{ backgroundColor: getRarityColor(rarity), color: 'white', border: 'none' }}
                     >
-                      {pluralize(count, rarity)}
+                      {count} {rarity}
                     </Badge>
                   ))}
               </Group>
@@ -1968,15 +1998,26 @@ interface FilterState {
   factionMode: 'include' | 'exclude'
   forgebornName: string[]
   forgebornMode: 'include' | 'exclude'
+  forgebornNameMin: number | null
+  forgebornNameMax: number | null
   cardName: string[]
   cardNameMode: 'include' | 'exclude'
+  cardNameMin: number | null
+  cardNameMax: number | null
   cardText: string
   cardTextMode: 'include' | 'exclude'
   tags: string[]
   tagsMode: 'include' | 'exclude'
+  tagsMin: number | null
+  tagsMax: number | null
   rarityType: string
+  rarityOperator: '>=' | '<=' | '='
   rarityCount: number | null
   rarityMode: 'include' | 'exclude'
+  rarityWord: string
+  rarityWordOperator: '>=' | '<=' | '='
+  rarityWordCount: number | null
+  rarityWordMode: 'include' | 'exclude'
   expiryFilter: 'all' | 'active' | 'expiring' | 'expired'
   sortBy: string
   deckNameMode: 'include' | 'exclude'
@@ -2002,6 +2043,8 @@ interface FilterState {
   deckName: string
   cardSetNo: string[]
   cardSetNoMode: 'include' | 'exclude'
+  cardSetNoMin: number | null
+  cardSetNoMax: number | null
   eloOperator: '>=' | '<=' | '='
   eloValue: number | null
   eloMode: 'include' | 'exclude'
@@ -2015,15 +2058,26 @@ const createDefaultFilters = (): FilterState => ({
   factionMode: 'include',
   forgebornName: [],
   forgebornMode: 'include',
+  forgebornNameMin: null,
+  forgebornNameMax: null,
   cardName: [],
   cardNameMode: 'include',
+  cardNameMin: null,
+  cardNameMax: null,
   cardText: '',
   cardTextMode: 'include',
   tags: [],
   tagsMode: 'include',
+  tagsMin: null,
+  tagsMax: null,
   rarityType: '',
+  rarityOperator: '>=',
   rarityCount: null,
   rarityMode: 'include',
+  rarityWord: '',
+  rarityWordOperator: '>=',
+  rarityWordCount: null,
+  rarityWordMode: 'include',
   expiryFilter: 'active', // Default: show active decks (no dates + expiring)
   sortBy: 'date-desc', // Default: newest first
   deckNameMode: 'include',
@@ -2049,6 +2103,8 @@ const createDefaultFilters = (): FilterState => ({
   deckName: '',
   cardSetNo: [],
   cardSetNoMode: 'include',
+  cardSetNoMin: null,
+  cardSetNoMax: null,
   eloOperator: '>=',
   eloValue: null,
   eloMode: 'include',
@@ -2074,6 +2130,7 @@ type FilterBlockKey =
   | 'elo'
   | 'score'
   | 'rarity'
+  | 'rarity-words'
   | 'sort'
   | 'deck-status'
 
@@ -2093,7 +2150,8 @@ const FILTER_BLOCK_LABELS: Record<FilterBlockKey, string> = {
   'card-set': 'Card Set',
   elo: 'ELO',
   score: 'Score',
-  rarity: 'Rarity',
+  rarity: 'Rarity (Exact)',
+  'rarity-words': 'Rarity (Word)',
   sort: 'Sort',
   'deck-status': 'Deck Status',
 }
@@ -2101,20 +2159,21 @@ const FILTER_BLOCK_LABELS: Record<FilterBlockKey, string> = {
 const FILTER_BLOCK_FIELDS: Record<FilterBlockKey, (keyof FilterState)[]> = {
   'deck-name': ['deckName', 'deckNameMode'],
   faction: ['faction', 'factionMode'],
-  forgeborn: ['forgebornName', 'forgebornMode'],
-  'card-name': ['cardName', 'cardNameMode'],
+  forgeborn: ['forgebornName', 'forgebornNameMin', 'forgebornNameMax', 'forgebornMode'],
+  'card-name': ['cardName', 'cardNameMin', 'cardNameMax', 'cardNameMode'],
   'card-text': ['cardText', 'cardTextMode'],
-  tags: ['tags', 'tagsMode'],
+  tags: ['tags', 'tagsMin', 'tagsMax', 'tagsMode'],
   creatures: ['creaturesOperator', 'creaturesValue', 'creaturesMode'],
   'free-creatures': ['freeCreaturesOperator', 'freeCreaturesValue', 'freeCreaturesMode'],
   'creature-type': ['creatureType', 'creatureTypeOperator', 'creatureTypeCount', 'creatureTypeMode'],
   spells: ['spellsOperator', 'spellsValue', 'spellsMode'],
   'free-spells': ['freeSpellsOperator', 'freeSpellsValue', 'freeSpellsMode'],
   'spell-type': ['spellType', 'spellTypeCount', 'spellTypeMode'],
-  'card-set': ['cardSetNo', 'cardSetNoMode'],
+  'card-set': ['cardSetNo', 'cardSetNoMin', 'cardSetNoMax', 'cardSetNoMode'],
   elo: ['eloOperator', 'eloValue', 'eloMode'],
   score: ['scoreOperator', 'scoreValue', 'scoreMode'],
-  rarity: ['rarityType', 'rarityCount', 'rarityMode'],
+  rarity: ['rarityType', 'rarityOperator', 'rarityCount', 'rarityMode'],
+  'rarity-words': ['rarityWord', 'rarityWordOperator', 'rarityWordCount', 'rarityWordMode'],
   sort: ['sortBy'],
   'deck-status': ['expiryFilter'],
 }
@@ -2135,8 +2194,8 @@ const FILTER_BLOCK_OPTIONS: { value: FilterBlockKey; label: string }[] = [
   { value: 'elo', label: FILTER_BLOCK_LABELS.elo },
   { value: 'score', label: FILTER_BLOCK_LABELS.score },
   { value: 'rarity', label: FILTER_BLOCK_LABELS.rarity },
+  { value: 'rarity-words', label: FILTER_BLOCK_LABELS['rarity-words'] },
 ]
-const FILTER_BLOCK_VALUES = FILTER_BLOCK_OPTIONS.map((opt) => opt.value)
 const SORT_OPTIONS = [
   { value: 'date-desc', label: 'Date (Newest first)' },
   { value: 'date-asc', label: 'Date (Oldest first)' },
@@ -2146,6 +2205,13 @@ const SORT_OPTIONS = [
   { value: 'score-asc', label: 'Score (Lowest first)' },
   { value: 'elo-desc', label: 'ELO (Highest first)' },
   { value: 'elo-asc', label: 'ELO (Lowest first)' },
+]
+const RARITY_WORD_OPTIONS = [
+  { value: 'Common', label: 'Common' },
+  { value: 'Rare', label: 'Rare' },
+  { value: 'Darkforge', label: 'Darkforge' },
+  { value: 'Solbind', label: 'Solbind' },
+  { value: 'LS', label: 'LS' },
 ]
 const FACTION_BUTTONS = [
   { value: 'Alloyin', label: 'ALLOYIN', color: 'cyan' },
@@ -2160,15 +2226,24 @@ const FILTER_QUERY_KEYS = [
   'faction',
   'factionMode',
   'forgeborn',
+  'forgebornName',
   'forgebornMode',
+  'forgebornNameMin',
+  'forgebornNameMax',
   'cardName',
   'cardNameMode',
+  'cardNameMin',
+  'cardNameMax',
   'cardText',
   'cardTextMode',
   'tags',
   'tagsMode',
+  'tagsMin',
+  'tagsMax',
   'cardSetNo',
   'cardSetNoMode',
+  'cardSetNoMin',
+  'cardSetNoMax',
   'creaturesOperator',
   'creaturesValue',
   'creaturesMode',
@@ -2189,8 +2264,13 @@ const FILTER_QUERY_KEYS = [
   'spellTypeCount',
   'spellTypeMode',
   'rarityType',
+  'rarityOperator',
   'rarityCount',
   'rarityMode',
+  'rarityWord',
+  'rarityWordOperator',
+  'rarityWordCount',
+  'rarityWordMode',
   'eloOperator',
   'eloValue',
   'eloMode',
@@ -2201,6 +2281,36 @@ const FILTER_QUERY_KEYS = [
   'expiryFilter',
 ]
 
+const FILTER_QUERY_KEY_SET = new Set(FILTER_QUERY_KEYS)
+
+const FIELD_TO_BLOCK: Record<string, FilterBlockKey> = Object.entries(FILTER_BLOCK_FIELDS).reduce(
+  (acc, [blockKey, fields]) => {
+    fields.forEach((field) => {
+      acc[String(field)] = blockKey as FilterBlockKey
+    })
+    return acc
+  },
+  {} as Record<string, FilterBlockKey>
+)
+
+const parseFieldKey = (name: string): { baseName: string; index: number } => {
+  const match = name.match(/^(.*)_([0-9]+)$/)
+  if (!match) {
+    return { baseName: name, index: 0 }
+  }
+  const baseName = match[1]
+  const index = Number(match[2])
+  if (!baseName || !Number.isFinite(index) || index < 1) {
+    return { baseName: name, index: 0 }
+  }
+  return { baseName, index }
+}
+
+const getParamName = (field: keyof FilterState, index: number) => {
+  const baseName = String(field)
+  return index > 0 ? `${baseName}_${index}` : baseName
+}
+
 type FilterBlockInstance = {
   id: string
   key: FilterBlockKey
@@ -2209,6 +2319,8 @@ type FilterBlockInstance = {
 type CardSetInstanceState = {
   cardSetNo: string[]
   cardSetNoMode: 'include' | 'exclude'
+  cardSetNoMin?: number | null
+  cardSetNoMax?: number | null
 }
 
 type FilterInstanceState = Partial<FilterState>
@@ -2222,6 +2334,12 @@ const ARRAY_FIELDS = new Set<keyof FilterState>([
 ])
 
 const NUMBER_FIELDS = new Set<keyof FilterState>([
+  'forgebornNameMin',
+  'forgebornNameMax',
+  'cardNameMin',
+  'cardNameMax',
+  'tagsMin',
+  'tagsMax',
   'creaturesValue',
   'freeCreaturesValue',
   'creatureTypeCount',
@@ -2229,6 +2347,9 @@ const NUMBER_FIELDS = new Set<keyof FilterState>([
   'freeSpellsValue',
   'spellTypeCount',
   'rarityCount',
+  'rarityWordCount',
+  'cardSetNoMin',
+  'cardSetNoMax',
   'eloValue',
   'scoreValue',
 ])
@@ -2241,13 +2362,28 @@ const getDefaultsForKey = (key: FilterBlockKey): FilterInstanceState => {
     case 'faction':
       return { faction: defaults.faction, factionMode: defaults.factionMode }
     case 'forgeborn':
-      return { forgebornName: defaults.forgebornName, forgebornMode: defaults.forgebornMode }
+      return {
+        forgebornName: defaults.forgebornName,
+        forgebornMode: defaults.forgebornMode,
+        forgebornNameMin: defaults.forgebornNameMin,
+        forgebornNameMax: defaults.forgebornNameMax,
+      }
     case 'card-name':
-      return { cardName: defaults.cardName, cardNameMode: defaults.cardNameMode }
+      return {
+        cardName: defaults.cardName,
+        cardNameMode: defaults.cardNameMode,
+        cardNameMin: defaults.cardNameMin,
+        cardNameMax: defaults.cardNameMax,
+      }
     case 'card-text':
       return { cardText: defaults.cardText, cardTextMode: defaults.cardTextMode }
     case 'tags':
-      return { tags: defaults.tags, tagsMode: defaults.tagsMode }
+      return {
+        tags: defaults.tags,
+        tagsMode: defaults.tagsMode,
+        tagsMin: defaults.tagsMin,
+        tagsMax: defaults.tagsMax,
+      }
     case 'creatures':
       return {
         creaturesOperator: defaults.creaturesOperator,
@@ -2289,6 +2425,8 @@ const getDefaultsForKey = (key: FilterBlockKey): FilterInstanceState => {
       return {
         cardSetNo: defaults.cardSetNo,
         cardSetNoMode: defaults.cardSetNoMode,
+        cardSetNoMin: defaults.cardSetNoMin,
+        cardSetNoMax: defaults.cardSetNoMax,
       }
     case 'elo':
       return {
@@ -2305,8 +2443,16 @@ const getDefaultsForKey = (key: FilterBlockKey): FilterInstanceState => {
     case 'rarity':
       return {
         rarityType: defaults.rarityType,
+        rarityOperator: defaults.rarityOperator,
         rarityCount: defaults.rarityCount,
         rarityMode: defaults.rarityMode,
+      }
+    case 'rarity-words':
+      return {
+        rarityWord: defaults.rarityWord,
+        rarityWordOperator: defaults.rarityWordOperator,
+        rarityWordCount: defaults.rarityWordCount,
+        rarityWordMode: defaults.rarityWordMode,
       }
     case 'sort':
       return { sortBy: defaults.sortBy }
@@ -2316,9 +2462,6 @@ const getDefaultsForKey = (key: FilterBlockKey): FilterInstanceState => {
       return {}
   }
 }
-
-const isFilterBlockKey = (value: string): value is FilterBlockKey =>
-  FILTER_BLOCK_VALUES.includes(value as FilterBlockKey)
 
 const parseFiltersFromSearch = (
   params: URLSearchParams
@@ -2348,7 +2491,7 @@ const parseFiltersFromSearch = (
   next.deckNameMode = (params.get('deckNameMode') as FilterState['deckNameMode']) || 'include'
   next.faction = getArray('faction')
   next.factionMode = (params.get('factionMode') as FilterState['factionMode']) || 'include'
-  next.forgebornName = getArray('forgeborn')
+  next.forgebornName = getArray('forgebornName')
   next.forgebornMode = (params.get('forgebornMode') as FilterState['forgebornMode']) || 'include'
   next.cardName = getArray('cardName')
   next.cardNameMode = (params.get('cardNameMode') as FilterState['cardNameMode']) || 'include'
@@ -2407,9 +2550,16 @@ const parseFiltersFromSearch = (
     next.spellTypeMode = (params.get('spellTypeMode') as FilterState['spellTypeMode']) || 'include'
   }
 
-  next.rarityType = params.get('rarityType') || ''
+  const rarityTypeRaw = params.get('rarityType') || ''
+  next.rarityType = rarityTypeRaw ? normalizeRarityLabel(rarityTypeRaw) : ''
+  next.rarityOperator = (params.get('rarityOperator') as FilterState['rarityOperator']) || next.rarityOperator
   next.rarityCount = getNumber('rarityCount')
   next.rarityMode = (params.get('rarityMode') as FilterState['rarityMode']) || 'include'
+  next.rarityWord = params.get('rarityWord') || ''
+  next.rarityWordOperator =
+    (params.get('rarityWordOperator') as FilterState['rarityWordOperator']) || next.rarityWordOperator
+  next.rarityWordCount = getNumber('rarityWordCount')
+  next.rarityWordMode = (params.get('rarityWordMode') as FilterState['rarityWordMode']) || 'include'
 
   const eloValue = getNumber('eloValue')
   if (eloValue !== null) {
@@ -2425,27 +2575,25 @@ const parseFiltersFromSearch = (
     next.scoreMode = (params.get('scoreMode') as FilterState['scoreMode']) || 'include'
   }
 
-  // Active filter blocks (allow duplicates)
-  const activeRaw = params.get('activeFilters')
-  let entries = activeRaw
-    ? activeRaw
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-    : []
-  if (entries.length === 0) {
-    if (params.get('cardSetNo')) {
-      entries.push('card-set')
-    }
+  // Active filter blocks (derived from URL order)
+  const orderedBlocks: Array<{ key: FilterBlockKey; index: number }> = []
+  const seenBlocks = new Set<string>()
+  for (const [rawKey] of params.entries()) {
+    const { baseName, index } = parseFieldKey(rawKey)
+    const blockKey = FIELD_TO_BLOCK[baseName]
+    if (!blockKey) continue
+    if (blockKey === 'faction' || blockKey === 'sort' || blockKey === 'deck-status') continue
+    const signature = `${blockKey}:${index}`
+    if (seenBlocks.has(signature)) continue
+    seenBlocks.add(signature)
+    orderedBlocks.push({ key: blockKey, index })
   }
 
-  const activeFilterBlocks: FilterBlockInstance[] = []
-  entries.forEach((entry, idx) => {
-    const [rawKey, rawId] = entry.split('@')
-    const key = rawKey as FilterBlockKey
-    if (!isFilterBlockKey(key)) return
-    const id = rawId || `${key}-${idx}`
-    activeFilterBlocks.push({ key, id })
+  const blockIndices = new Map<string, number>()
+  const activeFilterBlocks: FilterBlockInstance[] = orderedBlocks.map((block) => {
+    const id = block.index === 0 ? block.key : `${block.key}-${block.index}`
+    blockIndices.set(id, block.index)
+    return { key: block.key, id }
   })
 
   const sanitizedBlocks = activeFilterBlocks.filter(
@@ -2459,59 +2607,51 @@ const parseFiltersFromSearch = (
     sanitizedBlocks.push({ key: 'deck-status', id: 'deck-status' })
   }
 
-  const firstByKey = new Map<FilterBlockKey, string>()
-  sanitizedBlocks.forEach((block) => {
-    if (!firstByKey.has(block.key)) {
-      firstByKey.set(block.key, block.id)
-    }
-  })
-
   const instanceFilters: Record<string, FilterInstanceState> = {}
 
   const cardSetInstances: Record<string, CardSetInstanceState> = {}
   const cardSetBlocks = sanitizedBlocks.filter((block) => block.key === 'card-set')
-  cardSetBlocks.forEach((block, idx) => {
-    const valuesById = getArray(`cardSetNo@${block.id}`)
-    const values = valuesById.length > 0 ? valuesById : idx === 0 ? getArray('cardSetNo') : []
+  cardSetBlocks.forEach((block) => {
+    const blockIndex = blockIndices.get(block.id) || 0
+    const values = getArray(getParamName('cardSetNo', blockIndex))
+    const minValue = getNumber(getParamName('cardSetNoMin', blockIndex))
+    const maxValue = getNumber(getParamName('cardSetNoMax', blockIndex))
     const mode =
-      (params.get(`cardSetNoMode@${block.id}`) as CardSetInstanceState['cardSetNoMode']) ||
-      (idx === 0 ? ((params.get('cardSetNoMode') as CardSetInstanceState['cardSetNoMode']) || 'include') : 'include')
+      (params.get(getParamName('cardSetNoMode', blockIndex)) as CardSetInstanceState['cardSetNoMode']) ||
+      'include'
     cardSetInstances[block.id] = {
       cardSetNo: values,
       cardSetNoMode: mode || 'include',
+      cardSetNoMin: minValue,
+      cardSetNoMax: maxValue,
     }
     instanceFilters[block.id] = {
       cardSetNo: values,
       cardSetNoMode: mode || 'include',
+      cardSetNoMin: minValue,
+      cardSetNoMax: maxValue,
     }
   })
 
   sanitizedBlocks.forEach((block) => {
     if (block.key === 'card-set') return // already handled
+    const blockIndex = blockIndices.get(block.id) || 0
     const defaults = getDefaultsForKey(block.key)
     const state: FilterInstanceState = { ...defaults }
     FILTER_BLOCK_FIELDS[block.key]?.forEach((field) => {
       if (field === 'cardSetNo' || field === 'cardSetNoMode') return
-      const withId = params.get(`${String(field)}@${block.id}`)
-      const base = params.get(String(field))
-      const isFirstForKey = firstByKey.get(block.key) === block.id
       if (ARRAY_FIELDS.has(field as keyof FilterState)) {
-        const arr = withId ? getArray(`${String(field)}@${block.id}`) : isFirstForKey ? getArray(String(field)) : []
+        const arr = getArray(getParamName(field, blockIndex))
         if (arr.length > 0) {
           (state as any)[field] = arr
         }
       } else if (NUMBER_FIELDS.has(field as keyof FilterState)) {
-        const num = (() => {
-          const raw = withId ?? (isFirstForKey ? base : null)
-          if (raw === null || raw === undefined || raw === '') return null
-          const n = Number(raw)
-          return Number.isFinite(n) ? n : null
-        })()
+        const num = getNumber(getParamName(field, blockIndex))
         if (num !== null) {
           (state as any)[field] = num
         }
       } else {
-        const val = withId !== null && withId !== undefined ? withId : isFirstForKey ? base : null
+        const val = params.get(getParamName(field, blockIndex))
         if (val !== null && val !== undefined && val !== '') {
           (state as any)[field] = val
         }
@@ -2533,21 +2673,17 @@ const buildSearchParamsFromState = (
   const defaults = createDefaultFilters()
   const params = baseParams ? new URLSearchParams(baseParams) : new URLSearchParams()
 
-  FILTER_QUERY_KEYS.forEach((key) => params.delete(key))
-  // Clean any old instance-scoped params
+  // Clean old filter params (including legacy instance params and suffixed keys)
   Array.from(params.keys()).forEach((key) => {
     if (key.includes('@')) {
       params.delete(key)
+      return
+    }
+    const { baseName } = parseFieldKey(key)
+    if (FILTER_QUERY_KEY_SET.has(baseName)) {
+      params.delete(key)
     }
   })
-
-  const activeKeysWithId = activeBlocks.map((b) => `${b.key}@${b.id}`)
-  const activeKeys = activeBlocks.map((b) => b.key)
-  if (!activeKeys.includes('deck-status')) activeKeys.unshift('deck-status')
-  const hasExtraBlocks = activeKeys.some((key) => key !== 'deck-status')
-  if (hasExtraBlocks) {
-    params.set('activeFilters', activeKeysWithId.join(','))
-  }
 
   const setArray = (name: string, value: string[]) => {
     if (value && value.length > 0) {
@@ -2561,40 +2697,28 @@ const buildSearchParamsFromState = (
     if (value !== null && value !== undefined && Number.isFinite(value)) params.set(name, String(value))
   }
 
-  const firstByKey = new Map<FilterBlockKey, string>()
+  const nextIndexByKey = new Map<FilterBlockKey, number>()
   activeBlocks.forEach((block) => {
-    if (!firstByKey.has(block.key)) {
-      firstByKey.set(block.key, block.id)
-    }
-  })
-
-  activeBlocks.forEach((block) => {
+    if (block.key === 'deck-status') return
     const defaultsForKey = getDefaultsForKey(block.key)
     const state = instanceFilters[block.id] || defaultsForKey
+    const index = nextIndexByKey.get(block.key) || 0
+    nextIndexByKey.set(block.key, index + 1)
     FILTER_BLOCK_FIELDS[block.key]?.forEach((field) => {
       const value = (state as any)[field]
       const defaultValue = (defaultsForKey as any)[field]
-      const keyName = `${String(field)}@${block.id}`
+      const keyName = getParamName(field, index)
       if (ARRAY_FIELDS.has(field as keyof FilterState)) {
         if (Array.isArray(value) && value.length > 0) {
           params.set(keyName, value.join(','))
-          if (firstByKey.get(block.key) === block.id) {
-            params.set(String(field), value.join(','))
-          }
         }
       } else if (NUMBER_FIELDS.has(field as keyof FilterState)) {
         if (value !== null && value !== undefined && Number.isFinite(value)) {
           params.set(keyName, String(value))
-          if (firstByKey.get(block.key) === block.id) {
-            params.set(String(field), String(value))
-          }
         }
       } else {
         if (value !== undefined && value !== null && value !== '' && value !== defaultValue) {
           params.set(keyName, String(value))
-          if (firstByKey.get(block.key) === block.id) {
-            params.set(String(field), String(value))
-          }
         }
       }
     })
@@ -3076,7 +3200,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     if (key === 'card-set') {
       setCardSetInstances((prev) => ({
         ...prev,
-        [id]: { cardSetNo: [], cardSetNoMode: 'include' },
+        [id]: { cardSetNo: [], cardSetNoMode: 'include', cardSetNoMin: null, cardSetNoMax: null },
       }))
     }
     setInstanceFilters((prev) => ({
@@ -3204,6 +3328,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
           break
         case 'rarity':
           if ((state.rarityType as string)?.length && state.rarityCount !== null && state.rarityCount !== undefined) return true
+          break
+        case 'rarity-words':
+          if ((state.rarityWord as string)?.length && state.rarityWordCount !== null && state.rarityWordCount !== undefined) return true
           break
         case 'card-set': {
           const override = cardSetInstances[block.id]
@@ -3549,6 +3676,65 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         return deckTagsCache
       }
 
+      const countRarityWordFromBaseCards = (wordLower: string) => {
+        const baseCards = Array.isArray(deck.cardList)
+          ? deck.cardList
+          : Array.isArray(deck.cards)
+            ? deck.cards
+            : Array.isArray((deck as any).cardIds) && (deck as any).cards && typeof (deck as any).cards === 'object'
+              ? (deck as any).cardIds.map((id: string, idx: number) => {
+                  const data = Object.values((deck as any).cards as any)[idx] as any
+                  return {
+                    ...((typeof data === 'object' && data) || {}),
+                    id,
+                    cardId: id,
+                    name: (data as any)?.name || (data as any)?.title || id,
+                  }
+                })
+              : []
+
+        const normalizedBaseCards: CardInfo[] = baseCards.map((card: any, idx: number) => {
+          if (typeof card === 'string') return getCardInfo(card)
+          if (card && typeof card === 'object') {
+            const cardId = card.id || card.cardId || card.name || `card-${idx}`
+            return getCardInfo(cardId, card)
+          }
+          return getCardInfo(`card-${idx}`)
+        })
+
+        const forgebornIds = new Set<string>()
+        if (deck.forgebornId) forgebornIds.add(deck.forgebornId)
+        normalizedBaseCards.forEach((c: CardInfo) => {
+          const typeLower = (c.cardType || c.type || '').toLowerCase()
+          if (typeLower.includes('forgeborn') && c.id) forgebornIds.add(c.id)
+        })
+
+        let count = 0
+        normalizedBaseCards.forEach((card) => {
+          if (forgebornIds.has(card.id)) return
+          const rarity = (card as any).rarity
+          if (rarity && typeof rarity === 'string') {
+            const normalized = normalizeRarityLabel(rarity)
+            const tokens = normalized.toLowerCase().replace(/_/g, ' ').split(/\s+/).filter(Boolean)
+            if (tokens.includes(wordLower)) {
+              count += 1
+            }
+          }
+        })
+
+        return count
+      }
+
+      const resolveSelectionRange = (
+        selectedCount: number,
+        minValue?: number | null,
+        maxValue?: number | null
+      ) => {
+        const min = minValue ?? 1
+        const max = maxValue ?? selectedCount
+        return { min, max }
+      }
+
       for (const { block, state } of blockStates) {
         switch (block.key) {
           case 'deck-name': {
@@ -3577,8 +3763,15 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             const selected = (state.forgebornName as string[]) || []
             if (selected.length > 0) {
               const forgebornName = getForgebornNameFromDeck(deck)
-              const match = !!forgebornName && selected.includes(forgebornName)
-              if (!applyMode(match, (state.forgebornMode as FilterState['forgebornMode']) || 'include')) {
+              const selectedSet = new Set(selected.map((name) => name.trim()).filter(Boolean))
+              const matchCount = forgebornName && selectedSet.has(forgebornName) ? 1 : 0
+              const { min, max } = resolveSelectionRange(
+                selectedSet.size,
+                state.forgebornNameMin as number | null | undefined,
+                state.forgebornNameMax as number | null | undefined
+              )
+              const inRange = matchCount >= min && matchCount <= max
+              if (!applyMode(inRange, (state.forgebornMode as FilterState['forgebornMode']) || 'include')) {
                 return false
               }
             }
@@ -3590,15 +3783,21 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               const deckCardNames = normalizedCards
                 .map(card => card.name?.toLowerCase())
                 .filter((name): name is string => !!name)
-
-              const hasAnySelectedCard = selected.some(selectedName =>
-                deckCardNames.includes(selectedName.toLowerCase())
+              const selectedSet = new Set(
+                selected.map((name) => name.trim().toLowerCase()).filter(Boolean)
               )
-
-              const mode = (state.cardNameMode as FilterState['cardNameMode']) || 'include'
-              const match = mode === 'include' ? hasAnySelectedCard : !hasAnySelectedCard
-
-              if (!match) {
+              const deckNameSet = new Set(deckCardNames)
+              let matchCount = 0
+              selectedSet.forEach((name) => {
+                if (deckNameSet.has(name)) matchCount += 1
+              })
+              const { min, max } = resolveSelectionRange(
+                selectedSet.size,
+                state.cardNameMin as number | null | undefined,
+                state.cardNameMax as number | null | undefined
+              )
+              const inRange = matchCount >= min && matchCount <= max
+              if (!applyMode(inRange, (state.cardNameMode as FilterState['cardNameMode']) || 'include')) {
                 return false
               }
             }
@@ -3687,20 +3886,20 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             const selected = (state.tags as string[]) || []
             if (selected.length > 0) {
               const searchTags = selected.map(t => t.trim().toLowerCase()).filter(Boolean)
+              const selectedSet = new Set(searchTags)
               const deckTags = getDeckTags()
-
-              const hasAllTags = searchTags.every(searchTag =>
-                deckTags.some(deckTag => deckTag === searchTag || deckTag.includes(searchTag))
+              let matchCount = 0
+              selectedSet.forEach((searchTag) => {
+                const matches = deckTags.some(deckTag => deckTag === searchTag || deckTag.includes(searchTag))
+                if (matches) matchCount += 1
+              })
+              const { min, max } = resolveSelectionRange(
+                selectedSet.size,
+                state.tagsMin as number | null | undefined,
+                state.tagsMax as number | null | undefined
               )
-              const hasAnyTag = searchTags.some(searchTag =>
-                deckTags.some(deckTag => deckTag === searchTag || deckTag.includes(searchTag))
-              )
-              const mode = (state.tagsMode as FilterState['tagsMode']) || 'include'
-              const match =
-                mode === 'include'
-                  ? hasAllTags
-                  : !hasAnyTag
-              if (!match) {
+              const inRange = matchCount >= min && matchCount <= max
+              if (!applyMode(inRange, (state.tagsMode as FilterState['tagsMode']) || 'include')) {
                 return false
               }
             }
@@ -4250,8 +4449,11 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
           const rarityType = (state.rarityType as string) || ''
           const rarityCount = state.rarityCount as number | null | undefined
           if (rarityType && rarityCount !== null && rarityCount !== undefined) {
+            const normalizedRarityType = normalizeRarityLabel(rarityType)
             // Prefer precomputed rarity counts (base deck only)
-            let deckRarityCount = (deck.computed?.rarityCounts || {})[rarityType] ?? 0
+            let deckRarityCount = deck.computed?.rarityCounts
+              ? normalizeRarityCounts(deck.computed.rarityCounts).get(normalizedRarityType) || 0
+              : 0
 
             // Fallback lightweight count on base cards if computed missing
             if (!deck.computed?.rarityCounts) {
@@ -4292,36 +4494,66 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                 if (forgebornIds.has(card.id)) return
                 const rarity = (card as any).rarity
                 if (rarity && typeof rarity === 'string') {
-                  let normalizedRarity = rarity.trim()
-                  const lower = normalizedRarity.toLowerCase()
-                  if (lower.includes('solbind')) normalizedRarity = 'Solbind'
-                  if (lower.includes('darkforge') && lower.includes('rare')) {
-                    normalizedRarity = 'Darkforge Rare'
-                  } else if (lower.includes('common common')) {
-                    normalizedRarity = 'Common Common'
-                  } else if (lower.includes('rare rare')) {
-                    normalizedRarity = 'Rare Rare'
-                  } else if (lower.includes('rare') && lower.includes('common')) {
-                    normalizedRarity = 'Rare Common'
-                  } else if (lower.includes('common') && lower.includes('rare')) {
-                    normalizedRarity = 'Common Rare'
-                  } else if (lower.includes('darkforge')) {
-                    normalizedRarity = 'Darkforge'
-                  } else if (lower.includes('common')) {
-                    normalizedRarity = 'Common'
-                  } else if (lower.includes('rare')) {
-                    normalizedRarity = 'Rare'
-                  } else if (lower.includes('ls') || lower.includes('legendary')) {
-                    normalizedRarity = 'LS'
-                  }
+                  const normalizedRarity = normalizeRarityLabel(rarity)
                   counts.set(normalizedRarity, (counts.get(normalizedRarity) || 0) + 1)
                 }
               })
-              deckRarityCount = counts.get(rarityType) || 0
+              deckRarityCount = counts.get(normalizedRarityType) || 0
             }
 
-            const rarityMatch = !(deckRarityCount < rarityCount)
-            if (!applyMode(rarityMatch, (state.rarityMode as FilterState['rarityMode']) || 'include')) {
+            let matches = false
+            switch (state.rarityOperator as FilterState['rarityOperator']) {
+              case '<=':
+                matches = deckRarityCount <= rarityCount
+                break
+              case '=':
+                matches = deckRarityCount === rarityCount
+                break
+              case '>=':
+              default:
+                matches = deckRarityCount >= rarityCount
+                break
+            }
+            if (!applyMode(matches, (state.rarityMode as FilterState['rarityMode']) || 'include')) {
+              return false
+            }
+          }
+          break
+        }
+        case 'rarity-words': {
+          const rarityWord = (state.rarityWord as string) || ''
+          const rarityCount = state.rarityWordCount as number | null | undefined
+          if (rarityWord && rarityCount !== null && rarityCount !== undefined) {
+            const wordLower = rarityWord.toLowerCase()
+            let deckWordCount = 0
+
+            if (deck.computed?.rarityCounts) {
+              Object.entries(deck.computed.rarityCounts).forEach(([rarityLabel, count]) => {
+                const normalized = normalizeRarityLabel(String(rarityLabel))
+                const tokens = normalized.toLowerCase().replace(/_/g, ' ').split(/\s+/).filter(Boolean)
+                if (tokens.includes(wordLower)) {
+                  const num = Number(count)
+                  deckWordCount += Number.isFinite(num) ? num : 0
+                }
+              })
+            } else {
+              deckWordCount = countRarityWordFromBaseCards(wordLower)
+            }
+
+            let matches = false
+            switch (state.rarityWordOperator as FilterState['rarityWordOperator']) {
+              case '<=':
+                matches = deckWordCount <= rarityCount
+                break
+              case '=':
+                matches = deckWordCount === rarityCount
+                break
+              case '>=':
+              default:
+                matches = deckWordCount >= rarityCount
+                break
+            }
+            if (!applyMode(matches, (state.rarityWordMode as FilterState['rarityWordMode']) || 'include')) {
               return false
             }
           }
@@ -4332,6 +4564,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               cardSetInstances[block.id] || {
                 cardSetNo: (state.cardSetNo as string[]) || [],
                 cardSetNoMode: ((state.cardSetNoMode as 'include' | 'exclude') || 'include'),
+                cardSetNoMin: state.cardSetNoMin as number | null | undefined,
+                cardSetNoMax: state.cardSetNoMax as number | null | undefined,
               }
             if (cardSetState.cardSetNo.length > 0) {
               const deckSetStr = getDeckSetString()
@@ -4339,8 +4573,15 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
               const selectedSets = cardSetState.cardSetNo
                 .map((value) => normalizeSetLabel(value))
                 .filter((value): value is string => Boolean(value))
-              const match = !!deckSetNormalized && selectedSets.includes(deckSetNormalized)
-              if (!applyMode(match, cardSetState.cardSetNoMode || 'include')) {
+              const selectedSet = new Set(selectedSets)
+              const matchCount = deckSetNormalized && selectedSet.has(deckSetNormalized) ? 1 : 0
+              const { min, max } = resolveSelectionRange(
+                selectedSet.size,
+                cardSetState.cardSetNoMin,
+                cardSetState.cardSetNoMax
+              )
+              const inRange = matchCount >= min && matchCount <= max
+              if (!applyMode(inRange, cardSetState.cardSetNoMode || 'include')) {
                 return false
               }
             }
@@ -4677,7 +4918,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         <Collapse in={filtersOpened}>
           <Paper
             p="md"
-            className="mb-4 backdrop-blur-md border border-sf-primary/30 rounded-xl"
+            className="filters-panel mb-4 backdrop-blur-md border border-sf-primary/30 rounded-xl"
             style={{ backgroundColor: 'rgba(30, 41, 59, 0.6)' }}
           >
             <Stack gap="md">
@@ -4746,6 +4987,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     onChange={(value) => addFilterBlock((value as FilterBlockKey) || null)}
                     clearable
                     allowDeselect
+                    searchable
+                    nothingFoundMessage="No matching filters"
                     styles={{
                       input: {
                         backgroundColor: 'rgba(30, 41, 59, 0.8)',
@@ -4895,18 +5138,126 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     case 'forgeborn': {
                       const currentValues = (state.forgebornName as string[]) || []
                       const currentMode = (state.forgebornMode as FilterState['forgebornMode']) || 'include'
+                      const currentMin = state.forgebornNameMin as number | null | undefined
+                      const currentMax = state.forgebornNameMax as number | null | undefined
                       const header = (
                         <Text size="sm" fw={500} style={{ color: 'white' }}>
                           Forgeborn Name
                         </Text>
                       )
                       const modeControl = (
-                        <SegmentedControl
-                          size="xs"
-                          value={currentMode}
-                          onChange={(value) => update({ forgebornMode: value as 'include' | 'exclude' })}
-                          data={MODE_OPTIONS}
-                        />
+                        <Group gap={6} align="center">
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Min"
+                              value={currentMin ?? ''}
+                              onChange={(value) =>
+                                update({ forgebornNameMin: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMin !== null && currentMin !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ forgebornNameMin: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Max"
+                              value={currentMax ?? ''}
+                              onChange={(value) =>
+                                update({ forgebornNameMax: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMax !== null && currentMax !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ forgebornNameMax: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ forgebornMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        </Group>
                       )
                       return renderFilterCol(
                         block,
@@ -4932,18 +5283,126 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     case 'card-name': {
                       const currentValues = (state.cardName as string[]) || []
                       const currentMode = (state.cardNameMode as FilterState['cardNameMode']) || 'include'
+                      const currentMin = state.cardNameMin as number | null | undefined
+                      const currentMax = state.cardNameMax as number | null | undefined
                       const header = (
                         <Text size="sm" fw={500} style={{ color: 'white' }}>
                           Card Name
                         </Text>
                       )
                       const modeControl = (
-                        <SegmentedControl
-                          size="xs"
-                          value={currentMode}
-                          onChange={(value) => update({ cardNameMode: value as 'include' | 'exclude' })}
-                          data={MODE_OPTIONS}
-                        />
+                        <Group gap={6} align="center">
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Min"
+                              value={currentMin ?? ''}
+                              onChange={(value) =>
+                                update({ cardNameMin: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMin !== null && currentMin !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ cardNameMin: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Max"
+                              value={currentMax ?? ''}
+                              onChange={(value) =>
+                                update({ cardNameMax: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMax !== null && currentMax !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ cardNameMax: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ cardNameMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        </Group>
                       )
                       return renderFilterCol(
                         block,
@@ -5003,18 +5462,126 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                     case 'tags': {
                       const currentValues = (state.tags as string[]) || []
                       const currentMode = (state.tagsMode as FilterState['tagsMode']) || 'include'
+                      const currentMin = state.tagsMin as number | null | undefined
+                      const currentMax = state.tagsMax as number | null | undefined
                       const header = (
                         <Text size="sm" fw={500} style={{ color: 'white' }}>
                           Tags
                         </Text>
                       )
                       const modeControl = (
-                        <SegmentedControl
-                          size="xs"
-                          value={currentMode}
-                          onChange={(value) => update({ tagsMode: value as 'include' | 'exclude' })}
-                          data={MODE_OPTIONS}
-                        />
+                        <Group gap={6} align="center">
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Min"
+                              value={currentMin ?? ''}
+                              onChange={(value) =>
+                                update({ tagsMin: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMin !== null && currentMin !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ tagsMin: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Max"
+                              value={currentMax ?? ''}
+                              onChange={(value) =>
+                                update({ tagsMax: typeof value === 'number' ? value : null })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {currentMax !== null && currentMax !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  update({ tagsMax: null })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ tagsMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        </Group>
                       )
                       return renderFilterCol(
                         block,
@@ -5632,6 +6199,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         cardSetInstances[block.id] || {
                           cardSetNo: (state.cardSetNo as string[]) || [],
                           cardSetNoMode: ((state.cardSetNoMode as 'include' | 'exclude') || 'include'),
+                          cardSetNoMin: state.cardSetNoMin as number | null | undefined,
+                          cardSetNoMax: state.cardSetNoMax as number | null | undefined,
                         }
                       const header = (
                         <Text size="sm" fw={500} style={{ color: 'white' }}>
@@ -5649,21 +6218,141 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             ...(prev[block.id] || getDefaultsForKey('card-set')),
                             cardSetNo: nextState.cardSetNo,
                             cardSetNoMode: nextState.cardSetNoMode,
+                            cardSetNoMin: nextState.cardSetNoMin ?? null,
+                            cardSetNoMax: nextState.cardSetNoMax ?? null,
                           },
                         }))
                       }
                       const modeControl = (
-                        <SegmentedControl
-                          size="xs"
-                          value={cardSetState.cardSetNoMode}
-                          onChange={(value) =>
-                            updateCardSetState({
-                              ...cardSetState,
-                              cardSetNoMode: value as 'include' | 'exclude',
-                            })
-                          }
-                          data={MODE_OPTIONS}
-                        />
+                        <Group gap={6} align="center">
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Min"
+                              value={cardSetState.cardSetNoMin ?? ''}
+                              onChange={(value) =>
+                                updateCardSetState({
+                                  ...cardSetState,
+                                  cardSetNoMin: typeof value === 'number' ? value : null,
+                                })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {cardSetState.cardSetNoMin !== null && cardSetState.cardSetNoMin !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  updateCardSetState({
+                                    ...cardSetState,
+                                    cardSetNoMin: null,
+                                  })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <div style={{ position: 'relative', width: 70 }}>
+                            <NumberInput
+                              placeholder="Max"
+                              value={cardSetState.cardSetNoMax ?? ''}
+                              onChange={(value) =>
+                                updateCardSetState({
+                                  ...cardSetState,
+                                  cardSetNoMax: typeof value === 'number' ? value : null,
+                                })
+                              }
+                              min={0}
+                              size="xs"
+                              style={{ width: '100%' }}
+                              styles={{
+                                input: {
+                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  color: 'white',
+                                  borderColor: 'rgba(74, 144, 226, 0.3)',
+                                  paddingRight: '46px',
+                                },
+                              }}
+                            />
+                            {cardSetState.cardSetNoMax !== null && cardSetState.cardSetNoMax !== undefined ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  updateCardSetState({
+                                    ...cardSetState,
+                                    cardSetNoMax: null,
+                                  })
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 28,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <IconX
+                                  size={16}
+                                  style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          <SegmentedControl
+                            size="xs"
+                            value={cardSetState.cardSetNoMode}
+                            onChange={(value) =>
+                              updateCardSetState({
+                                ...cardSetState,
+                                cardSetNoMode: value as 'include' | 'exclude',
+                              })
+                            }
+                            data={MODE_OPTIONS}
+                          />
+                        </Group>
                       )
                       return renderFilterCol(
                         block,
@@ -5882,9 +6571,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         const currentMode = (state.rarityMode as FilterState['rarityMode']) || 'include'
                         const currentType = (state.rarityType as string) || ''
                         const currentCount = state.rarityCount as number | null | undefined
+                        const currentOperator = (state.rarityOperator as FilterState['rarityOperator']) || '>='
                         const header = (
                           <Text size="sm" fw={500} style={{ color: 'white' }}>
-                            Rarity
+                            Rarity (Exact)
                           </Text>
                         )
                         const modeControl = (
@@ -5906,6 +6596,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 update({
                                   rarityType: value || '',
                                   rarityCount: value ? (currentCount ?? 1) : null,
+                                  rarityOperator: currentOperator,
                                 })
                               }
                               data={[
@@ -5913,6 +6604,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 { value: 'Common Common', label: 'Common Common' },
                                 { value: 'Common Rare', label: 'Common Rare' },
                                 { value: 'Darkforge Rare', label: 'Darkforge Rare' },
+                                { value: 'Darkforge Common', label: 'Darkforge Common' },
+                                { value: 'Darkforge LS', label: 'Darkforge LS' },
                                 { value: 'Darkforge', label: 'Darkforge' },
                                 { value: 'Rare Common', label: 'Rare Common' },
                                 { value: 'Rare Rare', label: 'Rare Rare' },
@@ -5926,9 +6619,23 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
+                            <Select
+                              value={currentOperator}
+                              onChange={(value) => update({ rarityOperator: value as FilterState['rarityOperator'] })}
+                              data={[
+                                { value: '>=', label: '≥' },
+                                { value: '<=', label: '≤' },
+                                { value: '=', label: '=' },
+                              ]}
+                              style={{ flex: '0 0 80px' }}
+                              disabled={!currentType}
+                              styles={{
+                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              }}
+                            />
                             <div style={{ position: 'relative', flex: '0 0 120px' }}>
                               <NumberInput
-                                placeholder="Min count"
+                                placeholder="Count"
                                 value={currentCount ?? ''}
                                 onChange={(value) =>
                                   update({
@@ -5984,6 +6691,119 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         </Stack>,
                         { header, actions: modeControl }
                       )
+                      }
+                    case 'rarity-words':
+                      {
+                        const currentMode = (state.rarityWordMode as FilterState['rarityWordMode']) || 'include'
+                        const currentWord = (state.rarityWord as string) || ''
+                        const currentCount = state.rarityWordCount as number | null | undefined
+                        const currentOperator = (state.rarityWordOperator as FilterState['rarityWordOperator']) || '>='
+                        const header = (
+                          <Text size="sm" fw={500} style={{ color: 'white' }}>
+                            Rarity (Word)
+                          </Text>
+                        )
+                        const modeControl = (
+                          <SegmentedControl
+                            size="xs"
+                            value={currentMode}
+                            onChange={(value) => update({ rarityWordMode: value as 'include' | 'exclude' })}
+                            data={MODE_OPTIONS}
+                          />
+                        )
+                        return renderFilterCol(
+                          block,
+                          <Stack gap={6}>
+                            <Group gap="xs" align="flex-end">
+                              <Select
+                                placeholder="Select word..."
+                                value={currentWord}
+                                onChange={(value) =>
+                                  update({
+                                    rarityWord: value || '',
+                                    rarityWordCount: value ? (currentCount ?? 1) : null,
+                                    rarityWordOperator: currentOperator,
+                                  })
+                                }
+                                data={RARITY_WORD_OPTIONS}
+                                clearable
+                                style={{ flex: 1 }}
+                                styles={{
+                                  input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                }}
+                              />
+                              <Select
+                                value={currentOperator}
+                                onChange={(value) => update({ rarityWordOperator: value as FilterState['rarityWordOperator'] })}
+                                data={[
+                                  { value: '>=', label: '≥' },
+                                  { value: '<=', label: '≤' },
+                                  { value: '=', label: '=' },
+                                ]}
+                                style={{ flex: '0 0 80px' }}
+                                disabled={!currentWord}
+                                styles={{
+                                  input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                }}
+                              />
+                              <div style={{ position: 'relative', flex: '0 0 120px' }}>
+                                <NumberInput
+                                  placeholder="Count"
+                                  value={currentCount ?? ''}
+                                  onChange={(value) =>
+                                    update({
+                                      rarityWordCount: typeof value === 'number' ? value : null,
+                                    })
+                                  }
+                                  min={0}
+                                  style={{ width: '100%' }}
+                                  disabled={!currentWord}
+                                  styles={{
+                                    input: {
+                                      backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                      color: 'white',
+                                      borderColor: 'rgba(74, 144, 226, 0.3)',
+                                      paddingRight: '46px',
+                                    },
+                                  }}
+                                />
+                                {currentCount !== null && currentCount !== undefined ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      update({ rarityWordCount: null })
+                                    }}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                    }}
+                                    style={{
+                                      position: 'absolute',
+                                      right: 28,
+                                      top: '50%',
+                                      transform: 'translateY(-50%)',
+                                      background: 'none',
+                                      border: 'none',
+                                      padding: 0,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                  >
+                                    <IconX
+                                      size={16}
+                                      style={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                    />
+                                  </button>
+                                ) : null}
+                              </div>
+                            </Group>
+                          </Stack>,
+                          { header, actions: modeControl }
+                        )
                       }
                     case 'sort':
                       {

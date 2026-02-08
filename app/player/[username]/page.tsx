@@ -618,7 +618,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ userna
                           <Loader />
                         </Group>
                       )}
-                      {!decksLoading && hasDeckResults && (
+                      {hasDeckResults && (
                         <div className="flex justify-center">
                           <DeckList decks={decks} fusedDecks={fusedDecks} />
                         </div>

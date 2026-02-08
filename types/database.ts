@@ -14,84 +14,102 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      player_decks: {
+      cards: {
         Row: {
-          card_set_id: string | null
-          card_set_no: string | null
-          created_at: string | null
-          deck_created_at: string | null
-          deck_id: string
-          deck_name: string
-          deck_rank: string | null
-          deck_score: number | null
-          digital: boolean | null
-          discord_username: string | null
-          display_name: string | null
-          elo: number | null
-          faction: string | null
-          forgeborn_id: string | null
-          format: string | null
-          fused_deck_ids: string[] | null
-          id: string
-          is_for_sale: boolean | null
-          is_fused: boolean | null
-          is_nft: boolean | null
-          player_name: string
-          price: number | null
-          updated_at: string | null
-          user_id: number
+          card_id: string
+          card_name: string
         }
         Insert: {
-          card_set_id?: string | null
-          card_set_no?: string | null
-          created_at?: string | null
-          deck_created_at?: string | null
-          deck_id: string
-          deck_name: string
-          deck_rank?: string | null
-          deck_score?: number | null
-          digital?: boolean | null
-          discord_username?: string | null
-          display_name?: string | null
-          elo?: number | null
-          faction?: string | null
-          forgeborn_id?: string | null
-          format?: string | null
-          fused_deck_ids?: string[] | null
-          id?: string
-          is_for_sale?: boolean | null
-          is_fused?: boolean | null
-          is_nft?: boolean | null
-          player_name: string
-          price?: number | null
-          updated_at?: string | null
-          user_id: number
+          card_id: string
+          card_name: string
         }
         Update: {
-          card_set_id?: string | null
-          card_set_no?: string | null
-          created_at?: string | null
-          deck_created_at?: string | null
-          deck_id?: string
-          deck_name?: string
-          deck_rank?: string | null
+          card_id?: string
+          card_name?: string
+        }
+        Relationships: []
+      }
+      player_decks: {
+        Row: {
+          deck_id: string
+          deck_name: string
+          deck_score: number | null
+          elo: number | null
+          expire_date: string | null
+          faction: string | null
+          forgeborn_id: string | null
+          owner_name: string
+          set_id: string
+          synced_at: string
+        }
+        Insert: {
+          deck_id: string
+          deck_name: string
           deck_score?: number | null
-          digital?: boolean | null
-          discord_username?: string | null
-          display_name?: string | null
           elo?: number | null
+          expire_date?: string | null
           faction?: string | null
           forgeborn_id?: string | null
-          format?: string | null
-          fused_deck_ids?: string[] | null
-          id?: string
-          is_for_sale?: boolean | null
-          is_fused?: boolean | null
-          is_nft?: boolean | null
-          player_name?: string
-          price?: number | null
-          updated_at?: string | null
-          user_id?: number
+          owner_name: string
+          set_id: string
+          synced_at?: string
+        }
+        Update: {
+          deck_id?: string
+          deck_name?: string
+          deck_score?: number | null
+          elo?: number | null
+          expire_date?: string | null
+          faction?: string | null
+          forgeborn_id?: string | null
+          owner_name?: string
+          set_id?: string
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      player_deck_cards: {
+        Row: {
+          card_id: string
+          deck_id: string
+          id: number
+        }
+        Insert: {
+          card_id: string
+          deck_id: string
+          id?: number
+        }
+        Update: {
+          card_id?: string
+          deck_id?: string
+          id?: number
+        }
+        Relationships: []
+      }
+      player_fused_decks: {
+        Row: {
+          deck_name: string
+          fused_deck_id: string
+          owner_name: string
+          source_deck_1_id: string
+          source_deck_2_id: string
+          synced_at: string
+        }
+        Insert: {
+          deck_name: string
+          fused_deck_id: string
+          owner_name: string
+          source_deck_1_id: string
+          source_deck_2_id: string
+          synced_at?: string
+        }
+        Update: {
+          deck_name?: string
+          fused_deck_id?: string
+          owner_name?: string
+          source_deck_1_id?: string
+          source_deck_2_id?: string
+          synced_at?: string
         }
         Relationships: []
       }
@@ -130,7 +148,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      upsert_player_deck: {
+        Args: {
+          p_card_ids: string[]
+          p_deck_id: string
+          p_deck_name: string
+          p_deck_score: number | null
+          p_elo: number | null
+          p_expire_date: string | null
+          p_faction: string | null
+          p_forgeborn_id: string | null
+          p_owner_name: string
+          p_set_id: string
+        }
+        Returns: Database['public']['Tables']['player_decks']['Row']
+      }
+      upsert_player_fused_deck: {
+        Args: {
+          p_fused_deck_id: string
+          p_deck_name: string
+          p_owner_name: string
+          p_source_deck_1_id: string
+          p_source_deck_2_id: string
+        }
+        Returns: Database['public']['Tables']['player_fused_decks']['Row']
+      }
     }
     Enums: {
       [_ in never]: never
@@ -145,6 +187,15 @@ export type Database = {
 export type PlayerDeckRow = Database['public']['Tables']['player_decks']['Row']
 export type PlayerDeckInsert = Database['public']['Tables']['player_decks']['Insert']
 export type PlayerDeckUpdate = Database['public']['Tables']['player_decks']['Update']
+export type CardRow = Database['public']['Tables']['cards']['Row']
+export type CardInsert = Database['public']['Tables']['cards']['Insert']
+export type CardUpdate = Database['public']['Tables']['cards']['Update']
+export type PlayerDeckCardRow = Database['public']['Tables']['player_deck_cards']['Row']
+export type PlayerDeckCardInsert = Database['public']['Tables']['player_deck_cards']['Insert']
+export type PlayerDeckCardUpdate = Database['public']['Tables']['player_deck_cards']['Update']
+export type PlayerFusedDeckRow = Database['public']['Tables']['player_fused_decks']['Row']
+export type PlayerFusedDeckInsert = Database['public']['Tables']['player_fused_decks']['Insert']
+export type PlayerFusedDeckUpdate = Database['public']['Tables']['player_fused_decks']['Update']
 export type PlayerProfileRow = Database['public']['Tables']['player_profiles']['Row']
 export type PlayerProfileInsert = Database['public']['Tables']['player_profiles']['Insert']
 export type PlayerProfileUpdate = Database['public']['Tables']['player_profiles']['Update']

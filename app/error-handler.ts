@@ -5,6 +5,7 @@ import { setupErrorHandling } from '@/lib/errorHandler'
 import { logErrorToFile } from '@/lib/errorLogger'
 import { logWithTimestamp } from '@/lib/logger'
 import { installConsoleTimestamp } from '@/lib/consoleTimestamp'
+import { isBrowserExtensionError } from '@/lib/clientErrorFilters'
 
 export function ErrorHandler() {
   useEffect(() => {
@@ -18,13 +19,19 @@ export function ErrorHandler() {
       const originalConsoleError = console.error
       console.error = (...args: any[]) => {
         originalConsoleError.apply(console, args)
-        
+
         // Check if this is a React/Next.js error (but skip image loading errors and ResizeObserver errors)
-        const errorString = args.map(arg => {
+        const errorStringRaw = args.map(arg => {
           if (typeof arg === 'string') return arg
           if (arg instanceof Error) return arg.message
           return String(arg)
-        }).join(' ').toLowerCase()
+        }).join(' ')
+        const errorString = errorStringRaw.toLowerCase()
+
+        // Ignore browser extension errors (for example MetaMask inpage script failures)
+        if (isBrowserExtensionError({ message: errorStringRaw, args })) {
+          return
+        }
         
         // Skip ResizeObserver errors - these are benign browser warnings
         if (errorString.includes('resizeobserver') || 
@@ -43,9 +50,9 @@ export function ErrorHandler() {
           return
         }
         
-        if (errorString.includes('Error:') || errorString.includes('Warning:')) {
+        if (errorString.includes('error:') || errorString.includes('warning:')) {
           // Try to extract error message
-          const errorMatch = errorString.match(/Error:\s*(.+?)(?:\n|$)/)
+          const errorMatch = errorStringRaw.match(/(?:error|warning):\s*(.+?)(?:\n|$)/i)
           if (errorMatch) {
             const errorMessage = errorMatch[1]
             logWithTimestamp('[ErrorHandler] Intercepted console error:', errorMessage)
@@ -74,7 +81,17 @@ export function ErrorHandler() {
           // Silently ignore ResizeObserver errors
           return
         }
-        
+
+        if (
+          isBrowserExtensionError({
+            message: event.message,
+            filename: event.filename,
+            stack: event.error?.stack,
+          })
+        ) {
+          return
+        }
+
         console.error('[ErrorHandler] Unhandled error event:', event.message, event.filename, event.lineno)
         logErrorToFile(event.error || new Error(event.message || 'Unknown error'), {
           type: 'unhandled-error-event',

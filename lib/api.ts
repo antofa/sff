@@ -9,9 +9,12 @@ import { logWithTimestamp } from './logger'
 // Base URL for SolForge Fusion API (from Apps Script)
 const API_BASE_URL = 'https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main'
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day
+const DECK_DETAILS_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 type CacheEntry<T> = { expiresAt: number; data: T }
 const regularDeckCache = new Map<string, CacheEntry<ApiDeck[]>>()
 const fusedDeckCache = new Map<string, CacheEntry<ApiDeck[]>>()
+type DeckDetailsCacheEntry = { expiresAt: number; data: any }
+const deckDetailsCache = new Map<string, DeckDetailsCacheEntry>()
 
 const getCached = (cache: Map<string, CacheEntry<ApiDeck[]>>, key: string) => {
   const entry = cache.get(key)
@@ -25,6 +28,27 @@ const getCached = (cache: Map<string, CacheEntry<ApiDeck[]>>, key: string) => {
 
 const setCached = (cache: Map<string, CacheEntry<ApiDeck[]>>, key: string, data: ApiDeck[]) => {
   cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, data })
+}
+
+const normalizeDeckDetailsKey = (deckId: string) =>
+  deckId
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/^deck[_-]?/i, '')
+
+const getDeckDetailsCached = (key: string) => {
+  const entry = deckDetailsCache.get(key)
+  if (!entry) return null
+  if (entry.expiresAt < Date.now()) {
+    deckDetailsCache.delete(key)
+    return null
+  }
+  return entry.data
+}
+
+const setDeckDetailsCached = (key: string, data: any) => {
+  deckDetailsCache.set(key, { expiresAt: Date.now() + DECK_DETAILS_CACHE_TTL_MS, data })
 }
 
 const appendDeckSearchLog = async (_message: string) => {
@@ -182,17 +206,27 @@ export function normalizeDeck(deck: any): ApiDeck {
 /**
  * Fetch detailed deck information with full card data
  */
-export async function fetchDeckDetails(deckId: string): Promise<any> {
+export async function fetchDeckDetails(
+  deckId: string,
+  options?: { timeoutMs?: number; revalidateSeconds?: number }
+): Promise<any> {
   try {
+    const cacheKey = normalizeDeckDetailsKey(deckId)
+    const cached = getDeckDetailsCached(cacheKey)
+    if (cached) return cached
+
     const url = `${API_BASE_URL}/deck/${deckId}?inclCards=true&inclUsers=true`
+    const timeoutMs = Math.max(500, options?.timeoutMs ?? 60000)
+    const revalidateSeconds = Math.max(30, options?.revalidateSeconds ?? 86400)
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'SolForge-Fusion-Deck-Viewer/1.0',
       },
-      next: { revalidate: 3600 }, // Cache for 1 hour
-      signal: AbortSignal.timeout(60000),
+      cache: 'force-cache',
+      next: { revalidate: revalidateSeconds },
+      signal: AbortSignal.timeout(timeoutMs),
     })
 
     if (!response.ok) {
@@ -201,6 +235,7 @@ export async function fetchDeckDetails(deckId: string): Promise<any> {
     }
 
     const data = await response.json()
+    setDeckDetailsCached(cacheKey, data)
     return data
   } catch (error) {
     console.warn(`[API] Error fetching deck details for ${deckId}:`, error)

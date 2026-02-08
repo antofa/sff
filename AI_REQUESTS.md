@@ -8,6 +8,174 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: e498453
+  Request: The changelog is missing details like OG image/title/description changes and the new filter; clarify whether the summary covered only today or the full period since the last merge.
+  Date: 2026-02-08
+- Commit: 342074d
+  Request: The header changelog must keep full history: all previous versions and their changes should remain visible.
+  Date: 2026-02-08
+- Commit: 8ec860c
+  Request: Keep this log only in dev (`NODE_ENV !== 'production'`).
+  Date: 2026-02-08
+- Commit: 2e10096
+  Request: Decks are fetched quickly in stream logs, but in the UI they appear only after late background stages (`supabase sync done` and `owner cache done`); remove this perceived blocking.
+  Date: 2026-02-08
+- Commit: 27e7e83
+  Request: Fused deck navigation became unstable: after switching between fused and half decks, header/meta and card content could stay from a previous view, and opening the second half from a direct fused link sometimes required multiple clicks.
+  Date: 2026-02-08
+- Commit: 3a3777f
+  Request: After opening a fused deck by direct link, going into a half deck, and returning via `Back to Fused`, the fused view repaints from scratch (expire date, faction icons, sets, ELO, score) as if full data was not already loaded.
+  Date: 2026-02-08
+- Commit: 883212d
+  Request: For fused decks opened by direct link, `Expire date` still does not appear (example: `http://trumpumpum.duckdns.org:3000/deck/Fused_93hi52mfig65sm`).
+  Date: 2026-02-08
+- Commit: b66c591
+  Request: The debug payload still includes `allDecksIds` and can be heavy; reduce this log while keeping it informative.
+  Date: 2026-02-08
+- Commit: b897745
+  Request: For fused deck `http://trumpumpum.duckdns.org:3000/deck/Fused_93hi52mfig65sm`, there is no `Expire date` tag even though one of its halves has an expiry date.
+  Date: 2026-02-08
+- Commit: a7de86a
+  Request: I checked this deck URL and the non-fused deck `Expire date` still does not load in the background; is it missing in Supabase or is the issue elsewhere?
+  Date: 2026-02-08
+- Commit: 9cf2bb9
+  Request: Change direct deck-link loading so data priority is external API first, then missing fields from Upstash, then from Supabase, with no full owner-wide deck search; also clarify whether expire date and tags can be read directly from the external deck API.
+  Date: 2026-02-08
+- Commit: 1af0f2c
+  Request: All information in all files must be in English, including `AI_REQUESTS.md`.
+  Date: 2026-02-08
+- Commit: 8a7cf8c
+  Request: During player deck search, a "saving decks to database" step appeared; it must not block showing already found decks and should run in the background.
+  Date: 2026-02-08
+- Commit: 826757a
+  Request: Fix the second and third points.
+  Date: 2026-02-08
+- Commit: e679242
+  Request: When opening a fused deck by direct link, you can open a half deck by clicking it, but cannot navigate back (the "Back to Fused" button is missing; it exists when opening the same fused deck from the player's loaded deck list).
+  Date: 2026-02-08
+- Commit: 7692b8a
+  Request: [2026-02-08T17:40:14.384Z] GET /deck/Fused_1d4jjh2mkpba06f?sdf=234egvc 200 in 9.8s (proxy.ts: 598ms) — how can this be sped up?
+  Date: 2026-02-08
+- Commit: d7d2960
+  Request: Remove text shadow and measure results on any three decks of player `fong`.
+  Date: 2026-02-08
+- Commit: 8098e5a
+  Request: Add precise OG generation stage profiling to explain why rendering takes ~8 seconds, then test and show the timing breakdown.
+  Date: 2026-02-08
+- Commit: 27cd78f
+  Request: Reduce cold OG image generation time for all decks; auto-fit can be simplified/removed, but all text (all card names and all forgeborn abilities) must always fit within the image bounds.
+  Date: 2026-02-08
+- Commit: 8cc11fc
+  Request: For `http://trumpumpum.duckdns.org:3000/api/og/deck/s3-a9eaece4xe63ehdep8flqgcbgcrgiq?refresh=1`, improve non-fused OG auto-fit further: reduce remaining bottom empty space in the first column and reduce perceived empty space between columns by better per-column font and width balancing.
+  Date: 2026-02-08
+- Commit: f4a8f4f
+  Request: For `http://trumpumpum.duckdns.org:3000/api/og/deck/s3-a9eaece4xe63ehdep8flqgcbgcrgiq?refresh=1`, fix regular-deck OG auto-fit because vertical and horizontal fitting was weak, with too much empty space between columns and at the bottom (especially in the first column).
+  Date: 2026-02-08
+- Commit: df906ec
+  Request: Change OG generation so each column is maximally filled (allowing slight adaptive column-boundary shifts), then verify on the same 20 decks and tighten further for `Fused_1qrav2mfzdk9b9` where columns had too much bottom empty space.
+  Date: 2026-02-08
+- Commit: 461a001
+  Request: Ignore browser-extension (MetaMask) runtime errors in global client error logging so they are not sent to `/api/log-error` or written to server logs.
+  Date: 2026-02-08
+- Commit: b27ee3e
+  Request: Remove `Creatures` and `Spells` labels from regular-deck OG images.
+  Date: 2026-02-07
+- Commit: 800eccd
+  Request: Count `Creature Types` in OG descriptions for all decks exactly like in the modal, so compound subtypes (e.g. `Zombie Warrior`) are split into separate types.
+  Date: 2026-02-07
+- Commit: bdcab9f
+  Request: Fix remaining slight bottom clipping and improve non-fused OG auto-alignment by width as well as height to reduce unused space between columns.
+  Date: 2026-02-07
+- Commit: 7720d96
+  Request: Fix regular OG second-column overflow where forgeborn ability text does not fit (`/api/og/deck/epjfotg0jhjnhzrjdfjnqpm3r06rea`).
+  Date: 2026-02-07
+- Commit: dbcd15f
+  Request: Also make `og:title` and `og:description` for regular decks analogous to fused decks.
+  Date: 2026-02-07
+- Commit: a3d501c
+  Request: Re-check the real half-deck OG URL and fix remaining bottom clipping where the last card line was cut off.
+  Date: 2026-02-07
+- Commit: 28ccc44
+  Request: Make OG for half-decks work analogously to fused decks.
+  Date: 2026-02-07
+- Commit: bb4f550
+  Request: Only one logo is used in the header; cache just that file, not all logo assets.
+  Date: 2026-02-07
+- Commit: c4b957c
+  Request: Cache the header logo for one day.
+  Date: 2026-02-07
+- Commit: 22ab805
+  Request: Re-check real remote OG images for remaining bottom empty space and fix fused auto-fit to improve column height fill without overlap.
+  Date: 2026-02-07
+- Commit: 0372f1c
+  Request: Verify on actual remote OG images before reporting completion; fix fused OG text overlap and center rarity icons relative to two-line card names.
+  Date: 2026-02-07
+- Commit: 9bc6e66
+  Request: In fused OG card lists, keep rarity icons vertically aligned with text and make icon size match the card font size.
+  Date: 2026-02-07
+- Commit: 4efc6eb
+  Request: Re-check and fix fused OG where first-column letters were still clipped by the bottom image edge on `Fused_u9912mkvb9mqm`.
+  Date: 2026-02-07
+- Commit: 557ea2d
+  Request: Fix fused OG clipping where the 10th card in the first column could render beyond the bottom edge for `Fused_u9912mkvb9mqm`.
+  Date: 2026-02-07
+- Commit: 0bb53a6
+  Request: Fix fused OG auto-fit so at least one column fully fills vertical space for each of three specific fused deck URLs, while checking the full image for artifacts and allowing bounded automatic column-width adjustments.
+  Date: 2026-02-07
+- Commit: 4b20faf
+  Request: Fix fused OG auto-fit for multiple specific deck URLs, maximizing column fill across full height (or at least one column) without artifacts, and allow bounded automatic column-width adjustments if needed.
+  Date: 2026-02-06
+- Commit: 528db89
+  Request: Review the whole fused OG image for anomalies, not just bottom spacing; detect and fix any strange layout artifacts.
+  Date: 2026-02-06
+- Commit: affc143
+  Request: Fix fused OG auto-fit inconsistency where `Fused_28e2ml15qmam` looked correct but `Fused_u9912mkvb9mqm` still left bottom empty space.
+  Date: 2026-02-06
+- Commit: 0df8fff
+  Request: In fused OG descriptions, do not show the `Solbind` card-type count when it is 0.
+  Date: 2026-02-06
+- Commit: e15b918
+  Request: Increase fused OG vertical fill because previous change still looked unchanged; keep text inside image bounds.
+  Date: 2026-02-06
+- Commit: 38750c8
+  Request: Adjust fused OG so at least one column fills the image vertically while ensuring text never overflows outside the image bounds.
+  Date: 2026-02-06
+- Commit: ae88f70
+  Request: Fix fused OG image overflow where second-column card text goes beyond image bounds for `http://hadoop21.click:3000/api/og/deck/Fused_28e2ml15qmam?refresh=1`.
+  Date: 2026-02-06
+- Commit: 424c4de
+  Request: Reduce the `Rarities` block in fused OG descriptions by using short rarity initials (for example, `C 8`, `DL 1`).
+  Date: 2026-02-06
+- Commit: 41a4bd5
+  Request: Add proactive handling for Supabase database-full/read-only mode so deck search does not fail when writes are blocked.
+  Date: 2026-02-06
+- Commit: 6308f02
+  Request: Do not touch `player_profiles` for now during deck search synchronization.
+  Date: 2026-02-06
+- Commit: f3c0479
+  Request: Make all database tables populate automatically when searching decks by player nickname on the site.
+  Date: 2026-02-06
+- Commit: 03d3a79
+  Request: Create a separate `cards` table with `card_id` and `card_name`, and link `player_deck_cards` to it by `card_id`.
+  Date: 2026-02-06
+- Commit: 5e9239e
+  Request: PLEASE IMPLEMENT THIS PLAN: Redesign `player_decks` to compact fields, move cards to `player_deck_cards`, enforce exactly 10 cards with deferred constraint trigger, add `upsert_player_deck` RPC, migrate data with hard cutover, and update types.
+  Date: 2026-02-06
+- Commit: f12cc61
+  Request: PLEASE IMPLEMENT THIS PLAN: Updated `player_fused_decks` schema without `api_created_at`/`api_updated_at`, with `synced_at`, source deck IDs, check/indexes, and upsert behavior.
+  Date: 2026-02-06
+- Commit: 5703412
+  Request: Make the homepage OG image use the same logo size as in the header.
+  Date: 2026-02-06
+- Commit: 7832761
+  Request: Add a dedicated `180x180` apple-touch-icon and use square favicon assets for the site.
+  Date: 2026-02-06
+- Commit: 3ded23c
+  Request: Add a favicon using the three-card mark from the site logo, and use the smaller header logo (not the full-size icon) for the homepage OG image.
+  Date: 2026-02-06
+- Commit: fa6ffc1
+  Request: Change OG metadata for the homepage (`http://hadoop21.click:3000/`): set the title to "Too Many Decks" and use the site icon as the image.
+  Date: 2026-02-06
 - Commit: 3a560c1
   Request: Add a CHANGELOG.md file to track changes; add another file to keep a history of all AI requests, including the commit ID and the request that led to it.
   Date: 2026-01-28
@@ -158,6 +326,15 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 5b81dec
   Request: Auto-scroll the selected card into view on click and increase the card frame height so level buttons fit.
   Date: 2026-01-28
+- Commit: 9ab4355
+  Request: Add the alternate forgeborn form name and abilities to OG deck images when a second form exists.
+  Date: 2026-02-05
+- Commit: 8b731b4
+  Request: Revert the latest change so OG previews do not pull forgeborn from another deck.
+  Date: 2026-02-05
+- Commit: f75fd28
+  Request: Ensure OG ability stat icons do not replace letters inside words (e.g., \"Damage\") for Fused_4bhmw2mkebmvfd.
+  Date: 2026-02-05
 - Commit: 5623c88
   Request: Reduce empty space in narrow card frames and ensure level buttons are fully visible.
   Date: 2026-01-28
@@ -302,3 +479,453 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: 977e2e5
   Request: Merge the dev branch into master and ensure the site changelog date reflects today.
   Date: 2026-01-30
+- Commit: 320e244
+  Request: Round the ELO value to a whole number in the OG card.
+  Date: 2026-02-04
+- Commit: d2e074d
+  Request: Rename "Creature tags" to "Creature types" in the OG image.
+  Date: 2026-02-04
+- Commit: 3908cbb
+  Request: Remove the automatic changelog build date; set version 0.0.1 to January 30, 2026 and show it in the viewer's locale format.
+  Date: 2026-02-04
+- Commit: fcf7608
+  Request: Speed up OG image generation so it completes within 2 seconds to avoid Discord timeouts.
+  Date: 2026-02-04
+- Commit: a11f41c
+  Request: Remove the forgeborn image from OG and render the forgeborn name and abilities in a vertical list instead.
+  Date: 2026-02-04
+- Commit: 961dc7b
+  Request: Add 24-hour server caching for deck details opened in the modal (including fused halves and direct links) to avoid repeated API calls.
+  Date: 2026-02-04
+- Commit: 51292be
+  Request: Populate OG forgeborn ability text from the deck (Nova abilities were missing and showed as unavailable).
+  Date: 2026-02-04
+- Commit: fffb4e4
+  Request: Remove the local card database fallback and split the changelog into 0.0.1 (through Jan 30) and 0.0.2 for new changes.
+  Date: 2026-02-04
+- Commit: 6a606c0
+  Request: Download level 1-4 icons and use them before forgeborn ability levels in OG images.
+  Date: 2026-02-04
+- Commit: c8faee7
+  Request: Diagnose why forgeborn abilities were missing and render them from deck JSON fields.
+  Date: 2026-02-04
+- Commit: a420be3
+  Request: Render OG ability text on the same line as the level icon without repeating the level label.
+  Date: 2026-02-04
+- Commit: 6efd966
+  Request: Download armor/attack/health icons and replace A/H/D letters with icons in OG forgeborn abilities.
+  Date: 2026-02-04
+- Commit: db64428
+  Request: Fix OG render failure caused by unsupported inline-flex in ability text rendering.
+  Date: 2026-02-04
+- Commit: fc78c56
+  Request: Replace [l1]-[l4] tokens in forgeborn ability text with level icons in OG images.
+  Date: 2026-02-04
+- Commit: 0819077
+  Request: Replace the OG left column stats with the non-forgeborn card list like the modal.
+  Date: 2026-02-04
+- Commit: ad17201
+  Request: Make OG stat icons slightly larger (except level icons) and align all icons with text.
+  Date: 2026-02-04
+- Commit: 51c4272
+  Request: In the OG image, add icons before each card name like in the modal, and add a space before `+` in forgeborn ability text.
+  Date: 2026-02-04
+- Commit: 9b6ec79
+  Request: Make both OG image columns equal width, wrap forgeborn ability text to avoid right-edge clipping, add spaces before `+` and `-` in forgeborn abilities, increase attack/health/armor icons by 1.5x, and increase card-list icon/font sizes by 1.5x.
+  Date: 2026-02-04
+- Commit: 15391b8
+  Request: http://hadoop21.click:3000/deck/s4-a7hainaunav6awkayfbxzcfscgmcll has no OG image; check and fix.
+  Date: 2026-02-04
+- Commit: aced616
+  Request: Implement all listed OG speed improvements (remove internal API hop, add OG payload and icon caches, increase CDN cache, optimize fast API path, and pre-warm OG on deck page open).
+  Date: 2026-02-04
+- Commit: 7a254c5
+  Request: Set payload/icon cache TTL to one day and add safeguards: cache only full payloads, cap cache size with LRU, and add manual bypass with `refresh=1`.
+  Date: 2026-02-04
+- Commit: a3cf189
+  Request: Enable sliding expiration for icon cache TTL (refresh TTL on icon use).
+  Date: 2026-02-04
+- Commit: 904221b
+  Request: Implement the Netlify + Cloudflare R2 plan: prewarm OG on deck open, keep OG cached for a day, and serve Discord from cache instead of rendering from scratch.
+  Date: 2026-02-04
+- Commit: 3ffa846
+  Request: Add the Netlify + Cloudflare R2 setup checklist to README.
+  Date: 2026-02-04
+- Commit: a7f065e
+  Request: Remove Cloudflare R2 everywhere (including .env.example and README.md) and add Upstash instead.
+  Date: 2026-02-04
+- Commit: daf14ef
+  Request: I will remove quotes everywhere; if needed, update the code.
+  Date: 2026-02-04
+- Commit: a2760c9
+  Request: Do you see the forgeborn ability rendering issue (overlap and clipping in OG)? Finish fixing it.
+  Date: 2026-02-04
+- Commit: 9a4b339
+  Request: For this OG URL, forgeborn ability text still goes past the right edge; fix wrapping/clipping.
+  Date: 2026-02-04
+- Commit: 4e63e43
+  Request: Make forgeborn abilities a full-width top section in OG; move card list below; for fused decks render card list in two columns (one half per column).
+  Date: 2026-02-04
+- Commit: 7ed4e7c
+  Request: Keep card names on one line up to the middle of the image and remove stray "\" symbols from forgeborn ability text.
+  Date: 2026-02-04
+- Commit: 71d0566
+  Request: Card names disappeared in OG; restore visible one-line card names.
+  Date: 2026-02-04
+- Commit: 77fbed1
+  Request: Set one equal medium font size for both forgeborn ability text and card list text in OG image.
+  Date: 2026-02-04
+- Commit: a4070ff
+  Request: Keep card-type counts on the same line as the type label and move the card list up closer under forgeborn abilities.
+  Date: 2026-02-04
+- Commit: 632b9db
+  Request: For fused OG columns, replace Half1/Half2 with faction icon, set name, rounded score (x100), and rounded ELO.
+  Date: 2026-02-04
+- Commit: 65563e6
+  Request: In fused OG image, show deck name in parentheses after the forgeborn name.
+  Date: 2026-02-04
+- Commit: 3220e01
+  Request: [2026-02-04T09:33:14.241Z] Error: Failed to find Server Action "x". This request might be from an older or newer deployment.
+  Date: 2026-02-04
+- Commit: 652975c
+  Request: In fused OG image, increase all typography by 20%.
+  Date: 2026-02-04
+- Commit: f348c33
+  Request: Redesign fused OG into 3 equal columns: half 1 stats/cards, half 2 stats/cards, and forgeborn name/deck + abilities.
+  Date: 2026-02-04
+- Commit: 15bdd19
+  Request: Fused OG still rendered like one column with overlap; fix to true three-column layout.
+  Date: 2026-02-04
+- Commit: 1075fb1
+  Request: Increase all fonts in fused OG images by 20%.
+  Date: 2026-02-04
+- Commit: 05ad24f
+  Request: In fused OG image, remove the deck name and keep only the forgeborn name in the title.
+  Date: 2026-02-04
+- Commit: d5b887a
+  Request: Third column text in fused OG formats strangely; fix forgeborn column typography/wrapping.
+  Date: 2026-02-04
+- Commit: 73bfb47
+  Request: In fused OG, third-column text does not use full column width; make forgeborn content fill the whole third column.
+  Date: 2026-02-04
+- Commit: 39d06de
+  Request: OG route fails with "Expected <div> to have explicit display:flex"; fix fused third-column wrapper rendering.
+  Date: 2026-02-04
+- Commit: 40c50da
+  Request: Strange line breaks in fused OG third column; fix ability text wrapping to use full line flow.
+  Date: 2026-02-04
+- Commit: 2d70745
+  Request: OG returns 500 due to unsupported CSS display:inline-block in ability rendering; remove unsupported styles.
+  Date: 2026-02-04
+- Commit: dd61336
+  Request: The fused OG URL does not load; continue and fix the rendering stall.
+  Date: 2026-02-04
+- Commit: ee5f024
+  Request: Also fix text wrapping in the other fused OG columns for this URL.
+  Date: 2026-02-04
+- Commit: b390193
+  Request: Continue fixing fused OG column wrapping so long card names wrap instead of clipping/truncating.
+  Date: 2026-02-04
+- Commit: a8007ad
+  Request: Third fused OG column is clipped at the right edge and ability icons are missing; fix both.
+  Date: 2026-02-04
+- Commit: 843ca64
+  Request: The fused OG third column still needs to be tightened so ability text does not clip on the right edge.
+  Date: 2026-02-04
+- Commit: 7a4dd0a
+  Request: Reduce fused OG third-column width (not font size) so text stays inside the image bounds.
+  Date: 2026-02-04
+- Commit: b742f89
+  Request: Set fused OG column widths to 1.1 / 1.1 / 1.0 and make third-column text wrapping normal.
+  Date: 2026-02-04
+- Commit: f18f27b
+  Request: Fix third fused OG column wrapping so lines do not leave large empty gaps.
+  Date: 2026-02-04
+- Commit: ec5e476
+  Request: In fused OG third column, stat icons disappeared and text overflowed right edge again; restore icons and constrain overflow.
+  Date: 2026-02-04
+- Commit: 2ae505c
+  Request: For fused OG (`/api/og/deck/Fused_4bu6z8m0h1nq0m?refresh=1`), restore the missing level icon on the level-2 forgeborn ability and keep third-column ability text inside the image bounds.
+  Date: 2026-02-04
+- Commit: a5da6cc
+  Request: `/api/og/deck/Fused_4bu6z8m0h1nq0m?refresh=1` stopped loading; fix OG route so it returns reliably while keeping third-column icons and bounds.
+  Date: 2026-02-04
+- Commit: ca91027
+  Request: Increase OG image font size everywhere by 10%.
+  Date: 2026-02-05
+- Commit: c2bafa6
+  Request: Color card names in OG by faction so all four faction colors remain readable and do not blend into the OG background.
+  Date: 2026-02-05
+- Commit: 5b018f3
+  Request: Color the forgeborn name in OG image with the forgeborn faction color.
+  Date: 2026-02-05
+- Commit: 132e8f8
+  Request: Remove faction icons from all cards in OG image.
+  Date: 2026-02-05
+- Commit: 03ef7d1
+  Request: Increase all OG image font sizes by another 5%.
+  Date: 2026-02-05
+- Commit: 9d9ced3
+  Request: For `Fused_1d4jjh2mkpba06f`, render `[l1]-[l4]` forgeborn ability tokens as level icons in OG text.
+  Date: 2026-02-05
+- Commit: 53113a7
+  Request: For `Fused_4bu6z8m0h1nq0m`, fix OG endpoint not opening and improve forgeborn ability line wrapping that breaks too early.
+  Date: 2026-02-05
+- Commit: 43deab7
+  Request: Improve fused OG forgeborn ability wrapping so lines do not end too early.
+  Date: 2026-02-05
+- Commit: a96332a
+  Request: Fix fused OG third-column forgeborn ability wrapping so line breaks are more natural.
+  Date: 2026-02-05
+- Commit: 1b9265e
+  Request: Implement the plan to remove activeFilters, derive filter order from URL, and use _1 suffixes for repeated filters.
+  Date: 2026-02-05
+- Commit: 74e50d3
+  Request: Make the filter picker searchable so typing filters the available filters.
+  Date: 2026-02-05
+- Commit: 39dcbba
+  Request: Rename the rarity filter to "Rarity (Specific)" and add comparison operators for rarity count.
+  Date: 2026-02-05
+- Commit: d40428d
+  Request: Add a "Rarity (Words)" filter that matches decks by rarity tokens with operator + count.
+  Date: 2026-02-05
+- Commit: 38147c6
+  Request: Remove pluralized rarity labels in deck list tags for fused decks.
+  Date: 2026-02-05
+- Commit: 6129a0a
+  Request: Keep CHANGELOG.md on version 0.0.2 instead of auto-incrementing versions.
+  Date: 2026-02-05
+- Commit: aae59a3
+  Request: Remove pluralization of rarity labels in deck details.
+  Date: 2026-02-05
+- Commit: 5bd785f
+  Request: Pick better names for rarity filters (Exact/Word).
+  Date: 2026-02-05
+- Commit: 4b0941f
+  Request: Add Darkforge Common and Darkforge_LS rarities to decks and filters.
+  Date: 2026-02-05
+- Commit: 2cc9d62
+  Request: Directly opened deck modal should return to the home page when closed.
+  Date: 2026-02-05
+- Commit: 1db867d
+  Request: Explain why the ELO filter adds long query parameters and reduce the number of URL parameters.
+  Date: 2026-02-05
+- Commit: 0ac35aa
+  Request: Add Darkforge_LS rarity icons for all sets and use them in the deck details modal.
+  Date: 2026-02-05
+- Commit: 846e185
+  Request: Rename Darkforge_LS to Darkforge LS everywhere and treat it as two words in rarity word filtering.
+  Date: 2026-02-05
+- Commit: 4218bc2
+  Request: Fix the Darkforge Common exact rarity filter returning zero results.
+  Date: 2026-02-05
+- Commit: 24b1de5
+  Request: Add Min/Max fields to multi-select filters so they require at least N of the selected values (default any-match).
+  Date: 2026-02-06
+- Commit: da75b41
+  Request: Add clear buttons for Min/Max inputs and make filter scrollbars three times wider.
+  Date: 2026-02-06
+- Commit: 1f2f91e
+  Request: Swap the site logo to the Too Many Decks transparent mark and size it appropriately.
+  Date: 2026-02-06
+- Commit: ec646cb
+  Request: Replace the logo file and regenerate the resized header asset.
+  Date: 2026-02-06
+- Commit: 72e0d82
+  Request: Replace the logo file again and regenerate the resized header asset.
+  Date: 2026-02-06
+- Commit: b06d962
+  Request: Move the Too Many Decks logo assets into a dedicated logo folder.
+  Date: 2026-02-06
+- Commit: 63e4506
+  Request: Move solforge-logo.png into the logo folder.
+  Date: 2026-02-06
+- Commit: 9a7aab3
+  Request: Add a 1Y column to the crypto tracker with year-over-year percent change.
+  Date: 2026-02-06
+- Commit: 5d28956
+  Request: Reduce empty spacing in the site header.
+  Date: 2026-02-06
+- Commit: ef09182
+  Request: "In fused OG images, remove faction/set/score/ELO details for the half decks, remove the Creatures/Spells labels, and increase the card list font size by 5%."
+  Date: 2026-02-06
+- Commit: 07e6005
+  Request: Increase the card list font size by another 5%.
+  Date: 2026-02-06
+- Commit: 802a17d
+  Request: Increase the rarity icons by 30%.
+  Date: 2026-02-06
+- Commit: 16b67c9
+  Request: Set the font scale for all columns in fused OG images to 1.1.
+  Date: 2026-02-06
+- Commit: ab111f7
+  Request: Revert the last change.
+  Date: 2026-02-06
+- Commit: 8d1d24a
+  Request: Increase the forgeborn ability font size to match the card list font size.
+  Date: 2026-02-06
+- Commit: 16326ae
+  Request: Ensure all file content is in English; translate the recent Russian AI request log entries.
+  Date: 2026-02-06
+- Commit: ec27c42
+  Request: Auto-fit font sizes for each fused OG column so text fills the column without overflowing.
+  Date: 2026-02-06
+- Commit: 7d62a81
+  Request: Fix fused OG auto-fit so the third column text does not overflow.
+  Date: 2026-02-06
+- Commit: f53b8c9
+  Request: Remove the forgeborn name from the third column.
+  Date: 2026-02-06
+- Commit: e76c2ab
+  Request: Increase the maximum fused OG auto-fit scale to 1.3.
+  Date: 2026-02-06
+- Commit: 71fd106
+  Request: Remove spaces before periods at the end of forgeborn ability sentences.
+  Date: 2026-02-06
+- Commit: df2a1b5
+  Request: Reduce fused OG empty bottom space by relaxing auto-fit spacing.
+  Date: 2026-02-06
+- Commit: c5b6dc0
+  Request: Raise fused OG auto-fit max scale to 1.35, use full height, and reduce vertical padding.
+  Date: 2026-02-06
+- Commit: 1374f67
+  Request: Reduce fused OG bottom whitespace by allowing larger auto-fit scaling and tighter padding.
+  Date: 2026-02-06
+- Commit: 883ad5f
+  Request: Inline forgeborn level icons with the ability text in the third column.
+  Date: 2026-02-06
+- Commit: 0c491f4
+  Request: Ensure forgeborn level icons do not create a separate column with no text beneath them.
+  Date: 2026-02-06
+- Commit: 2228f33
+  Request: Fix fused OG third-column abilities so text continues under Roman level icons (II-IV) instead of leaving an empty icon gutter.
+  Date: 2026-02-06
+- Commit: bf029a4
+  Request: Fix OG renderer error requiring explicit `display: flex` on multi-child ability row containers.
+  Date: 2026-02-06
+- Commit: ce39265
+  Request: Prevent wrapped lines in the fused OG third column from starting with punctuation such as a period or closing quote.
+  Date: 2026-02-06
+- Commit: c8aac5a
+  Request: Fix fused OG third-column wrapping so lines do not break too early and follow natural inline flow.
+  Date: 2026-02-06
+- Commit: f28aa68
+  Request: Fix OG render crash caused by unsupported `display: inline-block` in ability text styles.
+  Date: 2026-02-06
+- Commit: c783980
+  Request: Fix fused OG third-column wrapping that became too aggressive and normalize punctuation spacing.
+  Date: 2026-02-06
+- Commit: ccf87ee
+  Request: Continue fixing fused OG third-column layout and verify rendered output until stable.
+  Date: 2026-02-06
+- Commit: d7e72af
+  Request: Continue iterating and visually verifying the fused OG third column until wrapping and punctuation look correct.
+  Date: 2026-02-06
+- Commit: 2613807
+  Request: Update fused deck link preview text metadata (not OG image): prepend half-deck metadata (name, faction, set, score, ELO) to Open Graph and Twitter descriptions.
+  Date: 2026-02-06
+- Commit: 9f5e237
+  Request: For fused deck link previews, set title to `Deck Name (Forgeborn, Owner if available)`, remove card list from description, remove `Half 1/Half 2` labels, and try a newline between first and second half descriptions.
+  Date: 2026-02-06
+- Commit: a2c1894
+  Request: Refine fused link preview formatting: in title use `owner: <nick>`, and in half descriptions remove half deck names, parentheses, and the `Faction` label.
+  Date: 2026-02-06
+- Commit: cfd1675
+  Request: If available, append each half deck's expire date at the end of its description; then add a new description line with creatures/spells/solbind counts, deck rarity counts, and creature type counts.
+  Date: 2026-02-06
+- Commit: 9f171b7
+  Request: Increase all icons in the OG image third column by 1.5x.
+  Date: 2026-02-06
+- Commit: a4874f3
+  Request: In fused preview descriptions, move `Rarities` and `Creature Types` to new lines.
+  Date: 2026-02-06
+- Commit: 66304b8
+  Request: Improve OG image text sharpness/readability in social previews.
+  Date: 2026-02-06
+- Commit: 28cb681
+  Request: Cache deck page link-preview metadata (title/description/image alt) in memory with in-flight request deduplication, not just the OG image.
+  Date: 2026-02-06
+- Commit: ff2bbf6
+  Request: Improve OG image text sharpness in compressed Discord previews.
+  Date: 2026-02-06
+- Commit: 8b7182e
+  Request: Reduce forgeborn ability level icon size in the OG image third column by 5%.
+  Date: 2026-02-06
+- Commit: 7185ec3
+  Request: Revert the latest OG icon-size tweak and find/fix why descenders like "g" are slightly clipped in the fused OG third column.
+  Date: 2026-02-06
+- Commit: 6608b07
+  Request: The card modals show a window scrollbar even when it is not needed (example: http://hadoop21.click:3000/deck/Fused_u9912mkvb9mqm).
+  Date: 2026-02-06
+- Commit: 23a6b14
+  Request: For fused decks, show the earliest expiry date from the two halves at the top if available (example: http://hadoop21.click:3000/deck/Fused_93hi52mfig65sm).
+  Date: 2026-02-06
+- Commit: 5d01410
+  Request: Fix fused deck card lists so Solbind cards from both halves appear (example: http://hadoop21.click:3000/deck/Fused_u9912mkvb9mqm).
+  Date: 2026-02-06
+- Commit: 77fb157
+  Request: The fused deck modal still hides the second Solbind card; check and fix list scrolling (example: http://hadoop21.click:3000/deck/Fused_u9912mkvb9mqm).
+  Date: 2026-02-06
+- Commit: b798195
+  Request: Ensure the metadata description shows the correct Solbind count for fused decks (example: http://hadoop21.click:3000/deck/Fused_u9912mkvb9mqm).
+  Date: 2026-02-06
+- Commit: 7e61c3e
+  Request: For http://hadoop21.click:3000/deck/Fused_u9912mkvb9mqm, verify and fix metadata description Solbind count from nested card Solbind links.
+  Date: 2026-02-06
+- Commit: ae8fd32
+  Request: Verify whether Solbind should be 2 for the same fused deck and align metadata counting logic with the modal behavior.
+  Date: 2026-02-06
+- Commit: 9121606
+  Request: For http://hadoop21.click:3000/deck/Fused_93hi52mfig65sm, include half-deck expiry dates in metadata description when available.
+  Date: 2026-02-06
+- Commit: fa7bc89
+  Request: Change the half-deck metadata label from `Expires` to `Expire date`.
+  Date: 2026-02-06
+- Commit: 8bac17c
+  Request: Improve fused OG auto-fit fill for underfilled columns and render attack/health/armor icons for standalone uppercase A/H/D tokens inside ability text.
+  Date: 2026-02-06
+- Commit: ac3817e
+  Request: Continue improving fused OG auto-fit so at least one column fills near the bottom edge for http://hadoop21.click:3000/api/og/deck/Fused_93hi52mfig65sm?refresh=1.
+  Date: 2026-02-06
+- Commit: c21f182
+  Request: http://hadoop21.click:3000/deck/epjfotg0jhjnhzrjdfjnqpm3r06rea?ss=224&sdfgbg=42&dsfs=wrew shows an old Discord preview image even with extra URL params; check whether stale OG cache in Upstash is the cause and fix cache invalidation.
+  Date: 2026-02-07
+- Commit: f5eaa89
+  Request: For regular decks, OG description should include owner like fused decks; use Upstash-cached opened deck data to persist/reuse owner info for OG metadata.
+  Date: 2026-02-07
+- Commit: 14569c4
+  Request: Owner still did not appear in regular-deck OG description after verification; fix reliability so owner is consistently available.
+  Date: 2026-02-07
+- Commit: 51a51da
+  Request: Next.js dev overlay shows SSE error and HTTP 502 from deck stream in `store/deckStore.ts`; reduce noisy console errors and handle stream failures more gracefully.
+  Date: 2026-02-07
+- Commit: 1355d43
+  Request: Owner still does not appear in regular deck OG description after opening the deck modal first; make owner propagation reliable from real player search flow.
+  Date: 2026-02-07
+- Commit: 8cda8d5
+  Request: For http://hadoop21.click:3000/api/og/deck/Fused_1qrav2mfzdk9b9?refresh=1 the third column text is clipped; allow per-column font sizing so text fully fits within each column.
+  Date: 2026-02-07
+- Commit: 0df629f
+  Request: http://hadoop21.click:3000/api/og/deck/Fused_1qrav2mfzdk9b9?refresh=1 still clips the third column; make auto-fit reliably fit full text per column.
+  Date: 2026-02-07
+- Commit: d389ad7
+  Request: Apply per-column font auto-fit for regular decks (fill columns without overflow/bottom clipping) and investigate OG cache not refreshing on deck URLs with extra query params.
+  Date: 2026-02-07
+- Commit: 3e2781a
+  Request: Review 10 regular and 10 fused OG images for cutiehammer and ensure all cards/abilities are fully visible without bottom clipping; fix any remaining clipping cases.
+  Date: 2026-02-07
+- Commit: 6ab82cd
+  Request: Opening a deck by direct link is slow; can this be improved?
+  Date: 2026-02-08
+- Commit: 6ac9e35
+  Request: Can we speed up OG image generation for all decks?
+  Date: 2026-02-08
+- Commit: 651b3eb
+  Request: 3 seconds seems too long. Can we speed it up, and what takes the most time?
+  Date: 2026-02-08
+- Commit: 1f6e578
+  Request: 3 seconds seems too long. Can we speed it up, and what takes the most time?
+  Date: 2026-02-08
+- Commit: d06ab12
+  Request: Let's do it.
+  Date: 2026-02-08

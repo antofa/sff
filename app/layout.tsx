@@ -11,9 +11,43 @@ import './globals.css'
 
 installConsoleTimestamp()
 
+const headerLogoImage = '/images/logo/too-many-decks-logo.png'
+const headerLogoOgImage = '/images/logo/too-many-decks-og-256x130.png'
+const favicon32Image = '/favicon-32x32.png'
+const favicon192Image = '/favicon-192x192.png'
+const appleTouchIconImage = '/apple-touch-icon.png'
+
 export const metadata: Metadata = {
-  title: 'SolForge Fusion - Deck Viewer',
+  metadataBase: new URL('http://hadoop21.click:3000'),
+  title: 'Too Many Decks',
   description: 'SolForge Fusion Player Deck Viewer',
+  icons: {
+    icon: [
+      { url: favicon32Image, sizes: '32x32', type: 'image/png' },
+      { url: favicon192Image, sizes: '192x192', type: 'image/png' },
+    ],
+    shortcut: favicon32Image,
+    apple: [{ url: appleTouchIconImage, sizes: '180x180', type: 'image/png' }],
+  },
+  openGraph: {
+    title: 'Too Many Decks',
+    description: 'SolForge Fusion Player Deck Viewer',
+    type: 'website',
+    images: [
+      {
+        url: headerLogoOgImage,
+        width: 256,
+        height: 130,
+        alt: 'Too Many Decks',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Too Many Decks',
+    description: 'SolForge Fusion Player Deck Viewer',
+    images: [headerLogoOgImage],
+  },
 }
 
 export default function RootLayout({

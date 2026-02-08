@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Container, Loader, Paper, Stack, Text, Title, Button, Group } from '@mantine/core'
 import { IconArrowLeft, IconHash } from '@tabler/icons-react'
 import { BackgroundElements } from '@/components/BackgroundElements'
@@ -10,57 +10,208 @@ import { DeckDetails } from '@/components/DeckDetails'
 import type { Deck } from '@/store/deckStore'
 import { addComputedFields } from '@/store/deckStore'
 
-export default function DeckPageClient() {
+type DeckPageClientProps = {
+  initialDeckId?: string
+  initialDeck?: Deck | null
+}
+
+type DeckPageState = {
+  deck: Deck
+  allDecks: Deck[]
+}
+
+type DeckPageStateCacheEntry = {
+  expiresAt: number
+  data: DeckPageState
+}
+
+const DECK_PAGE_STATE_CACHE_TTL_MS = 10 * 60 * 1000
+const DECK_PAGE_STATE_CACHE_MAX_ENTRIES = 120
+const deckPageStateCache = new Map<string, DeckPageStateCacheEntry>()
+
+const normalizeDeckStateCacheKey = (deckId: string) => deckId.toString().trim().toLowerCase()
+
+const trimDeckPageStateCache = () => {
+  while (deckPageStateCache.size > DECK_PAGE_STATE_CACHE_MAX_ENTRIES) {
+    const oldestKey = deckPageStateCache.keys().next().value
+    if (oldestKey === undefined) return
+    deckPageStateCache.delete(oldestKey)
+  }
+}
+
+const getCachedDeckPageState = (deckId: string): DeckPageState | null => {
+  const key = normalizeDeckStateCacheKey(deckId)
+  const cached = deckPageStateCache.get(key)
+  if (!cached) return null
+  if (cached.expiresAt < Date.now()) {
+    deckPageStateCache.delete(key)
+    return null
+  }
+  return cached.data
+}
+
+const setCachedDeckPageState = (deckId: string, state: DeckPageState) => {
+  const key = normalizeDeckStateCacheKey(deckId)
+  deckPageStateCache.delete(key)
+  deckPageStateCache.set(key, {
+    expiresAt: Date.now() + DECK_PAGE_STATE_CACHE_TTL_MS,
+    data: state,
+  })
+  trimDeckPageStateCache()
+}
+
+const isSameDeckId = (left?: string | null, right?: string | null): boolean => {
+  if (!left || !right) return false
+  return normalizeDeckStateCacheKey(left) === normalizeDeckStateCacheKey(right)
+}
+
+const buildDeckStateFromRaw = (rawDeck: Deck) => {
+  const enriched = addComputedFields(rawDeck)
+  const enrichedSources =
+    Array.isArray((rawDeck as any)?.myDecks) && (rawDeck as any).myDecks.length > 0
+      ? (rawDeck as any).myDecks
+          .filter((d: any): d is Deck => !!d && typeof d === 'object')
+          .map((d: Deck) => addComputedFields(d))
+      : []
+  const enrichedDeck = enrichedSources.length > 0 ? { ...enriched, myDecks: enrichedSources } : enriched
+  return { deck: enrichedDeck, allDecks: [enrichedDeck, ...enrichedSources] }
+}
+
+export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageClientProps) {
   const params = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
   const router = useRouter()
-  const deckId = Array.isArray(params?.id) ? params.id[0] : params?.id
-  const [deck, setDeck] = useState<Deck | null>(null)
-  const [allDecks, setAllDecks] = useState<Deck[]>([])
-  const [loading, setLoading] = useState(true)
+  const routeDeckId = Array.isArray(params?.id) ? params.id[0] : params?.id
+  const deckId = routeDeckId || initialDeckId
+  const canUseInitialDeck = !!initialDeck && !!initialDeckId && (!routeDeckId || routeDeckId === initialDeckId)
+  const initialState = canUseInitialDeck ? buildDeckStateFromRaw(initialDeck as Deck) : null
+  const cachedState = deckId ? getCachedDeckPageState(deckId) : null
+  const bootstrapState = cachedState ?? initialState
+
+  const [deck, setDeck] = useState<Deck | null>(bootstrapState?.deck ?? null)
+  const [allDecks, setAllDecks] = useState<Deck[]>(bootstrapState?.allDecks ?? [])
+  const parentFusedFromQueryRaw = searchParams?.get('parentFused') || ''
+  const parentFusedIdFromQuery = parentFusedFromQueryRaw.trim()
+  const isCurrentDeckFused = String(((deck as any)?.format || '')).toLowerCase() === 'fused'
+  const parentFusedDeck: Deck | null =
+    parentFusedIdFromQuery && parentFusedIdFromQuery !== deckId && !isCurrentDeckFused
+      ? ((allDecks.find((candidate) => candidate?.id === parentFusedIdFromQuery) as Deck | undefined) || {
+          id: parentFusedIdFromQuery,
+          name: 'Fused Deck',
+          format: 'Fused',
+        })
+      : null
+  const [loading, setLoading] = useState(!bootstrapState)
   const [error, setError] = useState<string | null>(null)
   const sourcesLoadedRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!deckId) return
 
-    const load = async () => {
-      setLoading(true)
-      setError(null)
+    let cancelled = false
+
+    const applyDeckState = (rawDeck: Deck) => {
+      if (cancelled) return
+      const nextState = buildDeckStateFromRaw(rawDeck)
+      setDeck(nextState.deck)
+      setAllDecks(nextState.allDecks)
+    }
+
+    const fetchDeckPayload = async (url: string) => {
+      const res = await fetch(url, { headers: { Accept: 'application/json' } })
+      let json: any = null
       try {
-        const res = await fetch(`/api/deck/${deckId}`)
-        const json = await res.json()
-        if (!res.ok) {
-          throw new Error(json.error || 'Failed to load deck')
-        }
-        const rawDeck = json.deck as Deck
-        const enriched = addComputedFields(rawDeck)
+        json = await res.json()
+      } catch {
+        json = null
+      }
+      if (!res.ok || !json?.deck) {
+        throw new Error(json?.error || 'Failed to load deck')
+      }
+      return json.deck as Deck
+    }
 
-        const enrichedSources =
-          Array.isArray((rawDeck as any)?.myDecks) && (rawDeck as any).myDecks.length > 0
-            ? (rawDeck as any).myDecks
-                .filter((d: any): d is Deck => !!d && typeof d === 'object')
-                .map((d: Deck) => addComputedFields(d))
-            : []
-
-        setDeck(
-          enrichedSources.length > 0
-            ? { ...enriched, myDecks: enrichedSources }
-            : enriched
-        )
-
-        setAllDecks([enriched, ...enrichedSources])
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load deck')
-      } finally {
-        setLoading(false)
+    const fetchFullInBackground = async () => {
+      try {
+        const fullDeck = await fetchDeckPayload(`/api/deck/${deckId}`)
+        applyDeckState(fullDeck)
+      } catch {
+        // Keep fast payload on screen if full enrichment fails.
       }
     }
 
-    load()
-  }, [deckId])
+    const load = async () => {
+      setError(null)
+      const cachedForDeck = getCachedDeckPageState(deckId)
+      if (cachedForDeck) {
+        if (!cancelled) {
+          setDeck(cachedForDeck.deck)
+          setAllDecks(cachedForDeck.allDecks)
+        }
+        setLoading(false)
+        void fetchFullInBackground()
+        return
+      }
+
+      const hasMatchingInitialDeck = !!initialDeck && !!initialDeckId && initialDeckId === deckId
+
+      if (hasMatchingInitialDeck) {
+        applyDeckState(initialDeck as Deck)
+        setLoading(false)
+        void fetchFullInBackground()
+        return
+      }
+
+      setLoading(true)
+      try {
+        const fastDeck = await fetchDeckPayload(`/api/deck/${deckId}?fast=1`)
+        applyDeckState(fastDeck)
+        setLoading(false)
+        void fetchFullInBackground()
+      } catch {
+        try {
+          const fullDeck = await fetchDeckPayload(`/api/deck/${deckId}`)
+          applyDeckState(fullDeck)
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load deck')
+        } finally {
+          setLoading(false)
+        }
+      }
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [deckId, initialDeck, initialDeckId])
 
   useEffect(() => {
     sourcesLoadedRef.current = null
+  }, [deckId])
+
+  useEffect(() => {
+    if (!deckId || !deck?.id) return
+    if (!isSameDeckId(deckId, deck.id)) return
+    const normalizedAllDecks = allDecks.length > 0 ? allDecks : [deck]
+    setCachedDeckPageState(deckId, {
+      deck,
+      allDecks: normalizedAllDecks,
+    })
+  }, [deckId, deck, allDecks])
+
+  useEffect(() => {
+    if (!deckId) return
+    const encodedDeckId = encodeURIComponent(deckId)
+    // Warm the OG route in the background so sharing is instant after opening the deck.
+    void fetch(`/api/og/deck/${encodedDeckId}`, {
+      method: 'GET',
+      cache: 'force-cache',
+      keepalive: true,
+    }).catch(() => {
+      // ignore prewarm failures
+    })
   }, [deckId])
 
   useEffect(() => {
@@ -118,7 +269,7 @@ export default function DeckPageClient() {
 
   const handleClose = () => {
     if (typeof window === 'undefined') {
-      router.push('/all-decks')
+      router.push('/')
       return
     }
 
@@ -130,7 +281,7 @@ export default function DeckPageClient() {
       return
     }
 
-    router.push('/all-decks')
+    router.push('/')
   }
 
   return (
@@ -187,12 +338,20 @@ export default function DeckPageClient() {
           onClose={handleClose}
           onDeckClick={(d, parent) => {
             if (d?.id && d.id !== deckId) {
-              router.push(`/deck/${d.id}`)
+              const parentId = parent?.id || ''
+              const isParentFused =
+                !!parentId && String(((parent as any)?.format || '')).toLowerCase() === 'fused'
+              if (isParentFused) {
+                router.push(`/deck/${encodeURIComponent(d.id)}?parentFused=${encodeURIComponent(parentId)}`)
+                return
+              }
+              router.push(`/deck/${encodeURIComponent(d.id)}`)
             } else if (parent?.id && parent.id !== deckId) {
-              router.push(`/deck/${parent.id}`)
+              router.push(`/deck/${encodeURIComponent(parent.id)}`)
             }
           }}
           allDecks={allDecks.length > 0 ? allDecks : [deck]}
+          parentFusedDeck={parentFusedDeck}
         />
       )}
     </main>

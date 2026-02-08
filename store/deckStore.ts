@@ -466,6 +466,10 @@ const computeRarityCounts = (deck: Deck): Record<string, number> => {
       }
       if (lower.includes('darkforge') && lower.includes('rare')) {
         normalizedRarity = 'Darkforge Rare'
+      } else if (lower.includes('darkforge') && lower.includes('common')) {
+        normalizedRarity = 'Darkforge Common'
+      } else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) {
+        normalizedRarity = 'Darkforge LS'
       } else if (lower.includes('common common')) {
         normalizedRarity = 'Common Common'
       } else if (lower.includes('rare rare')) {
@@ -1037,6 +1041,15 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         perDeckCreatureTypes?: Record<string, Record<string, number>>
       } = {}
       let latestTagMessage: string | undefined
+      let terminalErrorHandled = false
+      let preparedDecks:
+        | {
+            regular: Deck[]
+            fused: Deck[]
+            deckNameIndex: string[]
+            forgebornNameIndex: string[]
+          }
+        | null = null
 
       const deckPhaseDone = () => {
         const regularStatus = progressSteps.find((s) => s.key === 'fetchRegular')?.status
@@ -1240,10 +1253,18 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           const enhancedRegular = attachComputed(validatedRegularDecks)
           const enhancedFused = attachComputed(validatedFusedDecks)
           const names = buildNameIndexes(enhancedRegular, enhancedFused)
+          preparedDecks = {
+            regular: enhancedRegular,
+            fused: enhancedFused,
+            deckNameIndex: names.deckNameIndex,
+            forgebornNameIndex: names.forgebornNameIndex,
+          }
 
           set({
             decks: enhancedRegular,
             fusedDecks: enhancedFused,
+            loading: false,
+            error: null,
             deckNameIndex: names.deckNameIndex,
             forgebornNameIndex: names.forgebornNameIndex,
           })
@@ -1308,22 +1329,14 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         updateSteps('finalize', 'running', 'Validating response...')
 
         const owner = playerName.trim()
-        const taggedRegular = Array.isArray(regularDecks)
-          ? regularDecks.map(deck => ({ ...deck, playerName: owner }))
-          : []
-        const taggedFused = Array.isArray(fusedDecks)
-          ? fusedDecks.map(deck => ({ ...deck, playerName: owner }))
-          : []
-
-        try {
-          const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
-          const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
-          const enhancedRegular = attachComputed(validatedRegularDecks)
-          const enhancedFused = attachComputed(validatedFusedDecks)
-          const names = buildNameIndexes(enhancedRegular, enhancedFused)
+        const cacheDecks = (
+          regular: Deck[],
+          fused: Deck[],
+          names: { deckNameIndex: string[]; forgebornNameIndex: string[] }
+        ) => {
           set((state) => ({
-            decks: enhancedRegular,
-            fusedDecks: enhancedFused,
+            decks: regular,
+            fusedDecks: fused,
             loading: false,
             tagIndex: tagsPayload.uniqueTags || [],
             cardNameIndex: tagsPayload.uniqueCardNames || [],
@@ -1334,8 +1347,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             playerCache: {
               ...state.playerCache,
               [normalizedPlayer]: {
-                decks: enhancedRegular,
-                fusedDecks: enhancedFused,
+                decks: regular,
+                fusedDecks: fused,
                 tagIndex: tagsPayload.uniqueTags || [],
                 cardNameIndex: tagsPayload.uniqueCardNames || [],
                 deckNameIndex: names.deckNameIndex,
@@ -1346,44 +1359,48 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
               },
             },
           }))
-        } catch (validationError) {
-          console.error('[Store] Data validation error:', validationError)
-          if ((Array.isArray(regularDecks) && regularDecks.length > 0) || (Array.isArray(fusedDecks) && fusedDecks.length > 0)) {
-            console.warn('[Store] Using unvalidated data')
-          const fallbackRegular = attachComputed(Array.isArray(regularDecks) ? regularDecks : [])
-          const fallbackFused = attachComputed(Array.isArray(fusedDecks) ? fusedDecks : [])
-          const names = buildNameIndexes(fallbackRegular, fallbackFused)
-            set((state) => ({
-              decks: fallbackRegular,
-              fusedDecks: fallbackFused,
-              loading: false,
-              tagIndex: tagsPayload.uniqueTags || [],
-              cardNameIndex: tagsPayload.uniqueCardNames || [],
-              deckNameIndex: names.deckNameIndex,
-              forgebornNameIndex: names.forgebornNameIndex,
-              deckTags: tagsPayload.perDeck || {},
-              deckCreatureTypes: tagsPayload.perDeckCreatureTypes || {},
-              playerCache: {
-                ...state.playerCache,
-                [normalizedPlayer]: {
-                  decks: fallbackRegular,
-                  fusedDecks: fallbackFused,
-                  tagIndex: tagsPayload.uniqueTags || [],
-                  cardNameIndex: tagsPayload.uniqueCardNames || [],
-                  deckNameIndex: names.deckNameIndex,
-                  forgebornNameIndex: names.forgebornNameIndex,
-                  deckTags: tagsPayload.perDeck || {},
-                  deckCreatureTypes: tagsPayload.perDeckCreatureTypes || {},
-                  expiresAt: Date.now() + CACHE_TTL_MS,
-                },
-              },
-            }))
-          } else {
-            cleanup()
-            set({ loading: false })
-            finishProgress('Invalid data format from server', 'error')
-            reject(validationError)
-            return
+        }
+
+        const canReusePreparedDecks =
+          !!preparedDecks &&
+          preparedDecks.regular.length === regularDecks.length &&
+          preparedDecks.fused.length === fusedDecks.length
+
+        if (canReusePreparedDecks && preparedDecks) {
+          cacheDecks(preparedDecks.regular, preparedDecks.fused, {
+            deckNameIndex: preparedDecks.deckNameIndex,
+            forgebornNameIndex: preparedDecks.forgebornNameIndex,
+          })
+        } else {
+          const taggedRegular = Array.isArray(regularDecks)
+            ? regularDecks.map(deck => ({ ...deck, playerName: owner }))
+            : []
+          const taggedFused = Array.isArray(fusedDecks)
+            ? fusedDecks.map(deck => ({ ...deck, playerName: owner }))
+            : []
+
+          try {
+            const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
+            const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
+            const enhancedRegular = attachComputed(validatedRegularDecks)
+            const enhancedFused = attachComputed(validatedFusedDecks)
+            const names = buildNameIndexes(enhancedRegular, enhancedFused)
+            cacheDecks(enhancedRegular, enhancedFused, names)
+          } catch (validationError) {
+            console.error('[Store] Data validation error:', validationError)
+            if ((Array.isArray(regularDecks) && regularDecks.length > 0) || (Array.isArray(fusedDecks) && fusedDecks.length > 0)) {
+              console.warn('[Store] Using unvalidated data')
+              const fallbackRegular = attachComputed(Array.isArray(regularDecks) ? regularDecks : [])
+              const fallbackFused = attachComputed(Array.isArray(fusedDecks) ? fusedDecks : [])
+              const names = buildNameIndexes(fallbackRegular, fallbackFused)
+              cacheDecks(fallbackRegular, fallbackFused, names)
+            } else {
+              cleanup()
+              set({ loading: false })
+              finishProgress('Invalid data format from server', 'error')
+              reject(validationError)
+              return
+            }
           }
         }
 
@@ -1441,7 +1458,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           (parsed && typeof parsed === 'object' && 'message' in parsed && (parsed as any).message) ||
           (typeof parsed === 'string' ? parsed : null)
 
-        console.error('[Store] SSE error event:', {
+        console.warn('[Store] SSE error event:', {
           readyState,
           type: event?.type,
           payload: parsed,
@@ -1467,15 +1484,129 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           return
         }
 
+        if (terminalErrorHandled) return
+        terminalErrorHandled = true
         cleanup()
-        set({
-          error: userMessage,
-          loading: false,
-          decks: existingDecks,
-          fusedDecks: existingFused,
-        })
-        finishProgress(userMessage, 'error')
-        reject(new Error(userMessage))
+
+        void (async () => {
+          try {
+            updateSteps('fetchRegular', 'running', 'Stream interrupted. Retrying via HTTP...')
+            const cacheBust = forceRefresh ? `&_=${Date.now()}` : ''
+            const res = await fetch(
+              `/api/decks?player=${encodeURIComponent(normalizedName)}${forceRefresh ? '&force=1' : ''}${cacheBust}`,
+              { headers: { Accept: 'application/json' }, cache: 'no-store' }
+            )
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+            }
+
+            const json = await res.json()
+            const rawRegular = Array.isArray(json?.regular) ? json.regular : []
+            const rawFused = Array.isArray(json?.fused) ? json.fused : []
+            const owner = playerName.trim()
+            const taggedRegular = rawRegular.map((deck: any) => ({ ...deck, playerName: owner }))
+            const taggedFused = rawFused.map((deck: any) => ({ ...deck, playerName: owner }))
+
+            let enhancedRegular: Deck[] = []
+            let enhancedFused: Deck[] = []
+            try {
+              enhancedRegular = attachComputed(DecksResponseSchema.parse(taggedRegular))
+              enhancedFused = attachComputed(DecksResponseSchema.parse(taggedFused))
+            } catch (validationError) {
+              if ((taggedRegular.length + taggedFused.length) === 0) {
+                throw validationError
+              }
+              console.warn('[Store] HTTP fallback validation warning; using unvalidated data')
+              enhancedRegular = attachComputed(taggedRegular)
+              enhancedFused = attachComputed(taggedFused)
+            }
+
+            const names = buildNameIndexes(enhancedRegular, enhancedFused)
+            const allDecks = [...enhancedRegular, ...enhancedFused]
+            const perDeckTags: Record<string, string[]> = {}
+            const perDeckCreatureTypes: Record<string, Record<string, number>> = {}
+            const uniqueTags = new Set<string>()
+            const uniqueCardNames = new Set<string>()
+
+            allDecks.forEach((deck) => {
+              const deckId = deck?.id
+              const displayTags = Array.isArray(deck?.computed?.displayTags) ? deck.computed!.displayTags : []
+              if (deckId) {
+                perDeckTags[deckId] = displayTags
+                perDeckCreatureTypes[deckId] = deck.creatureType || {}
+              }
+              displayTags.forEach((tag) => {
+                if (tag && typeof tag === 'string') uniqueTags.add(tag)
+              })
+
+              if (Array.isArray(deck.cards)) {
+                deck.cards.forEach((card: any, index: number) => {
+                  const cardInfo =
+                    typeof card === 'string'
+                      ? getCardInfoCached(card)
+                      : getCardInfoCached(card?.id || card?.cardId || card?.name || `card-${index}`, card)
+                  if (cardInfo?.name && typeof cardInfo.name === 'string' && cardInfo.name.trim()) {
+                    uniqueCardNames.add(cardInfo.name.trim())
+                  }
+                })
+              }
+            })
+
+            setProgressCounters({
+              regularCount: enhancedRegular.length,
+              fusedCount: enhancedFused.length,
+              totalCount: enhancedRegular.length + enhancedFused.length,
+              regularPages: json?.meta?.regularPages ?? json?.meta?.pages ?? (enhancedRegular.length > 0 ? 1 : 0),
+              fusedPages: json?.meta?.fusedPages ?? (enhancedFused.length > 0 ? 1 : 0),
+              tagCount: uniqueTags.size,
+              tagTotal: enhancedRegular.length + enhancedFused.length,
+            })
+            updateSteps('fetchRegular', 'done', 'HTTP fallback complete')
+            updateSteps('fetchFused', 'done')
+            updateSteps('tags', 'done', 'Tags prepared')
+            updateSteps('finalize', 'done', 'Decks loaded (HTTP fallback)')
+
+            set((state) => ({
+              decks: enhancedRegular,
+              fusedDecks: enhancedFused,
+              error: null,
+              loading: false,
+              tagIndex: Array.from(uniqueTags).sort(),
+              cardNameIndex: Array.from(uniqueCardNames).sort(),
+              deckNameIndex: names.deckNameIndex,
+              forgebornNameIndex: names.forgebornNameIndex,
+              deckTags: perDeckTags,
+              deckCreatureTypes: perDeckCreatureTypes,
+              playerCache: {
+                ...state.playerCache,
+                [normalizedPlayer]: {
+                  decks: enhancedRegular,
+                  fusedDecks: enhancedFused,
+                  tagIndex: Array.from(uniqueTags).sort(),
+                  cardNameIndex: Array.from(uniqueCardNames).sort(),
+                  deckNameIndex: names.deckNameIndex,
+                  forgebornNameIndex: names.forgebornNameIndex,
+                  deckTags: perDeckTags,
+                  deckCreatureTypes: perDeckCreatureTypes,
+                  expiresAt: Date.now() + CACHE_TTL_MS,
+                },
+              },
+            }))
+            finishProgress('Decks loaded (HTTP fallback)', 'done')
+            resolve()
+          } catch (fallbackError) {
+            const fallbackMessage =
+              fallbackError instanceof Error ? fallbackError.message : userMessage || 'Failed to load decks.'
+            set({
+              error: fallbackMessage,
+              loading: false,
+              decks: existingDecks,
+              fusedDecks: existingFused,
+            })
+            finishProgress(fallbackMessage, 'error')
+            reject(new Error(fallbackMessage))
+          }
+        })()
       })
     })
   },
@@ -1538,6 +1669,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       }
       set({ currentEventSource: null })
     }
-    void fetchDecks(currentPlayer, { force: true, keepExisting: true })
+    void fetchDecks(currentPlayer, { force: true, keepExisting: true }).catch((err) => {
+      console.warn('[Store] restartFetchIfLoading failed:', err)
+    })
   },
 }))

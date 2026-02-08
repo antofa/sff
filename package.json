@@ -19,6 +19,7 @@
     "@supabase/supabase-js": "^2.86.2",
     "@tabler/icons-react": "^3.35.0",
     "@tanstack/react-virtual": "^3.13.12",
+    "@upstash/redis": "^1.36.2",
     "clsx": "^2.1.1",
     "next": "^16.0.7",
     "next-auth": "^5.0.0-beta.30",
