@@ -4,6 +4,11 @@ import { createHash } from 'node:crypto'
 import DeckPageClient from './DeckPageClient'
 import { fetchDeckDetails, getCardInfo, normalizeDeck } from '@/lib/api'
 import { getDeckOwnerFromUpstashCache, putDeckOwnerToUpstashCache } from '@/lib/deckOwnerUpstashCache'
+import {
+  getDeckPreviewFromUpstashCache,
+  isDeckPreviewUpstashCacheConfigured,
+  putDeckPreviewToUpstashCache,
+} from '@/lib/deckPreviewUpstashCache'
 import { OG_IMAGE_VERSION } from '@/lib/ogVersion'
 
 export const dynamic = 'force-dynamic'
@@ -809,16 +814,29 @@ const getDeckPreviewCore = async (
   const inflight = deckPreviewInFlight.get(cacheKey)
   if (inflight) return inflight
 
-  const promise = buildDeckPreviewCore(deckId, titleFallback, baseUrl)
-    .then((core) => {
-      if (core) {
-        const cacheTtlMs = !core.isFused && !core.hasOwner
-          ? DECK_PREVIEW_MISSING_OWNER_TTL_MS
-          : DECK_PREVIEW_CACHE_TTL_MS
-        setCachedDeckPreview(cacheKey, core, cacheTtlMs)
+  const promise = (async () => {
+    if (isDeckPreviewUpstashCacheConfigured()) {
+      const remoteCached = await getDeckPreviewFromUpstashCache(cacheKey)
+      if (remoteCached && (remoteCached.isFused || remoteCached.hasOwner)) {
+        setCachedDeckPreview(cacheKey, remoteCached, DECK_PREVIEW_CACHE_TTL_MS)
+        return remoteCached
       }
-      return core
-    })
+    }
+
+    const core = await buildDeckPreviewCore(deckId, titleFallback, baseUrl)
+    if (core) {
+      const cacheTtlMs = !core.isFused && !core.hasOwner
+        ? DECK_PREVIEW_MISSING_OWNER_TTL_MS
+        : DECK_PREVIEW_CACHE_TTL_MS
+      setCachedDeckPreview(cacheKey, core, cacheTtlMs)
+      if (isDeckPreviewUpstashCacheConfigured()) {
+        void putDeckPreviewToUpstashCache(cacheKey, core, {
+          ttlSeconds: Math.max(1, Math.round(cacheTtlMs / 1000)),
+        })
+      }
+    }
+    return core
+  })()
     .finally(() => {
       deckPreviewInFlight.delete(cacheKey)
     })
