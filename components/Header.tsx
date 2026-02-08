@@ -44,19 +44,21 @@ const CHANGELOG_HISTORY: ChangelogEntry[] = [
     version: '0.0.2',
     date: '2026-02-08',
     added: [
+      'New rarity filtering options were added, including exact rarity matching and keyword-based rarity search.',
+      'Min/Max controls were added to key filters to narrow large deck lists faster.',
       'Direct deck links now open with richer details more often, including fused deck context.',
-      'Deck pages now preserve more useful details when you move between a fused deck and its halves.',
-      'Search progress now feels clearer while decks are being loaded.',
     ],
     changed: [
+      'Shared link previews (OG images) now load faster and look cleaner in messengers and social feeds.',
+      'Preview titles and descriptions are more informative: they now better reflect deck, forgeborn, owner, and summary details.',
+      'Preview image text fitting and readability were improved, so long names and ability text are less likely to look cramped.',
       'Player deck search now shows found decks sooner while background saving continues quietly.',
-      'Deck detail windows open more smoothly and stay responsive on repeated navigation.',
-      'Fused deck information is now filled in more consistently when opened from a shared link.',
     ],
     fixed: [
+      'Fixed multiple fused-preview issues where some shared links could show incomplete or inconsistent details.',
+      'Fixed several cases where direct-link deck views could miss important fields like expire date.',
       'Fixed cases where fused deck and half-deck data could mix after switching views.',
       'Back to Fused navigation from a half deck now works more reliably.',
-      'Expire date now appears more consistently for direct-link deck views.',
     ],
   },
   {

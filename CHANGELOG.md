@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Expanded header changelog `0.0.2` notes with clearer user-facing highlights from the full release period (including OG preview image/title/description improvements and new filtering options), so the in-app changelog better matches what players actually notice.
 - (2026-02-08 UTC) Updated the in-app header changelog modal to keep version history visible (including previous releases) instead of showing only the latest entry, so users can review past updates directly from the header icon.
 - (2026-02-08 UTC) Updated the in-app header changelog to version `0.0.2` with concise, player-focused release notes that explain user-visible improvements in deck loading, fused/half navigation stability, and direct-link detail reliability.
 - (2026-02-08 UTC) Limited `DeckDetails` fused-source diagnostic logging to non-production builds by skipping `/api/log` dispatch when `NODE_ENV === 'production'`, removing this extra network request from production deck-detail opens.
