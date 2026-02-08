@@ -230,25 +230,54 @@ const buildFusedCreatureTypeEntries = (
     })
 }
 
-// Fetch full deck details directly from API (faster than going through API route)
+// Fetch deck details with internal API priority (includes fallback enrichment),
+// then fall back to external API if internal route is unavailable.
 async function fetchDeckDetails(deckId: string): Promise<any> {
-  try {
-    const url = `https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/${deckId}?inclCards=true&inclUsers=true`
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-      signal: AbortSignal.timeout(10000),
-    })
+  const fetchFromInternalApi = async (): Promise<any | null> => {
+    try {
+      const response = await fetch(`/api/deck/${encodeURIComponent(deckId)}`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(12000),
+      })
 
-    if (!response.ok) {
+      if (!response.ok) return null
+
+      const payload = await response.json().catch(() => null)
+      return payload?.deck || null
+    } catch {
       return null
     }
+  }
 
-    const data = await response.json()
-    return data
-  } catch (error) {
+  const fetchFromExternalApi = async (): Promise<any | null> => {
+    try {
+      const url = `https://ul51g2rg42.execute-api.us-east-1.amazonaws.com/main/deck/${deckId}?inclCards=true&inclUsers=true`
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(10000),
+      })
+
+      if (!response.ok) {
+        return null
+      }
+
+      return await response.json()
+    } catch {
+      return null
+    }
+  }
+
+  try {
+    const internal = await fetchFromInternalApi()
+    if (internal) return internal
+    return await fetchFromExternalApi()
+  } catch {
     return null
   }
 }
