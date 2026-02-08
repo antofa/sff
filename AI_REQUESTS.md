@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: e498453
+  Request: The changelog is missing details like OG image/title/description changes and the new filter; clarify whether the summary covered only today or the full period since the last merge.
+  Date: 2026-02-08
 - Commit: 342074d
   Request: The header changelog must keep full history: all previous versions and their changes should remain visible.
   Date: 2026-02-08
