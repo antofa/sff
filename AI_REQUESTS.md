@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 461a001
+  Request: Ignore browser-extension (MetaMask) runtime errors in global client error logging so they are not sent to `/api/log-error` or written to server logs.
+  Date: 2026-02-08
 - Commit: b27ee3e
   Request: Remove `Creatures` and `Spells` labels from regular-deck OG images.
   Date: 2026-02-07
