@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 342074d
+  Request: The header changelog must keep full history: all previous versions and their changes should remain visible.
+  Date: 2026-02-08
 - Commit: 8ec860c
   Request: Keep this log only in dev (`NODE_ENV !== 'production'`).
   Date: 2026-02-08
