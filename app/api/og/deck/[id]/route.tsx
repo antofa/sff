@@ -1628,7 +1628,7 @@ export async function GET(
   const cardTopSafetyPx = showFusedColumns ? 3 : 3
   const cardBottomSafetyPx = showFusedColumns ? 10 : 12
   const forgebornTopSafetyPx = showFusedColumns ? 3 : 3
-  const forgebornBottomSafetyPx = showFusedColumns ? 14 : 14
+  const forgebornBottomSafetyPx = showFusedColumns ? 15 : 20
   const forgebornAbilityLineHeight = hasSecondaryForgeborn
     ? Math.max(1.08, baseForgebornAbilityLineHeight - 0.05)
     : baseForgebornAbilityLineHeight
@@ -1798,7 +1798,7 @@ export async function GET(
     scaledLevelIconSize: number,
     scaledStatIconSize: number
   ) => {
-    const safety = showFusedColumns ? 1.03 : 1.02
+    const safety = showFusedColumns ? 1.06 : 1.12
     if (token.kind === 'text') {
       return estimateTextWidth(`${token.text} `, fontSize) * safety
     }
@@ -1887,7 +1887,7 @@ export async function GET(
         scaledStatIconSize
       )
       const lineHeightPx = fontSize * lineHeight
-      const iconLineHeight = Math.max(scaledLevelIconSize, scaledStatIconSize) * 1.02
+      const iconLineHeight = Math.max(scaledLevelIconSize, scaledStatIconSize) * (showFusedColumns ? 1.06 : 1.12)
       const lineBlockHeight = lines * Math.max(lineHeightPx, iconLineHeight) + fontSize * (showFusedColumns ? 0.2 : 0.16)
       const rowHeight = lineBlockHeight
       return sum + rowHeight
@@ -2003,7 +2003,7 @@ export async function GET(
   const maxVisualScale = showFusedColumns ? 2.8 : 2.5
   const safeHeightBudget = innerHeight - (showFusedColumns ? 12 : 14)
   const cardFitBudget = safeHeightBudget * (showFusedColumns ? 0.996 : 0.998)
-  const forgebornFitBudget = safeHeightBudget * (showFusedColumns ? 0.99 : 0.995)
+  const forgebornFitBudget = safeHeightBudget * (showFusedColumns ? 0.982 : 0.965)
 
   let fusedCardColumnFlexes: [number, number] = [...defaultFusedCardColumnFlexes]
   let fusedForgebornColumnFlex = defaultFusedForgebornColumnFlex
@@ -2187,7 +2187,7 @@ export async function GET(
   }
 
   const cardRenderScaleFactors: number[] = showFusedColumns ? [1, 1] : [1]
-  const forgebornRenderScale = 1
+  const forgebornRenderScale = showFusedColumns ? 0.985 : 0.95
 
   const forgebornAbilityFont =
     Math.round(baseForgebornAbilityFont * primaryAbilityScale * forgebornColumnScale * forgebornRenderScale * 10) / 10
