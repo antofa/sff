@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Made deck persistence non-blocking during player search: `/api/decks/stream` now emits deck results before Supabase save/owner-cache work, removed the blocking "Saving decks to database..." progress stage, and moved `/api/decks` persistence helpers to background execution; deck lists now render immediately when results arrive (including on the player profile page) while database writes continue in the background.
 - (2026-02-08 UTC) Reduced UI jank during URL-based reset by deferring the homepage reset state updates into a queued transition, and removed unstable fused-deck set memoization so list filtering/rendering remains responsive under React Compiler checks.
 - (2026-02-08 UTC) Preserved fused-to-half navigation context on direct deck links: opening a fused source half now carries `parentFused` in the URL so the half view shows `Back to Fused` and returns to the original fused deck.
 - (2026-02-08 UTC) Sped up `/deck/[id]` page responses for regular browser visits by using a lightweight metadata path and reserving the heavier enriched metadata generation for social crawlers.

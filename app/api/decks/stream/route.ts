@@ -559,38 +559,7 @@ const processDeckBatch = async (
           })
         }
 
-        writeEvent(controller, 'progress', {
-          message: 'Saving decks to database...',
-          page: meta.pages ?? meta.regularPages ?? 1,
-          received: regularWithTypes.length + fused.length,
-          totalSoFar: regularWithTypes.length + fused.length,
-        })
-
-        try {
-          const sync = await syncDeckSearchToSupabase(playerName, regularWithTypes, fused)
-          if (sync.enabled) {
-            if (sync.writeBlocked) {
-              logStage(
-                `supabase sync write-blocked until ${sync.writeBlockedUntil || 'unknown'} regular=${sync.persistedRegular}/${regularWithTypes.length} fused=${sync.persistedFused}/${fused.length}`
-              )
-            } else {
-              logStage(
-                `supabase sync done regular=${sync.persistedRegular}/${regularWithTypes.length} fused=${sync.persistedFused}/${fused.length}`
-              )
-            }
-          } else {
-            logStage('supabase sync skipped (env missing)')
-          }
-        } catch (syncErr) {
-          console.warn('[API /decks/stream] Supabase sync failed:', syncErr)
-          logStage(`supabase sync error: ${syncErr instanceof Error ? syncErr.message : 'unknown'}`)
-        }
-
-        await cacheDeckOwnersBestEffort(playerName, regularWithTypes)
-        await cacheDeckOwnersBestEffort(playerName, fused)
-        logStage(`owner cache done regular=${regularWithTypes.length} fused=${fused.length}`)
-
-        // Send decks immediately so fetch step can complete on client
+        // Send decks as soon as they are available; persistence happens in background.
         writeEvent(controller, 'decks-ready', {
           regular: regularWithTypes,
           fused,
@@ -603,6 +572,32 @@ const processDeckBatch = async (
           },
         })
         logStage('decks-ready emitted to client')
+
+        void (async () => {
+          try {
+            const sync = await syncDeckSearchToSupabase(playerName, regularWithTypes, fused)
+            if (sync.enabled) {
+              if (sync.writeBlocked) {
+                logStage(
+                  `supabase sync write-blocked until ${sync.writeBlockedUntil || 'unknown'} regular=${sync.persistedRegular}/${regularWithTypes.length} fused=${sync.persistedFused}/${fused.length}`
+                )
+              } else {
+                logStage(
+                  `supabase sync done regular=${sync.persistedRegular}/${regularWithTypes.length} fused=${sync.persistedFused}/${fused.length}`
+                )
+              }
+            } else {
+              logStage('supabase sync skipped (env missing)')
+            }
+          } catch (syncErr) {
+            console.warn('[API /decks/stream] Supabase sync failed:', syncErr)
+            logStage(`supabase sync error: ${syncErr instanceof Error ? syncErr.message : 'unknown'}`)
+          }
+
+          await cacheDeckOwnersBestEffort(playerName, regularWithTypes)
+          await cacheDeckOwnersBestEffort(playerName, fused)
+          logStage(`owner cache done regular=${regularWithTypes.length} fused=${fused.length}`)
+        })()
 
         // Final tag payload with both regular and fused decks (blocking until tags complete)
         logStage('tag aggregation waiting for queue to finish')

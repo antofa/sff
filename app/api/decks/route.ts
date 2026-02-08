@@ -85,8 +85,8 @@ export async function GET(request: NextRequest) {
     if (type === 'fused') {
       // Fetch only fused decks
       const fusedDecks = await fetchFusedDecksFromAPI(playerName, { force })
-      await cacheDeckOwnersBestEffort(playerName, fusedDecks)
-      await syncBestEffort(playerName, [], fusedDecks)
+      void cacheDeckOwnersBestEffort(playerName, fusedDecks)
+      void syncBestEffort(playerName, [], fusedDecks)
       logWithTimestamp(`[API Route] Received ${fusedDecks.length} fused decks for player: ${playerName}`)
       return NextResponse.json({
         fused: fusedDecks,
@@ -98,8 +98,8 @@ export async function GET(request: NextRequest) {
     } else if (type === 'regular') {
       // Fetch only regular decks
       const { decks, meta } = await getPlayerDecks(playerName, { force })
-      await cacheDeckOwnersBestEffort(playerName, decks)
-      await syncBestEffort(playerName, decks, [])
+      void cacheDeckOwnersBestEffort(playerName, decks)
+      void syncBestEffort(playerName, decks, [])
       logWithTimestamp(`[API Route] Received ${decks.length} regular decks for player: ${playerName}`)
       return NextResponse.json({
         regular: decks,
@@ -113,9 +113,9 @@ export async function GET(request: NextRequest) {
       // Fetch both regular and fused decks
       const { decks: regularDecks, meta } = await getPlayerDecks(playerName, { force })
       const fusedDecks = await fetchFusedDecksFromAPI(playerName, { force })
-      await cacheDeckOwnersBestEffort(playerName, regularDecks)
-      await cacheDeckOwnersBestEffort(playerName, fusedDecks)
-      await syncBestEffort(playerName, regularDecks, fusedDecks)
+      void cacheDeckOwnersBestEffort(playerName, regularDecks)
+      void cacheDeckOwnersBestEffort(playerName, fusedDecks)
+      void syncBestEffort(playerName, regularDecks, fusedDecks)
       
       logWithTimestamp(`[API Route] Received ${regularDecks.length} regular and ${fusedDecks.length} fused decks for player: ${playerName}`)
       
