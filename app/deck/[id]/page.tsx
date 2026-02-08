@@ -97,6 +97,32 @@ const resolveBaseUrl = async () => {
   return `${proto}://${host}`
 }
 
+const fetchDeckFromInternalApi = async (
+  deckId: string,
+  baseUrl: string | null,
+  options?: { fast?: boolean; revalidateSeconds?: number }
+) => {
+  if (!baseUrl) return null
+  try {
+    const search = new URLSearchParams()
+    if (options?.fast) {
+      search.set('fast', '1')
+      search.set('skipOwnerMerge', '1')
+    }
+    const query = search.toString()
+    const response = await fetch(`${baseUrl}/api/deck/${encodeURIComponent(deckId)}${query ? `?${query}` : ''}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'force-cache',
+      next: { revalidate: Math.max(60, options?.revalidateSeconds ?? 300) },
+    })
+    if (!response.ok) return null
+    const json = await response.json()
+    return json?.deck ?? null
+  } catch {
+    return null
+  }
+}
+
 const hasValue = (value: unknown) => {
   if (value === null || value === undefined) return false
   if (typeof value === 'string') return value.trim().length > 0
@@ -677,6 +703,14 @@ const buildFusedTitle = (baseTitle: string, forgebornName?: string | null, owner
 }
 
 const fetchRawDeckForPreview = async (deckId: string, baseUrl: string | null) => {
+  const internalFast = await fetchDeckFromInternalApi(deckId, baseUrl, {
+    fast: true,
+    revalidateSeconds: 300,
+  })
+  if (internalFast) {
+    return internalFast
+  }
+
   const candidates = buildCandidates(deckId)
   let rawDeck: any = null
 
@@ -689,19 +723,11 @@ const fetchRawDeckForPreview = async (deckId: string, baseUrl: string | null) =>
     break
   }
 
-  if (!rawDeck && baseUrl) {
-    try {
-      const res = await fetch(`${baseUrl}/api/deck/${encodeURIComponent(deckId)}`, {
-        headers: { Accept: 'application/json' },
-        cache: 'no-store',
-      })
-      if (res.ok) {
-        const json = await res.json()
-        rawDeck = json?.deck || null
-      }
-    } catch {
-      rawDeck = null
-    }
+  if (!rawDeck) {
+    rawDeck = await fetchDeckFromInternalApi(deckId, baseUrl, {
+      fast: false,
+      revalidateSeconds: 3600,
+    })
   }
 
   return rawDeck
@@ -844,6 +870,17 @@ export async function generateMetadata(
   }
 }
 
-export default function DeckPage() {
-  return <DeckPageClient />
+export default async function DeckPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const deckId = (await params).id
+  const baseUrl = await resolveBaseUrl()
+  const initialDeck = await fetchDeckFromInternalApi(deckId, baseUrl, {
+    fast: true,
+    revalidateSeconds: 300,
+  })
+
+  return <DeckPageClient initialDeckId={deckId} initialDeck={initialDeck} />
 }

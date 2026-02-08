@@ -10,54 +10,107 @@ import { DeckDetails } from '@/components/DeckDetails'
 import type { Deck } from '@/store/deckStore'
 import { addComputedFields } from '@/store/deckStore'
 
-export default function DeckPageClient() {
+type DeckPageClientProps = {
+  initialDeckId?: string
+  initialDeck?: Deck | null
+}
+
+const buildDeckStateFromRaw = (rawDeck: Deck) => {
+  const enriched = addComputedFields(rawDeck)
+  const enrichedSources =
+    Array.isArray((rawDeck as any)?.myDecks) && (rawDeck as any).myDecks.length > 0
+      ? (rawDeck as any).myDecks
+          .filter((d: any): d is Deck => !!d && typeof d === 'object')
+          .map((d: Deck) => addComputedFields(d))
+      : []
+  const enrichedDeck = enrichedSources.length > 0 ? { ...enriched, myDecks: enrichedSources } : enriched
+  return { deck: enrichedDeck, allDecks: [enrichedDeck, ...enrichedSources] }
+}
+
+export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageClientProps) {
   const params = useParams<{ id: string }>()
   const router = useRouter()
-  const deckId = Array.isArray(params?.id) ? params.id[0] : params?.id
-  const [deck, setDeck] = useState<Deck | null>(null)
-  const [allDecks, setAllDecks] = useState<Deck[]>([])
-  const [loading, setLoading] = useState(true)
+  const routeDeckId = Array.isArray(params?.id) ? params.id[0] : params?.id
+  const deckId = routeDeckId || initialDeckId
+  const canUseInitialDeck = !!initialDeck && !!initialDeckId && (!routeDeckId || routeDeckId === initialDeckId)
+  const initialState = canUseInitialDeck ? buildDeckStateFromRaw(initialDeck as Deck) : null
+
+  const [deck, setDeck] = useState<Deck | null>(initialState?.deck ?? null)
+  const [allDecks, setAllDecks] = useState<Deck[]>(initialState?.allDecks ?? [])
+  const [loading, setLoading] = useState(!initialState)
   const [error, setError] = useState<string | null>(null)
   const sourcesLoadedRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!deckId) return
 
-    const load = async () => {
-      setLoading(true)
-      setError(null)
+    let cancelled = false
+
+    const applyDeckState = (rawDeck: Deck) => {
+      if (cancelled) return
+      const nextState = buildDeckStateFromRaw(rawDeck)
+      setDeck(nextState.deck)
+      setAllDecks(nextState.allDecks)
+    }
+
+    const fetchDeckPayload = async (url: string) => {
+      const res = await fetch(url, { headers: { Accept: 'application/json' } })
+      let json: any = null
       try {
-        const res = await fetch(`/api/deck/${deckId}`)
-        const json = await res.json()
-        if (!res.ok) {
-          throw new Error(json.error || 'Failed to load deck')
-        }
-        const rawDeck = json.deck as Deck
-        const enriched = addComputedFields(rawDeck)
+        json = await res.json()
+      } catch {
+        json = null
+      }
+      if (!res.ok || !json?.deck) {
+        throw new Error(json?.error || 'Failed to load deck')
+      }
+      return json.deck as Deck
+    }
 
-        const enrichedSources =
-          Array.isArray((rawDeck as any)?.myDecks) && (rawDeck as any).myDecks.length > 0
-            ? (rawDeck as any).myDecks
-                .filter((d: any): d is Deck => !!d && typeof d === 'object')
-                .map((d: Deck) => addComputedFields(d))
-            : []
-
-        setDeck(
-          enrichedSources.length > 0
-            ? { ...enriched, myDecks: enrichedSources }
-            : enriched
-        )
-
-        setAllDecks([enriched, ...enrichedSources])
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load deck')
-      } finally {
-        setLoading(false)
+    const fetchFullInBackground = async () => {
+      try {
+        const fullDeck = await fetchDeckPayload(`/api/deck/${deckId}`)
+        applyDeckState(fullDeck)
+      } catch {
+        // Keep fast payload on screen if full enrichment fails.
       }
     }
 
-    load()
-  }, [deckId])
+    const load = async () => {
+      setError(null)
+      const hasMatchingInitialDeck = !!initialDeck && !!initialDeckId && initialDeckId === deckId
+
+      if (hasMatchingInitialDeck) {
+        applyDeckState(initialDeck as Deck)
+        setLoading(false)
+        void fetchFullInBackground()
+        return
+      }
+
+      setLoading(true)
+      try {
+        const fastDeck = await fetchDeckPayload(`/api/deck/${deckId}?fast=1`)
+        applyDeckState(fastDeck)
+        setLoading(false)
+        void fetchFullInBackground()
+      } catch {
+        try {
+          const fullDeck = await fetchDeckPayload(`/api/deck/${deckId}`)
+          applyDeckState(fullDeck)
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load deck')
+        } finally {
+          setLoading(false)
+        }
+      }
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [deckId, initialDeck, initialDeckId])
 
   useEffect(() => {
     sourcesLoadedRef.current = null
