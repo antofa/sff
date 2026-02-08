@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 8098e5a
+  Request: Add precise OG generation stage profiling to explain why rendering takes ~8 seconds, then test and show the timing breakdown.
+  Date: 2026-02-08
 - Commit: 27cd78f
   Request: Reduce cold OG image generation time for all decks; auto-fit can be simplified/removed, but all text (all card names and all forgeborn abilities) must always fit within the image bounds.
   Date: 2026-02-08
