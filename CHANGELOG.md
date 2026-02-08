@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Added automated visual-regression tooling for large deck rendering checks by installing Playwright (`@playwright/test` + Chromium) and image diff helpers (`pixelmatch`, `pngjs`) for batch validation runs.
 - (2026-02-08 UTC) Fixed non-fused direct-link forgeborn card framing in deck details by removing oversized zoom for `resized` forgeborn images and keeping centered alignment, so long ability text is fully visible instead of being cut off.
 - (2026-02-08 UTC) Expanded header changelog `0.0.2` notes with clearer user-facing highlights from the full release period (including OG preview image/title/description improvements and new filtering options), so the in-app changelog better matches what players actually notice.
 - (2026-02-08 UTC) Updated the in-app header changelog modal to keep version history visible (including previous releases) instead of showing only the latest entry, so users can review past updates directly from the header icon.
