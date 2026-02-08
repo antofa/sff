@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 3a3777f
+  Request: After opening a fused deck by direct link, going into a half deck, and returning via `Back to Fused`, the fused view repaints from scratch (expire date, faction icons, sets, ELO, score) as if full data was not already loaded.
+  Date: 2026-02-08
 - Commit: 883212d
   Request: For fused decks opened by direct link, `Expire date` still does not appear (example: `http://trumpumpum.duckdns.org:3000/deck/Fused_93hi52mfig65sm`).
   Date: 2026-02-08
