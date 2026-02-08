@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 883212d
+  Request: For fused decks opened by direct link, `Expire date` still does not appear (example: `http://trumpumpum.duckdns.org:3000/deck/Fused_93hi52mfig65sm`).
+  Date: 2026-02-08
 - Commit: b66c591
   Request: The debug payload still includes `allDecksIds` and can be heavy; reduce this log while keeping it informative.
   Date: 2026-02-08
