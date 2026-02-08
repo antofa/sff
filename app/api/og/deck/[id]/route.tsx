@@ -898,12 +898,11 @@ const getRarityIconPath = (
 type AbilityRenderToken =
   | { kind: 'text'; text: string }
   | { kind: 'level'; src: string; suffix?: string }
-  | { kind: 'stat'; src: string; number: string; suffix?: string }
-  | { kind: 'statLetter'; src: string; suffix?: string }
+  | { kind: 'stat'; stat: 'A' | 'H' | 'D'; number: string; suffix?: string }
+  | { kind: 'statLetter'; stat: 'A' | 'H' | 'D'; suffix?: string }
 
 const tokenizeAbilityRenderTokens = (
   normalizedText: string,
-  statIconMap: Map<string, string | null>,
   levelIconMap: Map<number, string | null>
 ) => {
   const parts: Array<
@@ -931,14 +930,13 @@ const tokenizeAbilityRenderTokens = (
         parts.push({ type: 'level', src: iconSrc })
       }
     } else {
-      const stat = (statValue || standaloneStatValue || '').toUpperCase()
-      const iconSrc = statIconMap.get(stat) || null
-      if (!iconSrc) {
+      const stat = (statValue || standaloneStatValue || '').toUpperCase() as 'A' | 'H' | 'D'
+      if (stat !== 'A' && stat !== 'H' && stat !== 'D') {
         parts.push({ type: 'text', value: full })
       } else if (numberValue) {
-        parts.push({ type: 'stat', src: iconSrc, number: numberValue })
+        parts.push({ type: 'stat', src: stat, number: numberValue })
       } else {
-        parts.push({ type: 'statLetter', src: iconSrc })
+        parts.push({ type: 'statLetter', src: stat })
       }
     }
     lastIndex = start + full.length
@@ -990,29 +988,69 @@ const tokenizeAbilityRenderTokens = (
       return
     }
     if (part.type === 'stat') {
-      renderTokens.push({ kind: 'stat', src: part.src, number: part.number })
+      renderTokens.push({ kind: 'stat', stat: part.src as 'A' | 'H' | 'D', number: part.number })
       return
     }
-    renderTokens.push({ kind: 'statLetter', src: part.src })
+    renderTokens.push({ kind: 'statLetter', stat: part.src as 'A' | 'H' | 'D' })
   })
 
   return renderTokens
 }
 
-const renderAbilityText = (
-  text: string,
-  statIconMap: Map<string, string | null>,
-  levelIconMap: Map<number, string | null>,
+const renderInlineStatIcon = (stat: 'A' | 'H' | 'D', size: number) => {
+  const colorByStat: Record<'A' | 'H' | 'D', string> = {
+    A: '#ef4444',
+    H: '#22c55e',
+    D: '#60a5fa',
+  }
+  const color = colorByStat[stat]
+  const common = {
+    width: `${size}px`,
+    height: `${size}px`,
+    display: 'block',
+    flexShrink: 0 as const,
+  }
+
+  if (stat === 'A') {
+    return (
+      <svg viewBox="0 0 24 24" style={common} aria-hidden="true">
+        <path
+          d="M13.2 2.5 10 5.7l1.7 1.7-6.5 6.5-1.8.3-.3 1.8 2.9 2.9 1.8-.3.3-1.8 6.5-6.5 1.7 1.7 3.2-3.2z"
+          fill={color}
+        />
+      </svg>
+    )
+  }
+  if (stat === 'H') {
+    return (
+      <svg viewBox="0 0 24 24" style={common} aria-hidden="true">
+        <path
+          d="M12 21.2C11.4 20.7 4 15.1 4 9.4A4.4 4.4 0 0 1 8.4 5a4.6 4.6 0 0 1 3.6 1.8A4.6 4.6 0 0 1 15.6 5 4.4 4.4 0 0 1 20 9.4c0 5.7-7.4 11.3-8 11.8z"
+          fill={color}
+        />
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 24 24" style={common} aria-hidden="true">
+      <path
+        d="M12 2.5 20 5.6v6.2c0 5-3.1 8.5-8 9.7-4.9-1.2-8-4.7-8-9.7V5.6z"
+        fill={color}
+      />
+    </svg>
+  )
+}
+
+const renderAbilityTokens = (
+  renderTokens: AbilityRenderToken[],
   options?: { inline?: boolean; levelIconSize?: number; iconScale?: number }
 ) => {
-  const normalizedText = normalizeForgebornAbilityText(String(text || ''))
-  if (!normalizedText) return null
+  if (!renderTokens || renderTokens.length === 0) return null
   const inlineMode = options?.inline === true
   const levelIconSize = options?.levelIconSize && options.levelIconSize > 0 ? options.levelIconSize : 18
   const iconScale = options?.iconScale && options.iconScale > 0 ? options.iconScale : 1
   const scaledLevelIconSize = levelIconSize * iconScale
   const scaledStatIconSize = 20 * iconScale
-  const renderTokens = tokenizeAbilityRenderTokens(normalizedText, statIconMap, levelIconMap)
 
   return (
     <div
@@ -1028,11 +1066,7 @@ const renderAbilityText = (
     >
       {renderTokens.map((token, idx) => {
         if (token.kind === 'text') {
-          return (
-            <span key={`text-${idx}`} style={{ whiteSpace: 'nowrap' }}>
-              {`${token.text}\u00A0`}
-            </span>
-          )
+          return `${token.text}\u00A0`
         }
         if (token.kind === 'level') {
           return (
@@ -1048,7 +1082,7 @@ const renderAbilityText = (
                   transform: 'translateY(2px)',
                 }}
               />
-              <span>{`${token.suffix || ''}\u00A0`}</span>
+              {`${token.suffix || ''}\u00A0`}
             </span>
           )
         }
@@ -1058,18 +1092,8 @@ const renderAbilityText = (
               key={`stat-letter-${idx}`}
               style={{ display: 'flex', alignItems: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}
             >
-              <img
-                src={token.src}
-                style={{
-                  verticalAlign: 'middle',
-                  width: `${scaledStatIconSize}px`,
-                  height: `${scaledStatIconSize}px`,
-                  objectFit: 'contain',
-                  marginLeft: '1px',
-                  transform: 'translateY(1px)',
-                }}
-              />
-              <span>{`${token.suffix || ''}\u00A0`}</span>
+              {renderInlineStatIcon(token.stat, scaledStatIconSize)}
+              {`${token.suffix || ''}\u00A0`}
             </span>
           )
         }
@@ -1078,20 +1102,9 @@ const renderAbilityText = (
             key={`stat-${idx}`}
             style={{ display: 'flex', alignItems: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}
           >
-            <span>{token.number}</span>
-            <img
-              key={`level-${idx}`}
-              src={token.src}
-              style={{
-                verticalAlign: 'middle',
-                width: `${scaledStatIconSize}px`,
-                height: `${scaledStatIconSize}px`,
-                objectFit: 'contain',
-                marginLeft: '2px',
-                transform: 'translateY(1px)',
-              }}
-            />
-            <span>{`${token.suffix || ''}\u00A0`}</span>
+            {token.number}
+            {renderInlineStatIcon(token.stat, scaledStatIconSize)}
+            {`${token.suffix || ''}\u00A0`}
           </span>
         )
       })}
@@ -1545,21 +1558,6 @@ export async function GET(
     })
   }
 
-  const statIconEntries = [
-    { key: 'A', url: `${origin}/images/icons/attack.png` },
-    { key: 'H', url: `${origin}/images/icons/health.png` },
-    { key: 'D', url: `${origin}/images/icons/armor.png` },
-  ]
-  const statIconMap = new Map<string, string | null>()
-  if (statIconEntries.length > 0) {
-    const loaded = await measureStage('icons.stats.load', () =>
-      Promise.all(statIconEntries.map((entry) => loadIconSrc(entry.url)))
-    )
-    loaded.forEach((src, idx) => {
-      const entry = statIconEntries[idx]
-      statIconMap.set(entry.key, src || null)
-    })
-  }
   const hasCardSections = cardColumns.some((column) => column.sections.length > 0)
   const hasRenderableCards = cardColumns.some((column) =>
     column.sections.some((section) => Array.isArray(section.items) && section.items.length > 0)
@@ -1854,7 +1852,7 @@ export async function GET(
         const textWithLevel = level !== null && !hasLeadingLevelToken ? `[l${level}] ${rawText}` : rawText
         const normalizedText = normalizeForgebornAbilityText(textWithLevel)
         return {
-          tokens: tokenizeAbilityRenderTokens(normalizedText, statIconMap, levelIconMap),
+          tokens: tokenizeAbilityRenderTokens(normalizedText, levelIconMap),
         }
       })
   }
@@ -2200,10 +2198,10 @@ export async function GET(
   )}px`
 
   const renderAbilityList = (
-    abilities: AbilityEntry[],
+    preparedAbilities: PreparedAbilityMetrics[],
     options: { fontSize: number; lineHeight: number; levelIconSize: string; gap?: string }
   ) => {
-    const visibleAbilities = abilities.filter((ability) => !!ability?.text?.trim())
+    const parsedLevelIconSize = Number.parseFloat(options.levelIconSize)
     return (
       <div
         style={{
@@ -2216,33 +2214,24 @@ export async function GET(
           width: '100%',
         }}
       >
-        {visibleAbilities.length > 0 ? (
-          visibleAbilities.map((ability, idx) => {
-            const level =
-              ability.level && ability.level >= 1 && ability.level <= 4 ? ability.level : idx < 3 ? idx + 2 : null
-            const rawText = ability.text || ''
-            const hasLeadingLevelToken = /^\s*\[(?:l)?[1-4]\]/i.test(rawText)
-            const textWithLevel =
-              level !== null && !hasLeadingLevelToken ? `[l${level}] ${rawText}` : rawText
-            const parsedLevelIconSize = Number.parseFloat(options.levelIconSize)
-            return (
-              <div
-                key={`ability-${idx}`}
-                style={{
-                  display: 'flex',
-                  width: '100%',
-                  minWidth: 0,
-                  maxWidth: '100%',
-                }}
-              >
-                {renderAbilityText(textWithLevel, statIconMap, levelIconMap, {
-                  inline: true,
-                  levelIconSize: Number.isFinite(parsedLevelIconSize) ? parsedLevelIconSize : 18,
-                  iconScale: forgebornAbilityIconScale,
-                })}
-              </div>
-            )
-          })
+        {preparedAbilities.length > 0 ? (
+          preparedAbilities.map((prepared, idx) => (
+            <div
+              key={`ability-${idx}`}
+              style={{
+                display: 'flex',
+                width: '100%',
+                minWidth: 0,
+                maxWidth: '100%',
+              }}
+            >
+              {renderAbilityTokens(prepared.tokens, {
+                inline: true,
+                levelIconSize: Number.isFinite(parsedLevelIconSize) ? parsedLevelIconSize : 18,
+                iconScale: forgebornAbilityIconScale,
+              })}
+            </div>
+          ))
         ) : (
           <div style={{ color: '#94a3b8', fontSize: options.fontSize }}>Abilities unavailable</div>
         )}
@@ -2268,7 +2257,7 @@ export async function GET(
         paddingRight: showFusedColumns ? '6px' : '0',
       }}
     >
-      {renderAbilityList(forgebornAbilities, {
+      {renderAbilityList(primaryPreparedAbilityMetrics, {
         fontSize: forgebornAbilityFont,
         lineHeight: forgebornAbilityLineHeight,
         levelIconSize: forgebornLevelIconSize,
@@ -2284,7 +2273,7 @@ export async function GET(
           }}
         >
           <div style={{ height: '1px', backgroundColor: '#1f2937', opacity: 0.85 }} />
-          {renderAbilityList(secondaryForgebornAbilities, {
+          {renderAbilityList(secondaryPreparedAbilityMetrics, {
             fontSize: secondaryForgebornAbilityFont,
             lineHeight: secondaryForgebornAbilityLineHeight,
             levelIconSize: secondaryForgebornLevelIconSize,
