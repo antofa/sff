@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Further retuned regular (non-fused) OG fitting for sparse-name decks: tightened inter-column gap, shifted width balance toward stronger horizontal use in the card column, and added a stronger adaptive card spacing pass so left-column bottom empty space is reduced while forgeborn text still fits without clipping.
 - (2026-02-08 UTC) Retuned regular (non-fused) OG column auto-fit to reduce empty space: narrowed the gap between columns, shifted more width to the card list, made the forgeborn column typography/icons more compact, and added a final spacing-and-scale pass so columns fill more of the available height without text clipping.
 - (2026-02-08 UTC) Retuned OG column auto-fit to maximize vertical fill in each column (cards and forgeborn) with reduced conservative estimation overhead and adaptive width balancing, so fused and regular previews use much more of the available height without clipping text.
 - (2026-02-08 UTC) Ignored browser-extension runtime errors (including MetaMask `chrome-extension://...` failures) in global client error handlers so those external errors are no longer forwarded to `/api/log-error` and server error logs.
