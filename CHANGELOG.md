@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-08 UTC) Accelerated OG image generation for all decks by prioritizing the internal fast deck API path before upstream fallbacks, adding in-memory OG PNG caching for immediate repeat hits, and reducing CPU-heavy OG auto-fit search/estimation overhead while preserving existing no-clipping layout behavior.
 - (2026-02-08 UTC) Improved direct `/deck/[id]` load speed by using a fast internal deck payload for first render (and metadata lookup), showing deck details immediately from that payload, and moving slower full deck enrichment to a background client refresh.
 - (2026-02-08 UTC) Further retuned regular (non-fused) OG fitting for sparse-name decks: tightened inter-column gap, shifted width balance toward stronger horizontal use in the card column, and added a stronger adaptive card spacing pass so left-column bottom empty space is reduced while forgeborn text still fits without clipping.
 - (2026-02-08 UTC) Retuned regular (non-fused) OG column auto-fit to reduce empty space: narrowed the gap between columns, shifted more width to the card list, made the forgeborn column typography/icons more compact, and added a final spacing-and-scale pass so columns fill more of the available height without text clipping.

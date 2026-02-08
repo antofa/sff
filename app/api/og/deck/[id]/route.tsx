@@ -14,8 +14,10 @@ const OG_SOURCE_DECK_TIMEOUT_MS = 5200
 const OG_ICON_TIMEOUT_MS = 500
 const OG_UPSTASH_IMAGE_TTL_SECONDS = 24 * 60 * 60
 const OG_PAYLOAD_TTL_MS = 24 * 60 * 60 * 1000
+const OG_IMAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const OG_ICON_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const OG_PAYLOAD_CACHE_MAX_ENTRIES = 500
+const OG_IMAGE_CACHE_MAX_ENTRIES = 500
 const OG_ICON_CACHE_MAX_ENTRIES = 500
 
 type OgPayload = {
@@ -34,6 +36,11 @@ type OgPayloadCacheEntry = {
   payload: OgPayload
 }
 
+type OgImageCacheEntry = {
+  expiresAt: number
+  bytes: Uint8Array
+}
+
 type IconSrcCacheEntry = {
   expiresAt: number
   src: string | null
@@ -41,6 +48,7 @@ type IconSrcCacheEntry = {
 
 const ogPayloadCache = new Map<string, OgPayloadCacheEntry>()
 const ogPayloadInFlight = new Map<string, Promise<OgPayload>>()
+const ogImageCache = new Map<string, OgImageCacheEntry>()
 const iconSrcCache = new Map<string, IconSrcCacheEntry>()
 const iconSrcInFlight = new Map<string, Promise<string | null>>()
 const localAssetDataCache = new Map<string, string>()
@@ -269,6 +277,7 @@ const buildDeckIdCandidates = (rawId: string) => {
 }
 
 const normalizeOgPayloadKey = (deckId: string) => stripDeckPrefixes(deckId).trim().toLowerCase()
+const normalizeOgImageKey = (deckId: string) => `${normalizeOgPayloadKey(deckId)}|${OG_IMAGE_VERSION}`
 
 const hasDeckCards = (deckLike: any): boolean => {
   if (!deckLike || typeof deckLike !== 'object') return false
@@ -337,6 +346,58 @@ const setCachedOgPayload = (key: string, payload: OgPayload) => {
   trimLru(ogPayloadCache, OG_PAYLOAD_CACHE_MAX_ENTRIES)
 }
 
+const copyBytes = (bytes: Uint8Array) => {
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return copy
+}
+
+const toArrayBuffer = (bytes: Uint8Array) => {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
+const getCachedOgImage = (key: string): Uint8Array | null => {
+  const cached = ogImageCache.get(key)
+  if (!cached) return null
+  if (cached.expiresAt < Date.now()) {
+    ogImageCache.delete(key)
+    return null
+  }
+  touchEntry(ogImageCache, key, cached)
+  return copyBytes(cached.bytes)
+}
+
+const setCachedOgImage = (key: string, bytes: Uint8Array) => {
+  if (!bytes || bytes.length === 0) return
+  touchEntry(ogImageCache, key, {
+    expiresAt: Date.now() + OG_IMAGE_CACHE_TTL_MS,
+    bytes: copyBytes(bytes),
+  })
+  trimLru(ogImageCache, OG_IMAGE_CACHE_MAX_ENTRIES)
+}
+
+const extractDeckCards = (deckLike: any): any[] => {
+  if (!deckLike || typeof deckLike !== 'object') return []
+  if (Array.isArray(deckLike?.cards) && deckLike.cards.length > 0) return deckLike.cards
+  if (Array.isArray(deckLike?.cardList) && deckLike.cardList.length > 0) return deckLike.cardList
+  if (Array.isArray(deckLike?.cardIds) && deckLike.cardIds.length > 0) return deckLike.cardIds
+  return []
+}
+
+const normalizeDeckForOg = (deckLike: any) => {
+  if (!deckLike || typeof deckLike !== 'object') return null
+  const cards = extractDeckCards(deckLike)
+  if (cards.length === 0) return null
+  return {
+    ...deckLike,
+    cards,
+    forgeborn: deckLike?.forgeborn || null,
+    forgebornId: deckLike?.forgebornId || deckLike?.forgeborn?.id || null,
+  }
+}
+
 const getDeckFromUpstream = async (
   deckId: string,
   options?: {
@@ -346,27 +407,45 @@ const getDeckFromUpstream = async (
 ) => {
   const origin = options?.origin
   const bypassFetchCache = options?.bypassFetchCache === true
-  const baseId = stripDeckPrefixes(deckId)
-  const deckCandidates = buildDeckIdCandidates(deckId)
   const regularCandidates = Array.from(
-    new Set(deckCandidates.map((candidate) => stripDeckPrefixes(candidate)).filter(Boolean))
+    new Set([stripDeckPrefixes(deckId), deckId].filter(Boolean))
   )
-
-  const buildDeckFetchInit = (): RequestInit => {
-    if (bypassFetchCache) {
-      return {
+  const requestInit: RequestInit = bypassFetchCache
+    ? {
         method: 'GET',
         headers: { Accept: 'application/json' },
         cache: 'no-store',
       }
-    }
-    return {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      cache: 'force-cache',
-      next: { revalidate: 300 },
-    }
+    : {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        cache: 'force-cache',
+        next: { revalidate: 300 },
+      }
+
+  const fetchFromInternalApi = async (fast: boolean) => {
+    if (!origin) return null
+    const params = new URLSearchParams()
+    if (fast) params.set('fast', '1')
+    params.set('skipOwnerMerge', '1')
+    const localUrl = `${origin}/api/deck/${encodeURIComponent(deckId)}?${params.toString()}`
+    const response = await fetchWithTimeout(localUrl, requestInit, Math.max(OG_DECK_TIMEOUT_MS, 3500))
+    if (!response?.ok) return null
+    const raw = await withTimeout(response.json().catch(() => null), Math.max(OG_DECK_TIMEOUT_MS, 3500), null)
+    const deck = raw?.deck
+    const rawId = deck?.id || deck?.deckId || deck?.deck_id
+    if (!deck || !rawId) return null
+    if (!isUsableDeckPayload(deck)) return null
+    return normalizeDeckForOg(deck)
   }
+
+  const localFastDeck = await fetchFromInternalApi(true)
+  if (localFastDeck) return localFastDeck
+
+  const localFullDeck = await fetchFromInternalApi(false)
+  if (localFullDeck) return localFullDeck
+
+  const buildDeckFetchInit = (): RequestInit => requestInit
 
   for (const candidate of regularCandidates) {
     const url = `${API_BASE_URL}/deck/${encodeURIComponent(stripDeckPrefixes(candidate))}?inclCards=true&inclUsers=true`
@@ -377,22 +456,12 @@ const getDeckFromUpstream = async (
     const rawId = raw?.id || raw?.deckId || raw?.deck_id
     if (!rawId) continue
     if (!isUsableDeckPayload(raw)) continue
-    const cards =
-      Array.isArray(raw?.cards) && raw.cards.length > 0
-        ? raw.cards
-        : Array.isArray(raw?.cardList) && raw.cardList.length > 0
-          ? raw.cardList
-          : []
-    if (cards.length === 0) continue
-    return {
-      ...raw,
-      cards,
-      forgeborn: raw?.forgeborn || null,
-      forgebornId: raw?.forgebornId || raw?.forgeborn?.id || null,
-    }
+    const normalized = normalizeDeckForOg(raw)
+    if (!normalized) continue
+    return normalized
   }
 
-  const fusedCandidates = Array.from(new Set(deckCandidates.map((candidate) => toFusedApiId(candidate)).filter(Boolean)))
+  const fusedCandidates = Array.from(new Set([toFusedApiId(deckId)].filter(Boolean)))
   for (const fusedCandidate of fusedCandidates) {
     const url = `${API_BASE_URL}/fuseddeck/${encodeURIComponent(fusedCandidate)}?inclCards=true&inclUsers=true`
     const response = await fetchWithTimeout(url, buildDeckFetchInit(), OG_DECK_TIMEOUT_MS)
@@ -421,6 +490,7 @@ const getDeckFromUpstream = async (
         if (!detailRes?.ok) return source
         const detailRaw = await withTimeout(detailRes.json().catch(() => null), OG_SOURCE_DECK_TIMEOUT_MS, null)
         if (!detailRaw || typeof detailRaw !== 'object') return source
+        const detailCards = extractDeckCards(detailRaw)
 
         return {
           ...source,
@@ -431,26 +501,14 @@ const getDeckFromUpstream = async (
           elo: source?.elo ?? detailRaw?.elo ?? null,
           cards:
             (Array.isArray(source?.cards) && source.cards.length > 0 && source.cards) ||
-            (Array.isArray(detailRaw?.cards) && detailRaw.cards.length > 0 && detailRaw.cards) ||
+            detailCards ||
             source?.cards ||
             [],
         }
       })
     )
-    const extractCards = (deckLike: any): any[] => {
-      if (!deckLike) return []
-      if (Array.isArray(deckLike.cardList) && deckLike.cardList.length > 0) return deckLike.cardList
-      if (Array.isArray(deckLike.cards) && deckLike.cards.length > 0) return deckLike.cards
-      if (Array.isArray(deckLike.cardIds) && deckLike.cardIds.length > 0) return deckLike.cardIds
-      return []
-    }
-    const mergedCardsFromSources = sourceDecks.flatMap(extractCards).filter(Boolean)
-    const fusedCards =
-      Array.isArray(raw?.cardList) && raw.cardList.length > 0
-        ? raw.cardList
-        : Array.isArray(raw?.cards) && raw.cards.length > 0
-          ? raw.cards
-          : []
+    const mergedCardsFromSources = sourceDecks.flatMap(extractDeckCards).filter(Boolean)
+    const fusedCards = extractDeckCards(raw)
     const cards = mergedCardsFromSources.length > 0 ? mergedCardsFromSources : fusedCards
     if (cards.length === 0) continue
 
@@ -473,40 +531,6 @@ const getDeckFromUpstream = async (
       cards,
       forgeborn: raw?.forgeborn || sourceForgeborn || null,
       forgebornId: raw?.forgebornId || raw?.forgeborn?.id || sourceForgebornId || null,
-    }
-  }
-
-  if (origin) {
-    for (const candidate of deckCandidates) {
-      const localUrl = `${origin}/api/deck/${encodeURIComponent(candidate)}?skipOwnerMerge=1`
-      const response = await fetchWithTimeout(
-        localUrl,
-        {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          cache: 'no-store',
-        },
-        Math.max(OG_DECK_TIMEOUT_MS, 3500)
-      )
-      if (!response?.ok) continue
-      const raw = await withTimeout(response.json().catch(() => null), Math.max(OG_DECK_TIMEOUT_MS, 3500), null)
-      const deck = raw?.deck
-      const rawId = deck?.id || deck?.deckId || deck?.deck_id
-      if (!deck || !rawId) continue
-      if (!isUsableDeckPayload(deck)) continue
-      const cards =
-        Array.isArray(deck?.cards) && deck.cards.length > 0
-          ? deck.cards
-          : Array.isArray(deck?.cardList) && deck.cardList.length > 0
-            ? deck.cardList
-            : []
-      if (cards.length === 0) continue
-      return {
-        ...deck,
-        cards,
-        forgeborn: deck?.forgeborn || null,
-        forgebornId: deck?.forgebornId || deck?.forgeborn?.id || null,
-      }
     }
   }
 
@@ -1316,15 +1340,31 @@ export async function GET(
   const { id } = await context.params
   const deckId = id || ''
   const hasQueryVariantBuster = !!request.nextUrl.searchParams.get('uq')
+  const hardRefresh = request.nextUrl.searchParams.get('hardRefresh') === '1'
   const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1' || hasQueryVariantBuster
   const origin = new URL(request.url).origin
+  const imageCacheKey = normalizeOgImageKey(deckId)
+
+  if (forceRefresh) {
+    ogImageCache.delete(imageCacheKey)
+  } else {
+    const localCachedImage = getCachedOgImage(imageCacheKey)
+    if (localCachedImage) {
+      return new Response(toArrayBuffer(localCachedImage), {
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+          'X-OG-Cache': 'memory-hit',
+        },
+      })
+    }
+  }
 
   if (!forceRefresh && isOgUpstashCacheConfigured()) {
     const cachedImage = await getOgImageFromUpstashCache(deckId, { version: OG_IMAGE_VERSION })
     if (cachedImage) {
-      const cachedBuffer = new ArrayBuffer(cachedImage.byteLength)
-      new Uint8Array(cachedBuffer).set(cachedImage)
-      return new Response(cachedBuffer, {
+      setCachedOgImage(imageCacheKey, cachedImage)
+      return new Response(toArrayBuffer(cachedImage), {
         headers: {
           'Content-Type': 'image/png',
           'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
@@ -1334,7 +1374,7 @@ export async function GET(
     }
   }
 
-  const payload = await getOgPayload(deckId, { forceRefresh, origin, bypassFetchCache: forceRefresh })
+  const payload = await getOgPayload(deckId, { forceRefresh, origin, bypassFetchCache: hardRefresh })
   const cardColumns = payload.cardColumns
   const forgebornAbilities = payload.forgebornAbilities.map((ability, index) => ({
     ...ability,
@@ -1365,20 +1405,16 @@ export async function GET(
       const localDataUrl = await getLocalAssetDataUrl(localPath)
       if (localDataUrl) return localDataUrl
     }
-    if (!forceRefresh) {
-      const cached = iconSrcCache.get(url)
-      if (cached) {
-        if (cached.expiresAt >= Date.now()) {
-          touchEntry(iconSrcCache, url, { ...cached, expiresAt: Date.now() + OG_ICON_CACHE_TTL_MS })
-          return cached.src
-        }
-        iconSrcCache.delete(url)
+    const cached = iconSrcCache.get(url)
+    if (cached) {
+      if (cached.expiresAt >= Date.now()) {
+        touchEntry(iconSrcCache, url, { ...cached, expiresAt: Date.now() + OG_ICON_CACHE_TTL_MS })
+        return cached.src
       }
-      const inflight = iconSrcInFlight.get(url)
-      if (inflight) return inflight
-    } else {
       iconSrcCache.delete(url)
     }
+    const inflight = iconSrcInFlight.get(url)
+    if (inflight) return inflight
 
     const promise = (async () => {
       try {
@@ -1560,31 +1596,45 @@ export async function GET(
     : baseForgebornAbilityLineHeight
   const secondaryForgebornAbilityLineHeight = Math.max(1.05, forgebornAbilityLineHeight - 0.05)
   const baseForgebornLevelIconSize = showFusedColumns ? 18 : 16
+  const textWidthEstimateCache = new Map<string, number>()
+  const lineEstimateCache = new Map<string, number>()
 
   const estimateTextWidth = (text: string, fontSize: number) => {
     const normalized = String(text || '').trim()
     if (!normalized) return 0
+    const roundedSize = Math.round(fontSize * 100) / 100
+    const cacheKey = `${roundedSize}|${normalized}`
+    const cached = textWidthEstimateCache.get(cacheKey)
+    if (cached !== undefined) return cached
+
     let sum = 0
     for (const ch of normalized) {
-      if (/[ilI1'`|!]/.test(ch)) sum += fontSize * 0.28
-      else if (/[mwMW@#%&]/.test(ch)) sum += fontSize * 0.78
-      else if (/[A-Z]/.test(ch)) sum += fontSize * 0.62
-      else if (/[0-9]/.test(ch)) sum += fontSize * 0.56
-      else if (/[\-_,.:;()/+]/.test(ch)) sum += fontSize * 0.34
-      else if (/\s/.test(ch)) sum += fontSize * 0.33
-      else sum += fontSize * 0.52
+      if (/[ilI1'`|!]/.test(ch)) sum += roundedSize * 0.28
+      else if (/[mwMW@#%&]/.test(ch)) sum += roundedSize * 0.78
+      else if (/[A-Z]/.test(ch)) sum += roundedSize * 0.62
+      else if (/[0-9]/.test(ch)) sum += roundedSize * 0.56
+      else if (/[\-_,.:;()/+]/.test(ch)) sum += roundedSize * 0.34
+      else if (/\s/.test(ch)) sum += roundedSize * 0.33
+      else sum += roundedSize * 0.52
     }
+    textWidthEstimateCache.set(cacheKey, sum)
     return sum
   }
 
   const estimateLinesForText = (text: string, fontSize: number, maxWidth: number) => {
     const normalized = String(text || '').trim()
     if (!normalized) return 0
-    const widthLimit = Math.max(1, maxWidth * (showFusedColumns ? 0.98 : 1.0))
-    const words = normalized.split(/\s+/)
-    const spaceWidth = fontSize * 0.33
+    const roundedSize = Math.round(fontSize * 100) / 100
+    const roundedWidth = Math.round(maxWidth * 100) / 100
+    const cacheKey = `${roundedSize}|${roundedWidth}|${normalized}`
+    const cached = lineEstimateCache.get(cacheKey)
+    if (cached !== undefined) return cached
 
-    const wordWidth = (word: string) => estimateTextWidth(word, fontSize)
+    const widthLimit = Math.max(1, roundedWidth * (showFusedColumns ? 0.98 : 1.0))
+    const words = normalized.split(/\s+/)
+    const spaceWidth = roundedSize * 0.33
+
+    const wordWidth = (word: string) => estimateTextWidth(word, roundedSize)
 
     let lines = 1
     let lineWidth = 0
@@ -1617,13 +1667,16 @@ export async function GET(
       }
     }
 
-    return Math.max(1, lines)
+    const result = Math.max(1, lines)
+    lineEstimateCache.set(cacheKey, result)
+    return result
   }
 
   const fitScale = (minScale: number, maxScale: number, fits: (scale: number) => boolean) => {
+    const fitScaleIterations = 9
     let low = minScale
     let high = maxScale
-    for (let i = 0; i < 12; i += 1) {
+    for (let i = 0; i < fitScaleIterations; i += 1) {
       const mid = (low + high) / 2
       if (fits(mid)) {
         low = mid
@@ -1749,30 +1802,47 @@ export async function GET(
     return Math.max(1, lines)
   }
 
+  type PreparedAbilityMetrics = {
+    tokens: AbilityRenderToken[]
+  }
+
+  const buildPreparedAbilityMetrics = (abilities: AbilityEntry[]): PreparedAbilityMetrics[] => {
+    return abilities
+      .filter((ability) => !!ability?.text?.trim())
+      .map((ability, index) => {
+        const level = ability.level && ability.level >= 1 && ability.level <= 4 ? ability.level : index < 3 ? index + 2 : null
+        const rawText = ability.text || ''
+        const hasLeadingLevelToken = /^\s*\[(?:l)?[1-4]\]/i.test(rawText)
+        const textWithLevel = level !== null && !hasLeadingLevelToken ? `[l${level}] ${rawText}` : rawText
+        const normalizedText = normalizeForgebornAbilityText(textWithLevel)
+        return {
+          tokens: tokenizeAbilityRenderTokens(normalizedText, statIconMap, levelIconMap),
+        }
+      })
+  }
+
+  const primaryPreparedAbilityMetrics = buildPreparedAbilityMetrics(forgebornAbilities)
+  const secondaryPreparedAbilityMetrics = hasSecondaryForgeborn
+    ? buildPreparedAbilityMetrics(secondaryForgebornAbilities)
+    : []
+
   const estimateAbilityListHeight = (
-    abilities: AbilityEntry[],
+    preparedAbilities: PreparedAbilityMetrics[],
     fontSize: number,
     lineHeight: number,
     levelIconSize: number,
     maxWidth: number,
     gap: number
   ) => {
-    const visible = abilities.filter((ability) => !!ability?.text?.trim())
-    if (visible.length === 0) {
+    if (preparedAbilities.length === 0) {
       return fontSize * lineHeight
     }
     const scaledLevelIconSize = levelIconSize * forgebornAbilityIconScale
     const scaledStatIconSize = 20 * forgebornAbilityIconScale
     const textWidth = Math.max(40, maxWidth - (showFusedColumns ? 2 : 6))
-    const total = visible.reduce((sum, ability) => {
-      const level = ability.level && ability.level >= 1 && ability.level <= 4 ? ability.level : null
-      const rawText = ability.text || ''
-      const hasLeadingLevelToken = /^\s*\[(?:l)?[1-4]\]/i.test(rawText)
-      const textWithLevel = level !== null && !hasLeadingLevelToken ? `[l${level}] ${rawText}` : rawText
-      const normalizedText = normalizeForgebornAbilityText(textWithLevel)
-      const tokens = tokenizeAbilityRenderTokens(normalizedText, statIconMap, levelIconMap)
+    const total = preparedAbilities.reduce((sum, preparedAbility) => {
       const lines = estimateAbilityLinesFromRenderTokens(
-        tokens,
+        preparedAbility.tokens,
         fontSize,
         textWidth,
         scaledLevelIconSize,
@@ -1784,7 +1854,7 @@ export async function GET(
       const rowHeight = lineBlockHeight
       return sum + rowHeight
     }, 0)
-    return total + (visible.length - 1) * gap + fontSize * (showFusedColumns ? 0.1 : 0.08)
+    return total + (preparedAbilities.length - 1) * gap + fontSize * (showFusedColumns ? 0.1 : 0.08)
   }
 
   type ForgebornSpacing = {
@@ -1814,7 +1884,7 @@ export async function GET(
     const levelIconSize = Math.round(baseForgebornLevelIconSize * (hasSecondaryForgeborn ? 0.9 : 1) * scale)
     const primaryAbilityGap = spacing.primaryGap
     const primaryAbilityHeight = estimateAbilityListHeight(
-      forgebornAbilities,
+      primaryPreparedAbilityMetrics,
       abilityFontSize,
       forgebornAbilityLineHeight,
       levelIconSize,
@@ -1827,7 +1897,7 @@ export async function GET(
       const secondaryAbilityFontSize = abilityFontSize * 0.85
       const secondaryLevelIconSize = Math.round(baseForgebornLevelIconSize * 0.8 * scale)
       const secondaryAbilityHeight = estimateAbilityListHeight(
-        secondaryForgebornAbilities,
+        secondaryPreparedAbilityMetrics,
         secondaryAbilityFontSize,
         secondaryForgebornAbilityLineHeight,
         secondaryLevelIconSize,
@@ -1887,8 +1957,8 @@ export async function GET(
   let forgebornRenderScale = 1
 
   if (showFusedColumns) {
-    const cardFlexCandidates = [0.75, 0.85, 0.95, 1.05, 1.15, 1.25, 1.35]
-    const forgebornFlexCandidates = [0.85, 0.95, 1.05, 1.15, 1.25, 1.35]
+    const cardFlexCandidates = [0.85, 0.95, 1.05, 1.15, 1.25]
+    const forgebornFlexCandidates = [0.9, 1.0, 1.1, 1.2, 1.3]
 
     const evaluateCandidate = (cardFlexes: [number, number], forgebornFlex: number) => {
       const { cardColumnWidths, forgebornColumnWidth } = getFusedColumnWidths(cardFlexes, forgebornFlex)
@@ -2109,9 +2179,9 @@ export async function GET(
     const extraHeight = targetHeight - estimatedDefault
     if (extraHeight <= 4) return defaults
 
-    const primarySlots = Math.max(0, forgebornAbilities.filter((ability) => !!ability?.text?.trim()).length - 1)
+    const primarySlots = Math.max(0, primaryPreparedAbilityMetrics.length - 1)
     const secondarySlots = hasSecondaryForgeborn
-      ? Math.max(0, secondaryForgebornAbilities.filter((ability) => !!ability?.text?.trim()).length - 1)
+      ? Math.max(0, secondaryPreparedAbilityMetrics.length - 1)
       : 0
     const bridgeSlots = hasSecondaryForgeborn ? 2 : 0
     const totalSlots = primarySlots + secondarySlots + bridgeSlots
@@ -2289,7 +2359,7 @@ export async function GET(
     // Final adaptive non-fused pass:
     // fill missing bottom space in the card column by expanding spacing according to
     // the actual remaining height budget, then re-fit render scale safely.
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 2; i += 1) {
       const cardColumn = cardColumns[0]
       if (!cardColumn || cardColumn.sections.length === 0) break
       const effectiveCardScale = cardColumnScales[0] * cardRenderScaleFactors[0]
@@ -2659,8 +2729,10 @@ export async function GET(
     }
   )
   const imageBuffer = await imageResponse.arrayBuffer()
+  const imageBytes = new Uint8Array(imageBuffer)
+  setCachedOgImage(imageCacheKey, imageBytes)
   if (isOgUpstashCacheConfigured() && hasRenderableCards && hasRenderableAbilities) {
-    void putOgImageToUpstashCache(deckId, new Uint8Array(imageBuffer), {
+    void putOgImageToUpstashCache(deckId, imageBytes, {
       ttlSeconds: OG_UPSTASH_IMAGE_TTL_SECONDS,
       version: OG_IMAGE_VERSION,
     }).catch(() => {
