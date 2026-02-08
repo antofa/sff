@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: f4a8f4f
+  Request: For `http://trumpumpum.duckdns.org:3000/api/og/deck/s3-a9eaece4xe63ehdep8flqgcbgcrgiq?refresh=1`, fix regular-deck OG auto-fit because vertical and horizontal fitting was weak, with too much empty space between columns and at the bottom (especially in the first column).
+  Date: 2026-02-08
 - Commit: df906ec
   Request: Change OG generation so each column is maximally filled (allowing slight adaptive column-boundary shifts), then verify on the same 20 decks and tighten further for `Fused_1qrav2mfzdk9b9` where columns had too much bottom empty space.
   Date: 2026-02-08
