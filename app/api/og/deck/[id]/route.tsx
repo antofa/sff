@@ -1066,11 +1066,7 @@ const renderAbilityTokens = (
     >
       {renderTokens.map((token, idx) => {
         if (token.kind === 'text') {
-          return (
-            <span key={`text-${idx}`} style={{ whiteSpace: 'nowrap' }}>
-              {`${token.text}\u00A0`}
-            </span>
-          )
+          return `${token.text}\u00A0`
         }
         if (token.kind === 'level') {
           return (
