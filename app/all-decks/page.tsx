@@ -25,9 +25,9 @@ export const dynamic = 'force-dynamic'
 
 type SavedDeck = {
   id?: string
-  deck_id: string
-  deck_name: string
-  player_name: string
+  deck_id?: string
+  deck_name?: string
+  player_name?: string
   faction?: string | null
   format?: string | null
   deck_rank?: string | null
@@ -60,31 +60,87 @@ function AllDecksContent() {
   const [faction, setFaction] = useState<string | null>(null)
   const [format, setFormat] = useState<string | null>(null)
   const [onlyNft, setOnlyNft] = useState<boolean>(false)
+  const [infoMessage, setInfoMessage] = useState<string | null>('Enter a player name to load decks.')
 
   const fetchDecks = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      // fetch all to show full list in DeckList; backend supports paging but we want consistent view
-      params.set('limit', '500')
-      params.set('offset', '0')
-      if (search.trim()) params.set('search', search.trim())
-      if (player.trim()) params.set('player', player.trim())
-      if (faction) params.set('faction', faction)
-      if (format) params.set('format', format)
-      if (onlyNft) params.set('isNft', 'true')
+    const playerName = player.trim()
+    if (!playerName) {
+      setDecks([])
+      setCount(0)
+      setInfoMessage('Enter a player name to load decks.')
+      return
+    }
 
-      const res = await fetch(`/api/saved-decks?${params.toString()}`)
+    setLoading(true)
+    setInfoMessage(null)
+    try {
+      const res = await fetch(`/api/decks?player=${encodeURIComponent(playerName)}`)
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`)
       }
       const json = await res.json()
-      setDecks(json.decks ?? [])
-      setCount(json.count ?? 0)
+
+      const regularDecks: any[] = Array.isArray(json?.regular) ? json.regular : []
+      const fusedDecks: any[] = Array.isArray(json?.fused) ? json.fused : []
+      const merged = [...regularDecks, ...fusedDecks]
+
+      const normalized: SavedDeck[] = merged.map((deck: any) => ({
+        id: deck.id,
+        deck_id: deck.id,
+        deck_name: deck.name,
+        player_name: deck.playerName || deck.player_name || playerName,
+        faction: deck.faction ?? null,
+        format: deck.format ?? null,
+        deck_rank: deck.deckRank ?? null,
+        card_set_no: deck.cardSetNo ? String(deck.cardSetNo) : null,
+        card_set_id: deck.cardSetId ?? null,
+        deck_score: deck.deckScore ?? null,
+        elo: deck.elo ?? null,
+        is_fused: String(deck.format || '').toLowerCase() === 'fused' || Boolean(deck.is_fused),
+        cards: Array.isArray(deck.cards) ? deck.cards : [],
+        my_decks: Array.isArray(deck.myDecks) ? deck.myDecks : null,
+        fused_deck_ids: Array.isArray(deck.fusedDeckIds) ? deck.fusedDeckIds : null,
+        tags: deck.tags ?? null,
+        created: deck.created ?? null,
+        updated_at: deck.updatedAt ?? null,
+        forgeborn_id: deck.forgebornId ?? null,
+        forgeborn: deck.forgeborn ?? null,
+      }))
+
+      const searchText = search.trim().toLowerCase()
+      const filtered = normalized.filter((deck) => {
+        if (searchText) {
+          const name = (deck.deck_name || '').toLowerCase()
+          if (!name.includes(searchText)) return false
+        }
+
+        if (faction && (deck.faction || '').toLowerCase() !== faction.toLowerCase()) {
+          return false
+        }
+
+        if (format && (deck.format || '').toLowerCase() !== format.toLowerCase()) {
+          return false
+        }
+
+        if (onlyNft) {
+          const rank = (deck.deck_rank || '').toLowerCase()
+          const isNftLike = rank.includes('nft')
+          if (!isNftLike) return false
+        }
+
+        return true
+      })
+
+      setDecks(filtered)
+      setCount(filtered.length)
+      if (filtered.length === 0) {
+        setInfoMessage('No decks found with current filters.')
+      }
     } catch (error) {
       console.error('[AllDecks] Fetch error:', error)
       setDecks([])
       setCount(0)
+      setInfoMessage('Failed to load decks. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -109,13 +165,14 @@ function AllDecksContent() {
     setFaction(null)
     setFormat(null)
     setOnlyNft(false)
+    setInfoMessage('Enter a player name to load decks.')
     // fetch happens via useEffect when deps change
   }
 
   const mappedDecks = useMemo<Deck[]>(() => {
     return decks.map((deck) => ({
-      id: deck.deck_id,
-      name: deck.deck_name,
+      id: deck.deck_id || deck.id || '',
+      name: deck.deck_name || 'Untitled',
       faction: deck.faction ?? undefined,
       format: deck.format ?? undefined,
       deckRank: deck.deck_rank ?? undefined,
@@ -127,7 +184,7 @@ function AllDecksContent() {
       fusedDeckIds: deck.fused_deck_ids ?? undefined,
       myDecks: deck.my_decks ?? undefined,
       cards: deck.cards ?? [],
-      playerName: deck.player_name,
+      playerName: deck.player_name || undefined,
       created: deck.created ?? deck.updated_at ?? undefined,
       forgebornId: deck.forgeborn_id ?? undefined,
       forgeborn: deck.forgeborn ?? undefined,
@@ -227,7 +284,14 @@ function AllDecksContent() {
               <Loader size="lg" />
             </Group>
           ) : (
-            <DeckList decks={regularDecks} fusedDecks={fusedDecks} />
+            <>
+              {infoMessage && (
+                <Paper p="md" className="bg-slate-800/50 border border-sf-primary/20 rounded-lg">
+                  <Text className="text-gray-300">{infoMessage}</Text>
+                </Paper>
+              )}
+              <DeckList decks={regularDecks} fusedDecks={fusedDecks} />
+            </>
           )}
         </Stack>
       </Container>

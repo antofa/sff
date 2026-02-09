@@ -1,8 +1,7 @@
 'use client'
 
-import { Container, Group, Button, Text, Avatar, Menu, Tooltip, Paper, Divider, Modal, ScrollArea } from '@mantine/core'
-import { IconMail, IconBrandDiscord, IconLogout, IconUser, IconArrowUpRight, IconArrowDownRight, IconNotes } from '@tabler/icons-react'
-import { useSession, signIn, signOut } from 'next-auth/react'
+import { Container, Group, Button, Text, Tooltip, Paper, Divider, Modal, ScrollArea } from '@mantine/core'
+import { IconMail, IconArrowUpRight, IconArrowDownRight, IconNotes } from '@tabler/icons-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { memo, useEffect, useMemo, useState } from 'react'
@@ -205,7 +204,6 @@ const PriceRow = memo(function PriceRow({ token, quote, gridTemplate }: PriceRow
 })
 
 export function Header() {
-  const { data: session, status } = useSession()
   const [logoError, setLogoError] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   const [prices, setPrices] = useState<Record<string, TokenPrice>>({})
@@ -214,14 +212,6 @@ export function Header() {
   const releaseDate = formatChangelogDate(CHANGELOG_SUMMARY.date)
   const [changelogOpened, setChangelogOpened] = useState(false)
   const logoSrc = '/images/logo/too-many-decks-logo.png'
-
-  const handleDiscordLogin = () => {
-    signIn('discord')
-  }
-
-  const handleLogout = () => {
-    signOut()
-  }
 
   useEffect(() => {
     const readPriceCache = () => {
@@ -338,14 +328,6 @@ export function Header() {
       </Paper>
     )
   }, [prices])
-  // Get Discord avatar URL
-  const getDiscordAvatarUrl = () => {
-    if (session?.user?.discordId && session?.user?.avatar) {
-      return `https://cdn.discordapp.com/avatars/${session.user.discordId}/${session.user.avatar}.png`
-    }
-    return session?.user?.image || null
-  }
-
   return (
     <>
       <Modal
@@ -551,61 +533,7 @@ export function Header() {
               </Button>
             </div>
 
-            {status !== 'loading' && session ? (
-              // User is authenticated
-              <Menu shadow="md" width={200} position="bottom-end">
-                <Menu.Target>
-                  <Button
-                    variant="subtle"
-                    color="gray"
-                    size="sm"
-                    className="text-white hover:bg-sf-primary/20 transition-colors"
-                    leftSection={
-                      <Avatar
-                        src={getDiscordAvatarUrl()}
-                        size={24}
-                        radius="xl"
-                        alt={session.user?.name || 'User'}
-                      >
-                        <IconUser size={14} />
-                      </Avatar>
-                    }
-                  >
-                    <Text size="sm" truncate maw={100}>
-                      {session.user?.username || session.user?.name || 'User'}
-                    </Text>
-                  </Button>
-                </Menu.Target>
-
-                <Menu.Dropdown>
-                  <Menu.Label>
-                    <Group gap="xs">
-                      <IconBrandDiscord size={14} />
-                      <Text size="xs">{session.user?.email || 'Discord'}</Text>
-                    </Group>
-                  </Menu.Label>
-                  <Menu.Item
-                    component="a"
-                    href="/my-profile"
-                    leftSection={<IconUser size={14} />}
-                  >
-                    My profile
-                  </Menu.Item>
-                  <Menu.Divider />
-                  <Menu.Item
-                    color="red"
-                    leftSection={<IconLogout size={14} />}
-                    onClick={handleLogout}
-                  >
-                    Sign Out
-                  </Menu.Item>
-                </Menu.Dropdown>
-              </Menu>
-            ) : (
-              // User is not authenticated
-              // Temporarily hidden: Discord auth button; keep logic for future re-enable
-              null
-            )}
+            {/* Auth controls are intentionally hidden */}
           </Group>
           </Group>
           </div>

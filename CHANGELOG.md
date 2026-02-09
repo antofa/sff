@@ -6,6 +6,10 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-09 UTC) Fixed the All Decks page data source by replacing the missing `/api/saved-decks` dependency with a working `/api/decks` player-based load path and adding a clear in-page prompt when no player name is provided.
+- (2026-02-09 UTC) Reworked `/api/players` behavior for disabled Supabase environments to return a successful empty result set instead of `503`, preventing noisy errors on `/players` and `/player/[username]`.
+- (2026-02-09 UTC) Removed background half-deck creature-type fetches from fused deck cards in list view, preventing unnecessary bulk `/api/deck/*?skipOwnerMerge=1` requests when browsing fused results.
+- (2026-02-09 UTC) Eliminated repeated session polling on public pages by removing header auth-session usage and enabling NextAuth session provider only on auth-required routes.
 - (2026-02-09 UTC) Stopped repeated half-deck refetch loops in fused deck details by adding retry cooldown and stricter update guards in `DeckDetails`, so opening a fused deck no longer spams the same half-deck API requests.
 - (2026-02-09 UTC) Deduplicated client-side deck-detail requests by introducing a shared in-flight cache for `/api/deck/[id]` calls across deck page loading and modal enrichment flows, reducing repeated same-deck fetch bursts when opening fused deck links.
 - (2026-02-09 UTC) Stabilized header loading layout by rendering the full price panel structure from the first paint (with placeholder values) and removing transient loader swaps, preventing the temporary extra header row during startup.

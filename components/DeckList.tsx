@@ -11,7 +11,6 @@ import { useDeckStore } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
-import { fetchCreatureTypesForDeckId } from '@/lib/creatureTypeOverrides'
 
 type CreatureTypeMap = Record<string, number>
 
@@ -56,7 +55,6 @@ const buildCreatureTypeEntries = (
 }
 
 const isFusedDeckLike = (deck: any) => String(deck?.format || '').toLowerCase() === 'fused'
-const creatureTypeOverrideRequested = new Set<string>()
 
 const buildFusedCreatureTypeEntries = (
   deck: Deck,
@@ -1396,39 +1394,6 @@ const FusedDeckCard = memo(function FusedDeckCard({
       }),
     [deck, deckCreatureTypesMap, deckCreatureTypeOverrides, allDecks, pickedSources]
   )
-
-  const halfDeckIds = useMemo(() => {
-    const ids = new Set<string>()
-    const addId = (value?: string | null) => {
-      const trimmed = (value || '').trim()
-      if (trimmed) ids.add(trimmed)
-    }
-    if (Array.isArray(fusedDeckAny.myDecks)) {
-      fusedDeckAny.myDecks.forEach((d: any) => addId(d?.id || d?.deckId || d?.deck_id))
-    }
-    if (Array.isArray(fusedDeckAny.fusedDeckIds)) {
-      fusedDeckAny.fusedDeckIds.forEach((id: string) => addId(id))
-    }
-    pickedSources.forEach((d) => addId((d as any)?.id || (d as any)?.deckId || (d as any)?.deck_id))
-    return Array.from(ids)
-  }, [fusedDeckAny.myDecks, fusedDeckAny.fusedDeckIds, pickedSources])
-
-  useEffect(() => {
-    if (halfDeckIds.length === 0) return
-    const store = useDeckStore.getState()
-    halfDeckIds.forEach((id) => {
-      if (!id) return
-      if (creatureTypeOverrideRequested.has(id)) return
-      creatureTypeOverrideRequested.add(id)
-      fetchCreatureTypesForDeckId(id).then((creatureType) => {
-        if (creatureType && Object.keys(creatureType).length > 0) {
-          store.setDeckCreatureType(id, creatureType)
-        } else {
-          creatureTypeOverrideRequested.delete(id)
-        }
-      })
-    })
-  }, [halfDeckIds, deckCreatureTypesMap])
 
   const fusedSetLabels = useMemo(() => {
     const setLabels = new Set<string>()
