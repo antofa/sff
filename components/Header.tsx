@@ -40,6 +40,25 @@ type ChangelogEntry = {
 
 const CHANGELOG_HISTORY: ChangelogEntry[] = [
   {
+    version: '0.0.2a',
+    date: '2026-02-09',
+    added: [
+      'The "What\'s new" window now keeps previous versions, so you can review update history in one place.',
+      'The All Decks page now has a reliable player-based loading path even when saved-deck storage is unavailable.',
+    ],
+    changed: [
+      'Deck details now use fewer background requests, so opening fused and direct-link decks feels smoother.',
+      'Header loading is visually stable: layout placeholders now keep the final structure from first paint.',
+      'Player pages now stay usable when database features are disabled, instead of surfacing hard API errors.',
+    ],
+    fixed: [
+      'Fixed repeated fused half-deck background fetch loops that could keep network activity running.',
+      'Fixed the broken All Decks flow caused by a missing API endpoint dependency.',
+      'Fixed clipped Forgeborn ability text in shared deck preview images for long ability lines.',
+      'Removed duplicate public-page session checks that caused unnecessary API calls.',
+    ],
+  },
+  {
     version: '0.0.2',
     date: '2026-02-08',
     added: [

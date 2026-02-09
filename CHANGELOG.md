@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.2a] - 2026-02-09
+
+### Added
+- (2026-02-09 UTC) Updated the in-app header changelog to version `0.0.2a` and preserved full release history so players can review both current and previous updates from the same window.
+
+### Changed
+- (2026-02-09 UTC) Improved direct and fused deck opening flow by deduplicating client deck-detail requests, reducing unnecessary background traffic, and making details load feel steadier.
+- (2026-02-09 UTC) Stabilized header startup layout by rendering final-size placeholder rows during price loading, preventing temporary line jumps in the top bar.
+- (2026-02-09 UTC) Made `/players` and `/player/[username]` tolerant to disabled Supabase setups by returning an empty successful response instead of surfacing blocking API errors.
+
+### Fixed
+- (2026-02-09 UTC) Fixed fused deck detail views repeatedly refetching half-decks in the background, which could keep network activity running longer than expected.
+- (2026-02-09 UTC) Fixed the broken `/all-decks` loading path by replacing the missing `/api/saved-decks` dependency with a working player-based fetch path.
+- (2026-02-09 UTC) Fixed clipped Forgeborn ability text in deck share preview images by tightening OG fit safety and refreshing the OG image version.
+- (2026-02-09 UTC) Removed duplicate public-page auth session checks that were causing extra API requests on initial page load.
+
 ## [0.0.2] - 2026-02-06
 
 ### Changed
