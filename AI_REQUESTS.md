@@ -965,3 +965,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: b86a87d
   Request: Add the site changelog entry in the header including all changes since the last merge, and label it version 0.0.2a.
   Date: 2026-02-09
+- Commit: b14e0da
+  Request: Merge everything from dev into master.
+  Date: 2026-02-09
