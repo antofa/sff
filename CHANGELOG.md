@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-09 UTC) Fixed a non-fused deck OG text wrapping regression where Forgeborn ability lines could be cut off at the right edge; restored per-token nowrap wrappers for text tokens in inline ability rendering and bumped OG image version for cache refresh.
 - (2026-02-08 UTC) Optimized cold OG PNG rendering while keeping all icons visible: replaced Forgeborn A/H/D stat icon images with inline SVG icons, removed the dedicated stat icon fetch stage, reused pre-tokenized ability render data to avoid duplicate tokenization, and reduced ability-row wrapper nodes in the OG JSX tree; also bumped OG image version for cache refresh.
 - (2026-02-08 UTC) Fixed clipped Forgeborn ability text in deck OG images by making forgeborn fit calculations more conservative (token width/line-height safety, extra bottom reserve, tighter fit budget, and final render safety scaling), plus bumped OG image version to refresh stale cached previews.
 - (2026-02-08 UTC) Added automated visual-regression tooling for large deck rendering checks by installing Playwright (`@playwright/test` + Chromium) and image diff helpers (`pixelmatch`, `pngjs`) for batch validation runs.
