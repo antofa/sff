@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: eb51c5f
+  Request: Revert the last couple of PNG rendering changes; only commit `61a0250` is considered working.
+  Date: 2026-02-09
 - Commit: 12e22b1
   Request: `http://trumpumpum.duckdns.org:3000/api/og/deck/00fceeenogc6goaiajiaumf1qj9sla?refresh=1` — now the text does not fit.
   Date: 2026-02-09
