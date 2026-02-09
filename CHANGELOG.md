@@ -6,6 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-09 UTC) Stopped repeated half-deck refetch loops in fused deck details by adding retry cooldown and stricter update guards in `DeckDetails`, so opening a fused deck no longer spams the same half-deck API requests.
 - (2026-02-09 UTC) Deduplicated client-side deck-detail requests by introducing a shared in-flight cache for `/api/deck/[id]` calls across deck page loading and modal enrichment flows, reducing repeated same-deck fetch bursts when opening fused deck links.
 - (2026-02-09 UTC) Stabilized header loading layout by rendering the full price panel structure from the first paint (with placeholder values) and removing transient loader swaps, preventing the temporary extra header row during startup.
 - (2026-02-08 UTC) Fixed clipped Forgeborn ability text in deck OG images by making forgeborn fit calculations more conservative (token width/line-height safety, extra bottom reserve, tighter fit budget, and final render safety scaling), plus bumped OG image version to refresh stale cached previews.
