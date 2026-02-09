@@ -8,6 +8,39 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: ab14847
+  Request: Fix these issues: broken `all-decks` due missing `/api/saved-decks`, `503` failures on player pages when Supabase is disabled, unnecessary bulk half-deck API loads when opening fused decks from list, and duplicate `/api/auth/session` requests.
+  Date: 2026-02-09
+- Commit: 2e0481d
+  Request: With an opened fused deck, are there still continuous identical requests to half-deck endpoints?
+  Date: 2026-02-09
+- Commit: 33b99c3
+  Request: Proceed with reducing duplicate fused deck resource loading requests.
+  Date: 2026-02-09
+- Commit: 97186aa
+  Request: Do not do extra optimizations; keep all header elements in their final positions during loading so an extra row does not appear.
+  Date: 2026-02-09
+- Commit: eb51c5f
+  Request: Revert the last couple of PNG rendering changes; only commit `61a0250` is considered working.
+  Date: 2026-02-09
+- Commit: 12e22b1
+  Request: `http://trumpumpum.duckdns.org:3000/api/og/deck/00fceeenogc6goaiajiaumf1qj9sla?refresh=1` — now the text does not fit.
+  Date: 2026-02-09
+- Commit: f0dd231
+  Request: Let's try optimizing `image_png_render` without removing icons: reduce JSX node count, keep icon set, make icon rendering more uniform/lightweight, and replace part of `<img>` icons with inline SVG where possible.
+  Date: 2026-02-08
+- Commit: 61a0250
+  Request: Let's fix the OG image issue; Forgeborn abilities are clipped in deck previews.
+  Date: 2026-02-08
+- Commit: 1f3ba68
+  Request: Revert the latest changes related to Forgeborn image sizing; this was intended for OG deck image issues where Forgeborn abilities are clipped.
+  Date: 2026-02-08
+- Commit: ed15b54
+  Request: Can you install everything you need for this?
+  Date: 2026-02-08
+- Commit: 9fc4566
+  Request: On `https://solforgefusion.netlify.app/deck/s4-abiaggaxrazxb1tb1ubnuboucg6cj7`, the Forgeborn ability text does not fit completely in the card frame.
+  Date: 2026-02-08
 - Commit: e498453
   Request: The changelog is missing details like OG image/title/description changes and the new filter; clarify whether the summary covered only today or the full period since the last merge.
   Date: 2026-02-08
@@ -929,3 +962,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: d06ab12
   Request: Let's do it.
   Date: 2026-02-08
+- Commit: b86a87d
+  Request: Add the site changelog entry in the header including all changes since the last merge, and label it version 0.0.2a.
+  Date: 2026-02-09

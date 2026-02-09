@@ -1,8 +1,7 @@
 'use client'
 
-import { Container, Group, Button, Text, Avatar, Menu, Loader, Tooltip, Paper, Divider, Modal, ScrollArea } from '@mantine/core'
-import { IconMail, IconBrandDiscord, IconLogout, IconUser, IconArrowUpRight, IconArrowDownRight, IconNotes } from '@tabler/icons-react'
-import { useSession, signIn, signOut } from 'next-auth/react'
+import { Container, Group, Button, Text, Tooltip, Paper, Divider, Modal, ScrollArea } from '@mantine/core'
+import { IconMail, IconArrowUpRight, IconArrowDownRight, IconNotes } from '@tabler/icons-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { memo, useEffect, useMemo, useState } from 'react'
@@ -40,6 +39,25 @@ type ChangelogEntry = {
 }
 
 const CHANGELOG_HISTORY: ChangelogEntry[] = [
+  {
+    version: '0.0.2a',
+    date: '2026-02-09',
+    added: [
+      'The "What\'s new" window now keeps previous versions, so you can review update history in one place.',
+      'The All Decks page now has a reliable player-based loading path even when saved-deck storage is unavailable.',
+    ],
+    changed: [
+      'Deck details now use fewer background requests, so opening fused and direct-link decks feels smoother.',
+      'Header loading is visually stable: layout placeholders now keep the final structure from first paint.',
+      'Player pages now stay usable when database features are disabled, instead of surfacing hard API errors.',
+    ],
+    fixed: [
+      'Fixed repeated fused half-deck background fetch loops that could keep network activity running.',
+      'Fixed the broken All Decks flow caused by a missing API endpoint dependency.',
+      'Fixed clipped Forgeborn ability text in shared deck preview images for long ability lines.',
+      'Removed duplicate public-page session checks that caused unnecessary API calls.',
+    ],
+  },
   {
     version: '0.0.2',
     date: '2026-02-08',
@@ -205,7 +223,6 @@ const PriceRow = memo(function PriceRow({ token, quote, gridTemplate }: PriceRow
 })
 
 export function Header() {
-  const { data: session, status } = useSession()
   const [logoError, setLogoError] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   const [prices, setPrices] = useState<Record<string, TokenPrice>>({})
@@ -214,14 +231,6 @@ export function Header() {
   const releaseDate = formatChangelogDate(CHANGELOG_SUMMARY.date)
   const [changelogOpened, setChangelogOpened] = useState(false)
   const logoSrc = '/images/logo/too-many-decks-logo.png'
-
-  const handleDiscordLogin = () => {
-    signIn('discord')
-  }
-
-  const handleLogout = () => {
-    signOut()
-  }
 
   useEffect(() => {
     const readPriceCache = () => {
@@ -338,16 +347,6 @@ export function Header() {
       </Paper>
     )
   }, [prices])
-  const hasPrices = Object.keys(prices).length > 0
-
-  // Get Discord avatar URL
-  const getDiscordAvatarUrl = () => {
-    if (session?.user?.discordId && session?.user?.avatar) {
-      return `https://cdn.discordapp.com/avatars/${session.user.discordId}/${session.user.avatar}.png`
-    }
-    return session?.user?.image || null
-  }
-
   return (
     <>
       <Modal
@@ -469,22 +468,15 @@ export function Header() {
             </Group>
 
             <Group gap="xs" wrap="wrap" align="center" justify="flex-start">
-              {!hasPrices && loadingPrices ? (
-                <Loader size="sm" color="blue" />
-              ) : errorPrices && !hasPrices ? (
-                <Text size="xs" c="red.3">
-                  {errorPrices}
-                </Text>
-              ) : (
-                <div
-                  style={{
-                    opacity: loadingPrices && hasPrices ? 0.85 : 1,
-                    transition: 'opacity 150ms ease',
-                  }}
-                >
-                  {pricePanel}
-                </div>
-              )}
+              <div
+                style={{
+                  opacity: loadingPrices ? 0.85 : 1,
+                  transition: 'opacity 150ms ease',
+                }}
+                aria-label={errorPrices ? 'Price feed unavailable' : undefined}
+              >
+                {pricePanel}
+              </div>
             </Group>
 
             <Group gap="xs" wrap="nowrap">
@@ -560,63 +552,7 @@ export function Header() {
               </Button>
             </div>
 
-            {status === 'loading' ? (
-              <Loader size="sm" color="blue" />
-            ) : session ? (
-              // User is authenticated
-              <Menu shadow="md" width={200} position="bottom-end">
-                <Menu.Target>
-                  <Button
-                    variant="subtle"
-                    color="gray"
-                    size="sm"
-                    className="text-white hover:bg-sf-primary/20 transition-colors"
-                    leftSection={
-                      <Avatar
-                        src={getDiscordAvatarUrl()}
-                        size={24}
-                        radius="xl"
-                        alt={session.user?.name || 'User'}
-                      >
-                        <IconUser size={14} />
-                      </Avatar>
-                    }
-                  >
-                    <Text size="sm" truncate maw={100}>
-                      {session.user?.username || session.user?.name || 'User'}
-                    </Text>
-                  </Button>
-                </Menu.Target>
-
-                <Menu.Dropdown>
-                  <Menu.Label>
-                    <Group gap="xs">
-                      <IconBrandDiscord size={14} />
-                      <Text size="xs">{session.user?.email || 'Discord'}</Text>
-                    </Group>
-                  </Menu.Label>
-                  <Menu.Item
-                    component="a"
-                    href="/my-profile"
-                    leftSection={<IconUser size={14} />}
-                  >
-                    My profile
-                  </Menu.Item>
-                  <Menu.Divider />
-                  <Menu.Item
-                    color="red"
-                    leftSection={<IconLogout size={14} />}
-                    onClick={handleLogout}
-                  >
-                    Sign Out
-                  </Menu.Item>
-                </Menu.Dropdown>
-              </Menu>
-            ) : (
-              // User is not authenticated
-              // Temporarily hidden: Discord auth button; keep logic for future re-enable
-              null
-            )}
+            {/* Auth controls are intentionally hidden */}
           </Group>
           </Group>
           </div>

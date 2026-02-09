@@ -13,11 +13,13 @@ import { logWithTimestamp } from '@/lib/logger'
 import { pluralize } from '@/lib/pluralize'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 import { fetchCreatureTypesForDeckId } from '@/lib/creatureTypeOverrides'
+import { tryFetchDeckFromApiCached } from '@/lib/clientDeckApi'
 import { useDeckStore } from '@/store/deckStore'
 
 type CreatureTypeMap = Record<string, number>
 
 const KNOWN_FORGEBORN_NAMES = ['cercee', 'ironbeard', 'xerxes', 'kitaru', 'nova']
+const HALF_DETAILS_REFETCH_COOLDOWN_MS = 60_000
 
 const isFusedDeckLike = (deck: any) => String(deck?.format || '').toLowerCase() === 'fused'
 
@@ -250,22 +252,10 @@ const buildFusedCreatureTypeEntries = (
 // then fall back to external API if internal route is unavailable.
 async function fetchDeckDetails(deckId: string): Promise<any> {
   const fetchFromInternalApi = async (): Promise<any | null> => {
-    try {
-      const response = await fetch(`/api/deck/${encodeURIComponent(deckId)}`, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(12000),
-      })
-
-      if (!response.ok) return null
-
-      const payload = await response.json().catch(() => null)
-      return payload?.deck || null
-    } catch {
-      return null
-    }
+    return tryFetchDeckFromApiCached(deckId, {
+      timeoutMs: 12000,
+      ttlMs: 6000,
+    })
   }
 
   const fetchFromExternalApi = async (): Promise<any | null> => {
@@ -652,6 +642,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
   const fullDeckLoadRequestRef = useRef<number>(0)
   const fusedSourcesLoadRequestRef = useRef<number>(0)
   const halfDetailsLoadRequestRef = useRef<number>(0)
+  const halfDetailsFetchAttemptRef = useRef<Map<string, number>>(new Map())
   const latestDeckIdRef = useRef<string | null>(normalizeDeckId(deck?.id))
   const isSmUp = useMediaQuery('(min-width: 48em)')
   const isMdUp = useMediaQuery('(min-width: 62em)')
@@ -734,6 +725,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
     cardImagesRef.current = {}
     loadingInFlightRef.current.clear()
     imageRequestCacheRef.current.clear()
+    halfDetailsFetchAttemptRef.current.clear()
   }, [deck?.id])
 
   const makeLoadingKey = useCallback((cardId: string, level: number) => `${cardId}-${level}`, [])
@@ -1219,6 +1211,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
 
     const pendingFetch: string[] = []
     const updates: Record<string, any> = {}
+    const now = Date.now()
 
     normalizedPool.forEach((c) => {
       const cid = c?.id
@@ -1231,25 +1224,31 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
         stored &&
         ((Array.isArray((stored as any).cardIds) && (stored as any).cardIds.length > 0) ||
           (Array.isArray((stored as any).cardList) && (stored as any).cardList.length > 0))
+      const lastAttemptAt = halfDetailsFetchAttemptRef.current.get(cid) || 0
+      const canRetryFetch = now - lastAttemptAt >= HALF_DETAILS_REFETCH_COOLDOWN_MS
 
       if (hasCardIds || hasCardList) {
         if (!storedHasIds) updates[cid] = c
         return
       }
 
-      // Cards array without cardIds: use as a temporary fallback, but still try to fetch.
+      // Cards array without cardIds: keep it as fallback, but avoid tight refetch loops.
       if (hasCardsArray) {
         if (!stored) updates[cid] = c
-        if (!storedHasIds) pendingFetch.push(cid)
+        if (!stored && canRetryFetch) pendingFetch.push(cid)
         return
       }
 
-      if (!stored) pendingFetch.push(cid)
+      if (!stored && canRetryFetch) pendingFetch.push(cid)
     })
 
     if (pendingFetch.length === 0 && Object.keys(updates).length === 0) return
 
     const load = async () => {
+      pendingFetch.forEach((id) => {
+        halfDetailsFetchAttemptRef.current.set(id, Date.now())
+      })
+
       const fetchedResults = await Promise.all(
         pendingFetch.map(async (id) => {
           const res = await fetchDeckDetails(id)
@@ -1268,6 +1267,7 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
       setHalfDetails((prev) => {
         if (isStaleRequest()) return prev
         const next = { ...prev }
+        let hasChanges = false
         Object.entries(merged).forEach(([id, val]) => {
           const incomingHasIds =
             (Array.isArray((val as any).cardIds) && (val as any).cardIds.length > 0) ||
@@ -1279,10 +1279,13 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
             ((Array.isArray((stored as any).cardIds) && (stored as any).cardIds.length > 0) ||
               (Array.isArray((stored as any).cardList) && (stored as any).cardList.length > 0))
           if (!stored || incomingHasIds || (!storedHasIds && incomingHasCards)) {
-            next[id] = val
+            if (next[id] !== val) {
+              next[id] = val
+              hasChanges = true
+            }
           }
         })
-        return next
+        return hasChanges ? next : prev
       })
     }
 

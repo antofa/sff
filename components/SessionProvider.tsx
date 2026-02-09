@@ -1,6 +1,7 @@
 'use client'
 
 import { SessionProvider as NextAuthSessionProvider } from "next-auth/react"
+import { usePathname } from 'next/navigation'
 
 interface Props {
   children: React.ReactNode
@@ -8,16 +9,24 @@ interface Props {
 }
 
 export function SessionProvider({ children, enabled = true }: Props) {
-  if (!enabled) {
+  const pathname = usePathname()
+  const authRoute = pathname ? pathname.startsWith('/my-profile') : false
+  const shouldEnable = enabled && authRoute
+  const providerProps = {
+    refetchInterval: 0,
+    refetchOnWindowFocus: false,
+  } as const
+
+  if (!shouldEnable) {
     return (
-      <NextAuthSessionProvider session={null} refetchInterval={0} refetchOnWindowFocus={false}>
+      <NextAuthSessionProvider session={null} {...providerProps}>
         {children}
       </NextAuthSessionProvider>
     )
   }
 
   return (
-    <NextAuthSessionProvider>
+    <NextAuthSessionProvider {...providerProps}>
       {children}
     </NextAuthSessionProvider>
   )

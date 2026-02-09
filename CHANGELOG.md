@@ -3,9 +3,34 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.2a] - 2026-02-09
+
+### Added
+- (2026-02-09 UTC) Updated the in-app header changelog to version `0.0.2a` and preserved full release history so players can review both current and previous updates from the same window.
+
+### Changed
+- (2026-02-09 UTC) Improved direct and fused deck opening flow by deduplicating client deck-detail requests, reducing unnecessary background traffic, and making details load feel steadier.
+- (2026-02-09 UTC) Stabilized header startup layout by rendering final-size placeholder rows during price loading, preventing temporary line jumps in the top bar.
+- (2026-02-09 UTC) Made `/players` and `/player/[username]` tolerant to disabled Supabase setups by returning an empty successful response instead of surfacing blocking API errors.
+
+### Fixed
+- (2026-02-09 UTC) Fixed fused deck detail views repeatedly refetching half-decks in the background, which could keep network activity running longer than expected.
+- (2026-02-09 UTC) Fixed the broken `/all-decks` loading path by replacing the missing `/api/saved-decks` dependency with a working player-based fetch path.
+- (2026-02-09 UTC) Fixed clipped Forgeborn ability text in deck share preview images by tightening OG fit safety and refreshing the OG image version.
+- (2026-02-09 UTC) Removed duplicate public-page auth session checks that were causing extra API requests on initial page load.
+
 ## [0.0.2] - 2026-02-06
 
 ### Changed
+- (2026-02-09 UTC) Fixed the All Decks page data source by replacing the missing `/api/saved-decks` dependency with a working `/api/decks` player-based load path and adding a clear in-page prompt when no player name is provided.
+- (2026-02-09 UTC) Reworked `/api/players` behavior for disabled Supabase environments to return a successful empty result set instead of `503`, preventing noisy errors on `/players` and `/player/[username]`.
+- (2026-02-09 UTC) Removed background half-deck creature-type fetches from fused deck cards in list view, preventing unnecessary bulk `/api/deck/*?skipOwnerMerge=1` requests when browsing fused results.
+- (2026-02-09 UTC) Eliminated repeated session polling on public pages by removing header auth-session usage and enabling NextAuth session provider only on auth-required routes.
+- (2026-02-09 UTC) Stopped repeated half-deck refetch loops in fused deck details by adding retry cooldown and stricter update guards in `DeckDetails`, so opening a fused deck no longer spams the same half-deck API requests.
+- (2026-02-09 UTC) Deduplicated client-side deck-detail requests by introducing a shared in-flight cache for `/api/deck/[id]` calls across deck page loading and modal enrichment flows, reducing repeated same-deck fetch bursts when opening fused deck links.
+- (2026-02-09 UTC) Stabilized header loading layout by rendering the full price panel structure from the first paint (with placeholder values) and removing transient loader swaps, preventing the temporary extra header row during startup.
+- (2026-02-08 UTC) Fixed clipped Forgeborn ability text in deck OG images by making forgeborn fit calculations more conservative (token width/line-height safety, extra bottom reserve, tighter fit budget, and final render safety scaling), plus bumped OG image version to refresh stale cached previews.
+- (2026-02-08 UTC) Added automated visual-regression tooling for large deck rendering checks by installing Playwright (`@playwright/test` + Chromium) and image diff helpers (`pixelmatch`, `pngjs`) for batch validation runs.
 - (2026-02-08 UTC) Expanded header changelog `0.0.2` notes with clearer user-facing highlights from the full release period (including OG preview image/title/description improvements and new filtering options), so the in-app changelog better matches what players actually notice.
 - (2026-02-08 UTC) Updated the in-app header changelog modal to keep version history visible (including previous releases) instead of showing only the latest entry, so users can review past updates directly from the header icon.
 - (2026-02-08 UTC) Updated the in-app header changelog to version `0.0.2` with concise, player-focused release notes that explain user-visible improvements in deck loading, fused/half navigation stability, and direct-link detail reliability.
