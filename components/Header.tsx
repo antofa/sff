@@ -1,6 +1,6 @@
 'use client'
 
-import { Container, Group, Button, Text, Avatar, Menu, Loader, Tooltip, Paper, Divider, Modal, ScrollArea } from '@mantine/core'
+import { Container, Group, Button, Text, Avatar, Menu, Tooltip, Paper, Divider, Modal, ScrollArea } from '@mantine/core'
 import { IconMail, IconBrandDiscord, IconLogout, IconUser, IconArrowUpRight, IconArrowDownRight, IconNotes } from '@tabler/icons-react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import Image from 'next/image'
@@ -338,8 +338,6 @@ export function Header() {
       </Paper>
     )
   }, [prices])
-  const hasPrices = Object.keys(prices).length > 0
-
   // Get Discord avatar URL
   const getDiscordAvatarUrl = () => {
     if (session?.user?.discordId && session?.user?.avatar) {
@@ -469,22 +467,15 @@ export function Header() {
             </Group>
 
             <Group gap="xs" wrap="wrap" align="center" justify="flex-start">
-              {!hasPrices && loadingPrices ? (
-                <Loader size="sm" color="blue" />
-              ) : errorPrices && !hasPrices ? (
-                <Text size="xs" c="red.3">
-                  {errorPrices}
-                </Text>
-              ) : (
-                <div
-                  style={{
-                    opacity: loadingPrices && hasPrices ? 0.85 : 1,
-                    transition: 'opacity 150ms ease',
-                  }}
-                >
-                  {pricePanel}
-                </div>
-              )}
+              <div
+                style={{
+                  opacity: loadingPrices ? 0.85 : 1,
+                  transition: 'opacity 150ms ease',
+                }}
+                aria-label={errorPrices ? 'Price feed unavailable' : undefined}
+              >
+                {pricePanel}
+              </div>
             </Group>
 
             <Group gap="xs" wrap="nowrap">
@@ -560,9 +551,7 @@ export function Header() {
               </Button>
             </div>
 
-            {status === 'loading' ? (
-              <Loader size="sm" color="blue" />
-            ) : session ? (
+            {status !== 'loading' && session ? (
               // User is authenticated
               <Menu shadow="md" width={200} position="bottom-end">
                 <Menu.Target>
