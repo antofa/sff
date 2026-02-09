@@ -13,6 +13,7 @@ import { logWithTimestamp } from '@/lib/logger'
 import { pluralize } from '@/lib/pluralize'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 import { fetchCreatureTypesForDeckId } from '@/lib/creatureTypeOverrides'
+import { tryFetchDeckFromApiCached } from '@/lib/clientDeckApi'
 import { useDeckStore } from '@/store/deckStore'
 
 type CreatureTypeMap = Record<string, number>
@@ -250,22 +251,10 @@ const buildFusedCreatureTypeEntries = (
 // then fall back to external API if internal route is unavailable.
 async function fetchDeckDetails(deckId: string): Promise<any> {
   const fetchFromInternalApi = async (): Promise<any | null> => {
-    try {
-      const response = await fetch(`/api/deck/${encodeURIComponent(deckId)}`, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(12000),
-      })
-
-      if (!response.ok) return null
-
-      const payload = await response.json().catch(() => null)
-      return payload?.deck || null
-    } catch {
-      return null
-    }
+    return tryFetchDeckFromApiCached(deckId, {
+      timeoutMs: 12000,
+      ttlMs: 6000,
+    })
   }
 
   const fetchFromExternalApi = async (): Promise<any | null> => {

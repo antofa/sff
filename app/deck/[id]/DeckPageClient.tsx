@@ -9,6 +9,7 @@ import { Header } from '@/components/Header'
 import { DeckDetails } from '@/components/DeckDetails'
 import type { Deck } from '@/store/deckStore'
 import { addComputedFields } from '@/store/deckStore'
+import { fetchDeckFromApiCached } from '@/lib/clientDeckApi'
 
 type DeckPageClientProps = {
   initialDeckId?: string
@@ -117,23 +118,12 @@ export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageC
       setAllDecks(nextState.allDecks)
     }
 
-    const fetchDeckPayload = async (url: string) => {
-      const res = await fetch(url, { headers: { Accept: 'application/json' } })
-      let json: any = null
-      try {
-        json = await res.json()
-      } catch {
-        json = null
-      }
-      if (!res.ok || !json?.deck) {
-        throw new Error(json?.error || 'Failed to load deck')
-      }
-      return json.deck as Deck
-    }
-
     const fetchFullInBackground = async () => {
       try {
-        const fullDeck = await fetchDeckPayload(`/api/deck/${deckId}`)
+        const fullDeck = (await fetchDeckFromApiCached(deckId, {
+          timeoutMs: 12000,
+          ttlMs: 6000,
+        })) as Deck
         applyDeckState(fullDeck)
       } catch {
         // Keep fast payload on screen if full enrichment fails.
@@ -164,13 +154,20 @@ export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageC
 
       setLoading(true)
       try {
-        const fastDeck = await fetchDeckPayload(`/api/deck/${deckId}?fast=1`)
+        const fastDeck = (await fetchDeckFromApiCached(deckId, {
+          fast: true,
+          timeoutMs: 12000,
+          ttlMs: 6000,
+        })) as Deck
         applyDeckState(fastDeck)
         setLoading(false)
         void fetchFullInBackground()
       } catch {
         try {
-          const fullDeck = await fetchDeckPayload(`/api/deck/${deckId}`)
+          const fullDeck = (await fetchDeckFromApiCached(deckId, {
+            timeoutMs: 12000,
+            ttlMs: 6000,
+          })) as Deck
           applyDeckState(fullDeck)
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Failed to load deck')
@@ -248,10 +245,11 @@ export default function DeckPageClient({ initialDeckId, initialDeck }: DeckPageC
         fusedIds.map(async (id) => {
           if (!id || ids.has(id)) return
           try {
-            const res = await fetch(`/api/deck/${id}`)
-            const json = await res.json()
-            if (!res.ok || !json?.deck) return
-            addDeck(json.deck as Deck)
+            const deckPayload = (await fetchDeckFromApiCached(id, {
+              timeoutMs: 12000,
+              ttlMs: 6000,
+            })) as Deck
+            addDeck(deckPayload)
           } catch {
             // ignore fetch errors; we still show whatever data we have
           }
