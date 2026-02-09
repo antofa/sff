@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: ab14847
+  Request: Fix these issues: broken `all-decks` due missing `/api/saved-decks`, `503` failures on player pages when Supabase is disabled, unnecessary bulk half-deck API loads when opening fused decks from list, and duplicate `/api/auth/session` requests.
+  Date: 2026-02-09
 - Commit: 2e0481d
   Request: With an opened fused deck, are there still continuous identical requests to half-deck endpoints?
   Date: 2026-02-09
