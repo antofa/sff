@@ -1050,34 +1050,14 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             forgebornNameIndex: string[]
           }
         | null = null
-      const regularDeckIds = new Set<string>()
-      const fusedDeckIds = new Set<string>()
+      const regularChunks = new Map<number, any[]>()
+      const fusedChunks = new Map<number, any[]>()
 
-      const appendUniqueDecks = (target: any[], idSet: Set<string>, incoming: any[]) => {
-        if (!Array.isArray(incoming) || incoming.length === 0) return
-        incoming.forEach((deck, index) => {
-          if (!deck || typeof deck !== 'object') return
-          const rawId = deck.id ?? deck.deckId ?? deck.deck_id
-          if (rawId !== undefined && rawId !== null) {
-            const normalizedId = String(rawId)
-            if (idSet.has(normalizedId)) return
-            idSet.add(normalizedId)
-            target.push(deck)
-            return
-          }
-          // Fallback when deck ID is missing: keep payload order but avoid undefined-id collisions.
-          target.push({ ...deck, __chunkIndex: target.length + index })
-        })
-      }
-
-      const rebuildDeckIdSet = (idSet: Set<string>, items: any[]) => {
-        idSet.clear()
-        if (!Array.isArray(items)) return
-        items.forEach((deck) => {
-          const rawId = deck?.id ?? deck?.deckId ?? deck?.deck_id
-          if (rawId !== undefined && rawId !== null) {
-            idSet.add(String(rawId))
-          }
+      const rebuildDecksFromChunks = (chunks: Map<number, any[]>) => {
+        const orderedIndexes = Array.from(chunks.keys()).sort((a, b) => a - b)
+        return orderedIndexes.flatMap((index) => {
+          const items = chunks.get(index)
+          return Array.isArray(items) ? items : []
         })
       }
 
@@ -1299,12 +1279,14 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           const data = JSON.parse((event as MessageEvent).data || '{}')
           const deckType = data.deckType === 'fused' ? 'fused' : 'regular'
           const items = Array.isArray(data.items) ? data.items : []
-          const chunkIndex = Number(data.chunkIndex) || 0
+          const chunkIndexRaw = Number(data.chunkIndex)
+          const chunkIndex = Number.isFinite(chunkIndexRaw) ? chunkIndexRaw : 0
           const chunkCount = Number(data.chunkCount) || 0
           const totalDecks = Number.isFinite(Number(data.totalDecks)) ? Number(data.totalDecks) : undefined
 
           if (deckType === 'fused') {
-            appendUniqueDecks(fusedDecks, fusedDeckIds, items)
+            fusedChunks.set(chunkIndex, items)
+            fusedDecks = rebuildDecksFromChunks(fusedChunks)
             const currentRegular = get().progress.counters?.regularCount ?? regularDecks.length
             setProgressCounters({
               regularCount: currentRegular,
@@ -1312,7 +1294,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
               totalCount: currentRegular + fusedDecks.length,
             })
           } else {
-            appendUniqueDecks(regularDecks, regularDeckIds, items)
+            regularChunks.set(chunkIndex, items)
+            regularDecks = rebuildDecksFromChunks(regularChunks)
             const currentFused = get().progress.counters?.fusedCount ?? fusedDecks.length
             setProgressCounters({
               regularCount: regularDecks.length,
@@ -1359,8 +1342,10 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           const data = JSON.parse((event as MessageEvent).data || '{}')
           regularDecks = Array.isArray(data.regular) ? data.regular : []
           fusedDecks = Array.isArray(data.fused) ? data.fused : []
-          rebuildDeckIdSet(regularDeckIds, regularDecks)
-          rebuildDeckIdSet(fusedDeckIds, fusedDecks)
+          regularChunks.clear()
+          fusedChunks.clear()
+          regularChunks.set(1, regularDecks)
+          fusedChunks.set(1, fusedDecks)
           const metaLocal = data.meta || {}
           prepareReceivedDecks(metaLocal, 'ready')
         } catch (err) {
