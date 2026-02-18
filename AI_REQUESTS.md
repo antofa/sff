@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 2c3ed2a
+  Request: Implement SSE deck pagination/chunking: send `decks-chunk` batches (50-100 decks) instead of one giant `decks-ready` payload, accumulate chunks on the client, and finalize on `done`.
+  Date: 2026-02-18
 - Commit: ab14847
   Request: Fix these issues: broken `all-decks` due missing `/api/saved-decks`, `503` failures on player pages when Supabase is disabled, unnecessary bulk half-deck API loads when opening fused decks from list, and duplicate `/api/auth/session` requests.
   Date: 2026-02-09
