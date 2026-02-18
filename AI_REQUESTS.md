@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: c58052c
+  Request: When searching decks for nickname `themanly1`, not all decks are added to the database. Move this process to a server-side background flow (not client-side); currently decks are written in small batches while the browser page remains open.
+  Date: 2026-02-18
 - Commit: a01e1ea
   Request: Install Playwright (headless Chromium) and verify directly whether the deck-count issue is gone.
   Date: 2026-02-18
