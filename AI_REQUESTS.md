@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 1b0d317
+  Request: The process completes, but the deck count became smaller: API logs show 6258 regular decks for `traveller`, while the UI shows only 1946. Fix this regression.
+  Date: 2026-02-18
 - Commit: 2c3ed2a
   Request: Implement SSE deck pagination/chunking: send `decks-chunk` batches (50-100 decks) instead of one giant `decks-ready` payload, accumulate chunks on the client, and finalize on `done`.
   Date: 2026-02-18
