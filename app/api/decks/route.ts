@@ -1,70 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { getPlayerDecks, fetchFusedDecksFromAPI } from '@/lib/api'
+import { runDeckPersistenceJob } from '@/lib/deckPersistence'
 import { logWithTimestamp } from '@/lib/logger'
-import { syncDeckSearchToSupabase } from '@/lib/supabaseDeckSync'
-import { putDeckOwnersToUpstashCache } from '@/lib/deckOwnerUpstashCache'
 
-const syncBestEffort = async (playerName: string, regularDecks: any[], fusedDecks: any[]) => {
-  try {
-    const summary = await syncDeckSearchToSupabase(playerName, regularDecks, fusedDecks)
-    if (summary.enabled) {
-      if (summary.writeBlocked) {
-        logWithTimestamp(
-          `[API Route] Supabase sync write-blocked for ${playerName} until ${summary.writeBlockedUntil || 'unknown'}: regular ${summary.persistedRegular}/${regularDecks.length}, fused ${summary.persistedFused}/${fusedDecks.length}`
-        )
-      } else {
-        logWithTimestamp(
-          `[API Route] Supabase sync complete for ${playerName}: regular ${summary.persistedRegular}/${regularDecks.length}, fused ${summary.persistedFused}/${fusedDecks.length}`
-        )
-      }
-    } else {
-      logWithTimestamp(`[API Route] Supabase sync skipped for ${playerName}: missing env`)
-    }
-  } catch (error) {
-    console.warn('[API Route] Supabase sync failed:', error)
-  }
-}
-
-const resolveDeckId = (deck: any): string | null => {
-  const raw = deck?.id ?? deck?.deckId ?? deck?.deck_id ?? null
-  if (!raw) return null
-  const normalized = String(raw).trim()
-  return normalized || null
-}
-
-const resolveOwnerName = (deck: any, fallbackOwnerName: string): string => {
-  const candidate =
-    deck?.playerName ??
-    deck?.player_name ??
-    deck?.ownerName ??
-    deck?.owner ??
-    deck?.username ??
-    deck?.userName ??
-    deck?.myUser?.username ??
-    deck?.users?.[0]?.username ??
-    deck?.users?.[0]?.user?.username ??
-    fallbackOwnerName
-  return String(candidate || fallbackOwnerName).trim()
-}
-
-const cacheDeckOwnersBestEffort = async (playerName: string, decks: any[]) => {
-  const entries = decks
-    .map((deck) => {
-      const deckId = resolveDeckId(deck)
-      if (!deckId) return null
-      return {
-        deckId,
-        ownerName: resolveOwnerName(deck, playerName),
-      }
-    })
-    .filter((entry): entry is { deckId: string; ownerName: string } => !!entry)
-
-  if (entries.length === 0) return
-
-  await putDeckOwnersToUpstashCache(entries).catch((error) => {
-    console.warn('[API Route] Failed to cache deck owners in Upstash:', error)
-  })
-}
+export const maxDuration = 300
 
 export async function GET(request: NextRequest) {
   try {
@@ -85,8 +24,14 @@ export async function GET(request: NextRequest) {
     if (type === 'fused') {
       // Fetch only fused decks
       const fusedDecks = await fetchFusedDecksFromAPI(playerName, { force })
-      void cacheDeckOwnersBestEffort(playerName, fusedDecks)
-      void syncBestEffort(playerName, [], fusedDecks)
+      after(() =>
+        runDeckPersistenceJob({
+          playerName,
+          regularDecks: [],
+          fusedDecks,
+          log: (message) => logWithTimestamp(`[API Route] ${message}`),
+        })
+      )
       logWithTimestamp(`[API Route] Received ${fusedDecks.length} fused decks for player: ${playerName}`)
       return NextResponse.json({
         fused: fusedDecks,
@@ -98,8 +43,14 @@ export async function GET(request: NextRequest) {
     } else if (type === 'regular') {
       // Fetch only regular decks
       const { decks, meta } = await getPlayerDecks(playerName, { force })
-      void cacheDeckOwnersBestEffort(playerName, decks)
-      void syncBestEffort(playerName, decks, [])
+      after(() =>
+        runDeckPersistenceJob({
+          playerName,
+          regularDecks: decks,
+          fusedDecks: [],
+          log: (message) => logWithTimestamp(`[API Route] ${message}`),
+        })
+      )
       logWithTimestamp(`[API Route] Received ${decks.length} regular decks for player: ${playerName}`)
       return NextResponse.json({
         regular: decks,
@@ -113,9 +64,14 @@ export async function GET(request: NextRequest) {
       // Fetch both regular and fused decks
       const { decks: regularDecks, meta } = await getPlayerDecks(playerName, { force })
       const fusedDecks = await fetchFusedDecksFromAPI(playerName, { force })
-      void cacheDeckOwnersBestEffort(playerName, regularDecks)
-      void cacheDeckOwnersBestEffort(playerName, fusedDecks)
-      void syncBestEffort(playerName, regularDecks, fusedDecks)
+      after(() =>
+        runDeckPersistenceJob({
+          playerName,
+          regularDecks,
+          fusedDecks,
+          log: (message) => logWithTimestamp(`[API Route] ${message}`),
+        })
+      )
       
       logWithTimestamp(`[API Route] Received ${regularDecks.length} regular and ${fusedDecks.length} fused decks for player: ${playerName}`)
       

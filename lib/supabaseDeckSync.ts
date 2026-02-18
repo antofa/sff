@@ -16,6 +16,8 @@ const ALLOWED_SET_IDS = new Set(['B1', 'B2', 'B3', 'S1', 'S2', 'S3', 'S4', 'D0']
 const DEFAULT_SET_ID = 'D0'
 const WRITE_BLOCK_COOLDOWN_MS = 10 * 60 * 1000
 const WRITE_BLOCK_ERROR_CODES = new Set(['25006', '53100', '53200'])
+const REGULAR_RPC_CONCURRENCY = 10
+const FUSED_RPC_CONCURRENCY = 10
 
 let supabaseClient: SupabaseClient<Database> | null | undefined
 let writesBlockedUntilMs = 0
@@ -244,6 +246,7 @@ export const syncDeckSearchToSupabase = async (
   regularDecks: any[],
   fusedDecks: any[]
 ): Promise<SyncSummary> => {
+  const ownerName = playerName.trim()
   const normalizedRegularDecks = Array.isArray(regularDecks) ? regularDecks : []
   const normalizedFusedDecks = Array.isArray(fusedDecks) ? fusedDecks : []
 
@@ -350,77 +353,125 @@ export const syncDeckSearchToSupabase = async (
     logWithTimestamp(`[Supabase sync] cards upsert failed: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  for (const [index, deck] of preparedRegular.entries()) {
-    const { error } = await client.rpc('upsert_player_deck', {
-      p_deck_id: deck.deckId,
-      p_deck_name: deck.deckName,
-      p_owner_name: playerName.trim(),
-      p_faction: deck.faction,
-      p_forgeborn_id: deck.forgebornId,
-      p_set_id: deck.setId,
-      p_deck_score: deck.deckScore,
-      p_elo: deck.elo,
-      p_expire_date: deck.expireDate,
-      p_card_ids: deck.cardIds,
-    })
+  for (let start = 0; start < preparedRegular.length; start += REGULAR_RPC_CONCURRENCY) {
+    const chunk = preparedRegular.slice(start, start + REGULAR_RPC_CONCURRENCY)
+    const results = await Promise.all(
+      chunk.map(async (deck) => {
+        const { error } = await client.rpc('upsert_player_deck', {
+          p_deck_id: deck.deckId,
+          p_deck_name: deck.deckName,
+          p_owner_name: ownerName,
+          p_faction: deck.faction,
+          p_forgeborn_id: deck.forgebornId,
+          p_set_id: deck.setId,
+          p_deck_score: deck.deckScore,
+          p_elo: deck.elo,
+          p_expire_date: deck.expireDate,
+          p_card_ids: deck.cardIds,
+        })
+        return { deck, error }
+      })
+    )
 
-    if (error) {
-      if (isWriteBlockedError(error)) {
-        const blockedUntil = pauseWrites(error)
-        return {
-          enabled: true,
-          persistedRegular,
-          skippedRegular: skippedRegular + (preparedRegular.length - index),
-          persistedFused,
-          skippedFused: skippedFused + normalizedFusedDecks.length,
-          writeBlocked: true,
-          writeBlockedUntil: blockedUntil,
-        }
+    let chunkWriteBlockedCount = 0
+    let blockedUntil: string | null = null
+    for (const { deck, error } of results) {
+      if (!error) {
+        persistedRegular += 1
+        continue
       }
+
+      if (isWriteBlockedError(error)) {
+        chunkWriteBlockedCount += 1
+        blockedUntil = blockedUntil || pauseWrites(error)
+        continue
+      }
+
       skippedRegular += 1
       logWithTimestamp(`[Supabase sync] regular deck upsert failed (${deck.deckId}): ${error.message}`)
-      continue
     }
-    persistedRegular += 1
+
+    if (chunkWriteBlockedCount > 0) {
+      return {
+        enabled: true,
+        persistedRegular,
+        skippedRegular:
+          skippedRegular + chunkWriteBlockedCount + (preparedRegular.length - (start + chunk.length)),
+        persistedFused,
+        skippedFused: skippedFused + normalizedFusedDecks.length,
+        writeBlocked: true,
+        writeBlockedUntil: blockedUntil,
+      }
+    }
   }
 
-  for (const [index, deck] of normalizedFusedDecks.entries()) {
-    const fusedDeckId = extractDeckId(deck)
-    const fusedDeckName = extractDeckName(deck)
-    const sourceIds = extractFusedSourceIds(deck)
+  for (let start = 0; start < normalizedFusedDecks.length; start += FUSED_RPC_CONCURRENCY) {
+    const chunk = normalizedFusedDecks.slice(start, start + FUSED_RPC_CONCURRENCY)
+    const results = await Promise.all(
+      chunk.map(async (deck) => {
+        const fusedDeckId = extractDeckId(deck)
+        const fusedDeckName = extractDeckName(deck)
+        const sourceIds = extractFusedSourceIds(deck)
 
-    if (!fusedDeckId || !fusedDeckName || !sourceIds) {
-      skippedFused += 1
-      continue
-    }
-
-    const { error } = await client.rpc('upsert_player_fused_deck', {
-      p_fused_deck_id: fusedDeckId,
-      p_deck_name: fusedDeckName,
-      p_owner_name: playerName.trim(),
-      p_source_deck_1_id: sourceIds[0],
-      p_source_deck_2_id: sourceIds[1],
-    })
-
-    if (error) {
-      if (isWriteBlockedError(error)) {
-        const blockedUntil = pauseWrites(error)
-        return {
-          enabled: true,
-          persistedRegular,
-          skippedRegular,
-          persistedFused,
-          skippedFused: skippedFused + (normalizedFusedDecks.length - index),
-          writeBlocked: true,
-          writeBlockedUntil: blockedUntil,
+        if (!fusedDeckId || !fusedDeckName || !sourceIds) {
+          return {
+            fusedDeckId: fusedDeckId || 'unknown',
+            error: null,
+            invalid: true,
+          }
         }
+
+        const { error } = await client.rpc('upsert_player_fused_deck', {
+          p_fused_deck_id: fusedDeckId,
+          p_deck_name: fusedDeckName,
+          p_owner_name: ownerName,
+          p_source_deck_1_id: sourceIds[0],
+          p_source_deck_2_id: sourceIds[1],
+        })
+
+        return {
+          fusedDeckId,
+          error,
+          invalid: false,
+        }
+      })
+    )
+
+    let chunkWriteBlockedCount = 0
+    let blockedUntil: string | null = null
+    for (const { fusedDeckId, error, invalid } of results) {
+      if (invalid) {
+        skippedFused += 1
+        continue
       }
+
+      if (!error) {
+        persistedFused += 1
+        continue
+      }
+
+      if (isWriteBlockedError(error)) {
+        chunkWriteBlockedCount += 1
+        blockedUntil = blockedUntil || pauseWrites(error)
+        continue
+      }
+
       skippedFused += 1
       logWithTimestamp(`[Supabase sync] fused deck upsert failed (${fusedDeckId}): ${error.message}`)
-      continue
     }
 
-    persistedFused += 1
+    if (chunkWriteBlockedCount > 0) {
+      return {
+        enabled: true,
+        persistedRegular,
+        skippedRegular,
+        persistedFused,
+        skippedFused:
+          skippedFused + chunkWriteBlockedCount + (normalizedFusedDecks.length - (start + chunk.length)),
+        writeBlocked: true,
+        writeBlockedUntil: blockedUntil,
+      }
+    }
   }
 
   return {

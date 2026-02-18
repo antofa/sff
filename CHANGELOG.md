@@ -10,6 +10,8 @@ Dates use UTC and roll over at 00:00 UTC.
 - (2026-02-18 UTC) Updated client SSE handling to accumulate `decks-chunk` batches, deduplicate by deck ID, and finalize rendering/cache once all chunks arrive, preserving realtime deck loading while avoiding giant stream frames.
 - (2026-02-18 UTC) Fixed chunked-stream deck undercounting by replacing deck-ID deduplication with chunk-index assembly, so reconnect retries no longer drop valid decks that share IDs across stream payloads.
 - (2026-02-18 UTC) Added explicit `playwright` dev dependency and provisioned headless Chromium runtime dependencies to support repeatable browser-based deck-load regression checks.
+- (2026-02-18 UTC) Moved deck persistence scheduling to server-side `after()` jobs in `/api/decks` and `/api/decks/stream`, so Supabase syncing and owner caching continue on the server even after the response is sent.
+- (2026-02-18 UTC) Increased Supabase sync throughput by processing regular and fused deck RPC upserts in bounded parallel batches, reducing the chance of partial persistence for very large player searches.
 
 ## [0.0.2a] - 2026-02-09
 
