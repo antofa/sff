@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: a01e1ea
+  Request: Install Playwright (headless Chromium) and verify directly whether the deck-count issue is gone.
+  Date: 2026-02-18
 - Commit: 1b0d317
   Request: The process completes, but the deck count became smaller: API logs show 6258 regular decks for `traveller`, while the UI shows only 1946. Fix this regression.
   Date: 2026-02-18
