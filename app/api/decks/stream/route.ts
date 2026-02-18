@@ -25,6 +25,54 @@ const writeEvent = (controller: ReadableStreamDefaultController<Uint8Array>, eve
   }
 }
 
+const CHUNK_SIZE = 75
+
+const writeDeckChunks = async (
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  deckType: 'regular' | 'fused',
+  decks: any[],
+  chunkSize: number = CHUNK_SIZE
+) => {
+  const safeChunkSize = Math.max(1, chunkSize)
+  const totalDecks = Array.isArray(decks) ? decks.length : 0
+  const chunkCount = totalDecks > 0 ? Math.ceil(totalDecks / safeChunkSize) : 0
+
+  if (chunkCount === 0) {
+    writeEvent(controller, 'decks-chunk', {
+      deckType,
+      chunkIndex: 0,
+      chunkCount: 0,
+      chunkSize: safeChunkSize,
+      totalDecks: 0,
+      items: [],
+      isLastChunk: true,
+    })
+    return
+  }
+
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+    const start = chunkIndex * safeChunkSize
+    const items = decks.slice(start, start + safeChunkSize)
+    writeEvent(controller, 'decks-chunk', {
+      deckType,
+      chunkIndex: chunkIndex + 1,
+      chunkCount,
+      chunkSize: safeChunkSize,
+      totalDecks,
+      items,
+      isLastChunk: chunkIndex + 1 === chunkCount,
+    })
+
+    await new Promise<void>((resolve) => {
+      if (typeof setImmediate !== 'undefined') {
+        setImmediate(resolve)
+      } else {
+        setTimeout(resolve, 0)
+      }
+    })
+  }
+}
+
 const fallbackCardNameFromId = (id: string): string => {
   if (!id) return ''
   const withSpaces = id.replace(/[_-]/g, ' ')
@@ -559,19 +607,23 @@ const processDeckBatch = async (
           })
         }
 
-        // Send decks as soon as they are available; persistence happens in background.
-        writeEvent(controller, 'decks-ready', {
-          regular: regularWithTypes,
-          fused,
+        // Send deck payload incrementally in chunks to avoid giant SSE frames.
+        await writeDeckChunks(controller, 'regular', regularWithTypes)
+        await writeDeckChunks(controller, 'fused', fused)
+        writeEvent(controller, 'decks-complete', {
           meta: {
             ...meta,
+            regularCount: regularWithTypes.length,
             fusedCount: fused.length,
             regularPages: meta.pages ?? meta.regularPages ?? 1,
             fusedPages: fused.length > 0 ? 1 : 0,
             fusedError,
+            chunkSize: CHUNK_SIZE,
           },
         })
-        logStage('decks-ready emitted to client')
+        logStage(
+          `decks chunks emitted regular=${regularWithTypes.length} fused=${fused.length} chunkSize=${CHUNK_SIZE}`
+        )
 
         void (async () => {
           try {
