@@ -9,6 +9,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - (2026-02-18 UTC) Reworked streamed deck delivery in `/api/decks/stream` to send deck data in `decks-chunk` events (75 decks per chunk) plus a compact `decks-complete` signal, replacing the previous single huge `decks-ready` payload.
 - (2026-02-18 UTC) Updated client SSE handling to accumulate `decks-chunk` batches, deduplicate by deck ID, and finalize rendering/cache once all chunks arrive, preserving realtime deck loading while avoiding giant stream frames.
 - (2026-02-18 UTC) Fixed chunked-stream deck undercounting by replacing deck-ID deduplication with chunk-index assembly, so reconnect retries no longer drop valid decks that share IDs across stream payloads.
+- (2026-02-18 UTC) Added explicit `playwright` dev dependency and provisioned headless Chromium runtime dependencies to support repeatable browser-based deck-load regression checks.
 
 ## [0.0.2a] - 2026-02-09
 
