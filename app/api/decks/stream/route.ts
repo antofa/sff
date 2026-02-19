@@ -1,15 +1,15 @@
 import { appendFile, mkdir } from 'fs/promises'
 import path from 'path'
-import { NextRequest } from 'next/server'
+import { after, NextRequest } from 'next/server'
 import { fetchFusedDecksFromAPI, getPlayerDecks, getCardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
-import { putDeckOwnersToUpstashCache } from '@/lib/deckOwnerUpstashCache'
+import { runDeckPersistenceJob } from '@/lib/deckPersistence'
 import { logWithTimestamp } from '@/lib/logger'
 import { getLogDirs, shouldFallbackToTmp } from '@/lib/logPaths'
 import { pruneOldLogs } from '@/lib/logRotation'
-import { syncDeckSearchToSupabase } from '@/lib/supabaseDeckSync'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 300
 
 // Helper to send SSE events
 const writeEvent = (controller: ReadableStreamDefaultController<Uint8Array>, event: string, data: any) => {
@@ -22,6 +22,54 @@ const writeEvent = (controller: ReadableStreamDefaultController<Uint8Array>, eve
     if (err?.code !== 'ERR_INVALID_STATE') {
       console.warn('[API /decks/stream] failed to enqueue SSE event', { event, err })
     }
+  }
+}
+
+const CHUNK_SIZE = 75
+
+const writeDeckChunks = async (
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  deckType: 'regular' | 'fused',
+  decks: any[],
+  chunkSize: number = CHUNK_SIZE
+) => {
+  const safeChunkSize = Math.max(1, chunkSize)
+  const totalDecks = Array.isArray(decks) ? decks.length : 0
+  const chunkCount = totalDecks > 0 ? Math.ceil(totalDecks / safeChunkSize) : 0
+
+  if (chunkCount === 0) {
+    writeEvent(controller, 'decks-chunk', {
+      deckType,
+      chunkIndex: 0,
+      chunkCount: 0,
+      chunkSize: safeChunkSize,
+      totalDecks: 0,
+      items: [],
+      isLastChunk: true,
+    })
+    return
+  }
+
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+    const start = chunkIndex * safeChunkSize
+    const items = decks.slice(start, start + safeChunkSize)
+    writeEvent(controller, 'decks-chunk', {
+      deckType,
+      chunkIndex: chunkIndex + 1,
+      chunkCount,
+      chunkSize: safeChunkSize,
+      totalDecks,
+      items,
+      isLastChunk: chunkIndex + 1 === chunkCount,
+    })
+
+    await new Promise<void>((resolve) => {
+      if (typeof setImmediate !== 'undefined') {
+        setImmediate(resolve)
+      } else {
+        setTimeout(resolve, 0)
+      }
+    })
   }
 }
 
@@ -231,47 +279,6 @@ const buildTagPayload = (decks: any[], fused: any[]) => {
     perDeck,
     perDeckCreatureTypes,
   }
-}
-
-const resolveDeckId = (deck: any): string | null => {
-  const raw = deck?.id ?? deck?.deckId ?? deck?.deck_id ?? null
-  if (!raw) return null
-  const normalized = String(raw).trim()
-  return normalized || null
-}
-
-const resolveOwnerName = (deck: any, fallbackOwnerName: string): string => {
-  const candidate =
-    deck?.playerName ??
-    deck?.player_name ??
-    deck?.ownerName ??
-    deck?.owner ??
-    deck?.username ??
-    deck?.userName ??
-    deck?.myUser?.username ??
-    deck?.users?.[0]?.username ??
-    deck?.users?.[0]?.user?.username ??
-    fallbackOwnerName
-  return String(candidate || fallbackOwnerName).trim()
-}
-
-const cacheDeckOwnersBestEffort = async (playerName: string, decks: any[]) => {
-  const entries = decks
-    .map((deck) => {
-      const deckId = resolveDeckId(deck)
-      if (!deckId) return null
-      return {
-        deckId,
-        ownerName: resolveOwnerName(deck, playerName),
-      }
-    })
-    .filter((entry): entry is { deckId: string; ownerName: string } => !!entry)
-
-  if (entries.length === 0) return
-
-  await putDeckOwnersToUpstashCache(entries).catch((error) => {
-    console.warn('[API /decks/stream] Failed to cache deck owners in Upstash:', error)
-  })
 }
 
 export async function GET(request: NextRequest) {
@@ -559,45 +566,32 @@ const processDeckBatch = async (
           })
         }
 
-        // Send decks as soon as they are available; persistence happens in background.
-        writeEvent(controller, 'decks-ready', {
-          regular: regularWithTypes,
-          fused,
+        // Send deck payload incrementally in chunks to avoid giant SSE frames.
+        await writeDeckChunks(controller, 'regular', regularWithTypes)
+        await writeDeckChunks(controller, 'fused', fused)
+        writeEvent(controller, 'decks-complete', {
           meta: {
             ...meta,
+            regularCount: regularWithTypes.length,
             fusedCount: fused.length,
             regularPages: meta.pages ?? meta.regularPages ?? 1,
             fusedPages: fused.length > 0 ? 1 : 0,
             fusedError,
+            chunkSize: CHUNK_SIZE,
           },
         })
-        logStage('decks-ready emitted to client')
+        logStage(
+          `decks chunks emitted regular=${regularWithTypes.length} fused=${fused.length} chunkSize=${CHUNK_SIZE}`
+        )
 
-        void (async () => {
-          try {
-            const sync = await syncDeckSearchToSupabase(playerName, regularWithTypes, fused)
-            if (sync.enabled) {
-              if (sync.writeBlocked) {
-                logStage(
-                  `supabase sync write-blocked until ${sync.writeBlockedUntil || 'unknown'} regular=${sync.persistedRegular}/${regularWithTypes.length} fused=${sync.persistedFused}/${fused.length}`
-                )
-              } else {
-                logStage(
-                  `supabase sync done regular=${sync.persistedRegular}/${regularWithTypes.length} fused=${sync.persistedFused}/${fused.length}`
-                )
-              }
-            } else {
-              logStage('supabase sync skipped (env missing)')
-            }
-          } catch (syncErr) {
-            console.warn('[API /decks/stream] Supabase sync failed:', syncErr)
-            logStage(`supabase sync error: ${syncErr instanceof Error ? syncErr.message : 'unknown'}`)
-          }
-
-          await cacheDeckOwnersBestEffort(playerName, regularWithTypes)
-          await cacheDeckOwnersBestEffort(playerName, fused)
-          logStage(`owner cache done regular=${regularWithTypes.length} fused=${fused.length}`)
-        })()
+        after(() =>
+          runDeckPersistenceJob({
+            playerName,
+            regularDecks: regularWithTypes,
+            fusedDecks: fused,
+            log: (message) => logStage(message),
+          })
+        )
 
         // Final tag payload with both regular and fused decks (blocking until tags complete)
         logStage('tag aggregation waiting for queue to finish')

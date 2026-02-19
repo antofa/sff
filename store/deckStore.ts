@@ -1050,6 +1050,16 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             forgebornNameIndex: string[]
           }
         | null = null
+      const regularChunks = new Map<number, any[]>()
+      const fusedChunks = new Map<number, any[]>()
+
+      const rebuildDecksFromChunks = (chunks: Map<number, any[]>) => {
+        const orderedIndexes = Array.from(chunks.keys()).sort((a, b) => a - b)
+        return orderedIndexes.flatMap((index) => {
+          const items = chunks.get(index)
+          return Array.isArray(items) ? items : []
+        })
+      }
 
       const deckPhaseDone = () => {
         const regularStatus = progressSteps.find((s) => s.key === 'fetchRegular')?.status
@@ -1070,6 +1080,49 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           // ignore
         }
         set({ currentEventSource: null })
+      }
+
+      const prepareReceivedDecks = (metaLocal: any, source: 'chunks' | 'ready') => {
+        setProgressCounters({
+          regularCount: regularDecks.length,
+          fusedCount: fusedDecks.length,
+          totalCount: regularDecks.length + fusedDecks.length,
+          tagTotal: regularDecks.length + fusedDecks.length,
+          regularPages: metaLocal.regularPages ?? metaLocal.pages,
+          fusedPages: metaLocal.fusedPages ?? (fusedDecks.length > 0 ? 1 : 0),
+        })
+
+        updateSteps('fetchFused', 'done', source === 'chunks' ? 'Received all deck chunks' : 'Received all decks')
+        updateSteps('tags', 'running', 'Collecting tags...')
+
+        const owner = playerName.trim()
+        const taggedRegular = Array.isArray(regularDecks)
+          ? regularDecks.map(deck => ({ ...deck, playerName: owner }))
+          : []
+        const taggedFused = Array.isArray(fusedDecks)
+          ? fusedDecks.map(deck => ({ ...deck, playerName: owner }))
+          : []
+
+        const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
+        const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
+        const enhancedRegular = attachComputed(validatedRegularDecks)
+        const enhancedFused = attachComputed(validatedFusedDecks)
+        const names = buildNameIndexes(enhancedRegular, enhancedFused)
+        preparedDecks = {
+          regular: enhancedRegular,
+          fused: enhancedFused,
+          deckNameIndex: names.deckNameIndex,
+          forgebornNameIndex: names.forgebornNameIndex,
+        }
+
+        set({
+          decks: enhancedRegular,
+          fusedDecks: enhancedFused,
+          loading: false,
+          error: null,
+          deckNameIndex: names.deckNameIndex,
+          forgebornNameIndex: names.forgebornNameIndex,
+        })
       }
 
       es.addEventListener('progress', (event) => {
@@ -1221,66 +1274,84 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         }
       })
 
+      es.addEventListener('decks-chunk', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data || '{}')
+          const deckType = data.deckType === 'fused' ? 'fused' : 'regular'
+          const items = Array.isArray(data.items) ? data.items : []
+          const chunkIndexRaw = Number(data.chunkIndex)
+          const chunkIndex = Number.isFinite(chunkIndexRaw) ? chunkIndexRaw : 0
+          const chunkCount = Number(data.chunkCount) || 0
+          const totalDecks = Number.isFinite(Number(data.totalDecks)) ? Number(data.totalDecks) : undefined
+
+          if (deckType === 'fused') {
+            fusedChunks.set(chunkIndex, items)
+            fusedDecks = rebuildDecksFromChunks(fusedChunks)
+            const currentRegular = get().progress.counters?.regularCount ?? regularDecks.length
+            setProgressCounters({
+              regularCount: currentRegular,
+              fusedCount: fusedDecks.length,
+              totalCount: currentRegular + fusedDecks.length,
+            })
+          } else {
+            regularChunks.set(chunkIndex, items)
+            regularDecks = rebuildDecksFromChunks(regularChunks)
+            const currentFused = get().progress.counters?.fusedCount ?? fusedDecks.length
+            setProgressCounters({
+              regularCount: regularDecks.length,
+              totalCount: regularDecks.length + currentFused,
+            })
+          }
+
+          updateSteps(
+            'fetchFused',
+            'running',
+            chunkCount > 0
+              ? `Receiving ${deckType} decks (${chunkIndex}/${chunkCount})...`
+              : `Receiving ${deckType} decks...`
+          )
+
+          if (totalDecks !== undefined) {
+            const otherTypeCount = deckType === 'fused' ? regularDecks.length : fusedDecks.length
+            const totalCount = totalDecks + otherTypeCount
+            setProgressCounters({
+              totalCount,
+              tagTotal: totalCount,
+            })
+          }
+        } catch (err) {
+          console.warn('[Store] Failed to parse decks-chunk event:', err)
+        }
+      })
+
+      es.addEventListener('decks-complete', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data || '{}')
+          const metaLocal = data.meta || {}
+          prepareReceivedDecks(metaLocal, 'chunks')
+        } catch (err) {
+          console.warn('[Store] Failed to parse decks-complete event:', err)
+          updateSteps('fetchFused', 'done', 'Received deck chunks (unvalidated)')
+          updateSteps('tags', 'running', 'Collecting tags...')
+        }
+      })
+
+      // Legacy fallback for older stream responses that still send full payload.
       es.addEventListener('decks-ready', (event) => {
         try {
           const data = JSON.parse((event as MessageEvent).data || '{}')
-          regularDecks = data.regular || []
-          fusedDecks = data.fused || []
+          regularDecks = Array.isArray(data.regular) ? data.regular : []
+          fusedDecks = Array.isArray(data.fused) ? data.fused : []
+          regularChunks.clear()
+          fusedChunks.clear()
+          regularChunks.set(1, regularDecks)
+          fusedChunks.set(1, fusedDecks)
           const metaLocal = data.meta || {}
-
-        setProgressCounters({
-          regularCount: regularDecks.length,
-          fusedCount: fusedDecks.length,
-          totalCount: regularDecks.length + fusedDecks.length,
-          tagTotal: regularDecks.length + fusedDecks.length,
-          regularPages: metaLocal.regularPages ?? metaLocal.pages,
-          fusedPages: metaLocal.fusedPages ?? (fusedDecks.length > 0 ? 1 : 0),
-        })
-
-          updateSteps('fetchFused', 'done', 'Received all decks')
-          updateSteps('tags', 'running', 'Collecting tags...')
-
-          const owner = playerName.trim()
-          const taggedRegular = Array.isArray(regularDecks)
-            ? regularDecks.map(deck => ({ ...deck, playerName: owner }))
-            : []
-          const taggedFused = Array.isArray(fusedDecks)
-            ? fusedDecks.map(deck => ({ ...deck, playerName: owner }))
-            : []
-
-          const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
-          const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
-          const enhancedRegular = attachComputed(validatedRegularDecks)
-          const enhancedFused = attachComputed(validatedFusedDecks)
-          const names = buildNameIndexes(enhancedRegular, enhancedFused)
-          preparedDecks = {
-            regular: enhancedRegular,
-            fused: enhancedFused,
-            deckNameIndex: names.deckNameIndex,
-            forgebornNameIndex: names.forgebornNameIndex,
-          }
-
-          set({
-            decks: enhancedRegular,
-            fusedDecks: enhancedFused,
-            loading: false,
-            error: null,
-            deckNameIndex: names.deckNameIndex,
-            forgebornNameIndex: names.forgebornNameIndex,
-          })
+          prepareReceivedDecks(metaLocal, 'ready')
         } catch (err) {
           console.warn('[Store] Failed to parse decks-ready event:', err)
-          // Even if validation fails, unblock progress so the flow can continue
           updateSteps('fetchFused', 'done', 'Received decks (unvalidated)')
           updateSteps('tags', 'running', 'Collecting tags...')
-          const prevCounters = get().progress.counters || {}
-          setProgressCounters({
-            regularCount: prevCounters.regularCount ?? 0,
-            fusedCount: prevCounters.fusedCount ?? 0,
-            totalCount: (prevCounters.regularCount ?? 0) + (prevCounters.fusedCount ?? 0),
-            regularPages: prevCounters.regularPages,
-            fusedPages: prevCounters.fusedPages ?? (prevCounters.fusedCount ? 1 : 0),
-          })
         }
       })
 

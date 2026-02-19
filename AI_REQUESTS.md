@@ -8,6 +8,18 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: c58052c
+  Request: When searching decks for nickname `themanly1`, not all decks are added to the database. Move this process to a server-side background flow (not client-side); currently decks are written in small batches while the browser page remains open.
+  Date: 2026-02-18
+- Commit: a01e1ea
+  Request: Install Playwright (headless Chromium) and verify directly whether the deck-count issue is gone.
+  Date: 2026-02-18
+- Commit: 1b0d317
+  Request: The process completes, but the deck count became smaller: API logs show 6258 regular decks for `traveller`, while the UI shows only 1946. Fix this regression.
+  Date: 2026-02-18
+- Commit: 2c3ed2a
+  Request: Implement SSE deck pagination/chunking: send `decks-chunk` batches (50-100 decks) instead of one giant `decks-ready` payload, accumulate chunks on the client, and finalize on `done`.
+  Date: 2026-02-18
 - Commit: ab14847
   Request: Fix these issues: broken `all-decks` due missing `/api/saved-decks`, `503` failures on player pages when Supabase is disabled, unnecessary bulk half-deck API loads when opening fused decks from list, and duplicate `/api/auth/session` requests.
   Date: 2026-02-09
