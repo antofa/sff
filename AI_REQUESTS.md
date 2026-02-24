@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 1d78ef6
+  Request: User reported a missing rarity icon for Warped Technocrat and broken Discord deck OG preview image loading; add a red-question-mark placeholder fallback and logging when rarity assets are missing.
+  Date: 2026-02-24
 - Commit: c58052c
   Request: When searching decks for nickname `themanly1`, not all decks are added to the database. Move this process to a server-side background flow (not client-side); currently decks are written in small batches while the browser page remains open.
   Date: 2026-02-18
