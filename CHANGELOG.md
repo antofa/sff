@@ -6,7 +6,7 @@ Dates use UTC and roll over at 00:00 UTC.
 ## [0.0.2d] - 2026-02-24
 
 ### Added
-- (2026-02-24 UTC) Added a `New (N)` indicator on the header changelog button, showing how many release versions were added since the user's last changelog view.
+- (2026-02-24 UTC) Added a compact unread-count badge on the header changelog button, showing how many release versions were added since the user's last changelog view.
 
 ### Changed
 - (2026-02-24 UTC) Opening the changelog now stores the current UTC timestamp in browser local storage and clears the `New` indicator when all listed release timestamps are older than the saved read timestamp.

@@ -1,6 +1,6 @@
 'use client'
 
-import { Container, Group, Button, Text, Tooltip, Paper, Divider, Modal, ScrollArea, Badge } from '@mantine/core'
+import { Container, Group, Button, Text, Tooltip, Paper, Divider, Modal, ScrollArea } from '@mantine/core'
 import { IconMail, IconArrowUpRight, IconArrowDownRight, IconNotes } from '@tabler/icons-react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -44,7 +44,7 @@ const CHANGELOG_HISTORY: ChangelogEntry[] = [
     version: '0.0.2d',
     date: '2026-02-24',
     added: [
-      'The changelog button now shows a New badge with how many releases were added since your last visit.',
+      'The changelog button now shows an unread-count badge so you can quickly spot new updates.',
     ],
     changed: [
       'Opening the changelog now marks updates as read using your browser local storage, so the New badge clears after you review updates.',
@@ -594,23 +594,26 @@ export function Header() {
                   <IconMail size={18} />
                 </Button>
               </Tooltip>
-              <Button
-                variant="subtle"
-                color="gray"
-                size="sm"
-                className={`text-white hover:bg-sf-primary/20 transition-colors ${
-                  unreadChangelogCount > 0 ? 'bg-sf-primary/25 ring-1 ring-sf-primary/50' : ''
-                }`}
-                aria-label="Changelog"
-                onClick={handleOpenChangelog}
-              >
-                <IconNotes size={18} />
-              </Button>
-              {unreadChangelogCount > 0 && (
-                <Badge size="xs" color="cyan" variant="filled">
-                  New ({unreadChangelogCount})
-                </Badge>
-              )}
+              <div className="relative">
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  className="text-white hover:bg-sf-primary/20 transition-colors"
+                  aria-label="Changelog"
+                  onClick={handleOpenChangelog}
+                >
+                  <IconNotes size={18} />
+                </Button>
+                {unreadChangelogCount > 0 && (
+                  <span
+                    className="pointer-events-none absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-blue-500 text-white text-[10px] font-bold leading-4 text-center"
+                    aria-hidden="true"
+                  >
+                    {Math.min(unreadChangelogCount, 99)}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Auth controls are intentionally hidden */}
