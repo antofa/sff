@@ -1,6 +1,6 @@
 'use client'
 
-import { Container, Group, Button, Text, Tooltip, Paper, Divider, Modal, ScrollArea } from '@mantine/core'
+import { Container, Group, Button, Text, Tooltip, Paper, Divider, Modal, ScrollArea, Badge } from '@mantine/core'
 import { IconMail, IconArrowUpRight, IconArrowDownRight, IconNotes } from '@tabler/icons-react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -23,6 +23,7 @@ type TokenPrice = {
 
 const PRICE_CACHE_KEY = 'sff:token-prices:v1'
 const PRICE_CACHE_TTL_MS = 60 * 1000
+const CHANGELOG_LAST_VIEWED_UTC_KEY = 'sff:changelog:last-viewed-utc'
 const PRICE_HEADER_CELLS = ['', '1H', '1D', '1W', '1M', '1Y']
 const TOKENS: TokenInfo[] = [
   { id: 'bitcoin', symbol: 'BTC', label: 'BTC' },
@@ -39,6 +40,17 @@ type ChangelogEntry = {
 }
 
 const CHANGELOG_HISTORY: ChangelogEntry[] = [
+  {
+    version: '0.0.2d',
+    date: '2026-02-24',
+    added: [
+      'The changelog button now shows a New badge with how many releases were added since your last visit.',
+    ],
+    changed: [
+      'Opening the changelog now marks updates as read using your browser local storage, so the New badge clears after you review updates.',
+    ],
+    fixed: [],
+  },
   {
     version: '0.0.2a',
     date: '2026-02-09',
@@ -137,6 +149,15 @@ const formatChangelogDate = (value: string) => {
   })
 }
 
+const parseChangelogDateToUtcTimestamp = (value: string) => {
+  if (!value) return null
+  const parts = value.split('-').map((part) => Number(part))
+  if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return null
+  const [year, month, day] = parts
+  const timestamp = Date.UTC(year, month - 1, day)
+  return Number.isNaN(timestamp) ? null : timestamp
+}
+
 const renderChange = (value?: number | null) => {
   if (value === undefined || value === null || Number.isNaN(value)) return null
   const positive = value >= 0
@@ -230,7 +251,40 @@ export function Header() {
   const [errorPrices, setErrorPrices] = useState<string | null>(null)
   const releaseDate = formatChangelogDate(CHANGELOG_SUMMARY.date)
   const [changelogOpened, setChangelogOpened] = useState(false)
+  const [lastViewedChangelogAt, setLastViewedChangelogAt] = useState<number | null>(null)
   const logoSrc = '/images/logo/too-many-decks-logo.png'
+
+  const unreadChangelogCount = useMemo(() => {
+    if (lastViewedChangelogAt === null) return CHANGELOG_HISTORY.length
+    return CHANGELOG_HISTORY.filter((entry) => {
+      const entryTimestamp = parseChangelogDateToUtcTimestamp(entry.date)
+      return entryTimestamp !== null && entryTimestamp > lastViewedChangelogAt
+    }).length
+  }, [lastViewedChangelogAt])
+
+  const handleOpenChangelog = () => {
+    const nowUtc = Date.now()
+    setChangelogOpened(true)
+    setLastViewedChangelogAt(nowUtc)
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(CHANGELOG_LAST_VIEWED_UTC_KEY, String(nowUtc))
+    } catch {
+      // ignore localStorage failures
+    }
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const saved = Number(window.localStorage.getItem(CHANGELOG_LAST_VIEWED_UTC_KEY))
+      if (Number.isFinite(saved) && saved > 0) {
+        setLastViewedChangelogAt(saved)
+      }
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [])
 
   useEffect(() => {
     const readPriceCache = () => {
@@ -544,12 +598,19 @@ export function Header() {
                 variant="subtle"
                 color="gray"
                 size="sm"
-                className="text-white hover:bg-sf-primary/20 transition-colors"
+                className={`text-white hover:bg-sf-primary/20 transition-colors ${
+                  unreadChangelogCount > 0 ? 'bg-sf-primary/25 ring-1 ring-sf-primary/50' : ''
+                }`}
                 aria-label="Changelog"
-                onClick={() => setChangelogOpened(true)}
+                onClick={handleOpenChangelog}
               >
                 <IconNotes size={18} />
               </Button>
+              {unreadChangelogCount > 0 && (
+                <Badge size="xs" color="cyan" variant="filled">
+                  New ({unreadChangelogCount})
+                </Badge>
+              )}
             </div>
 
             {/* Auth controls are intentionally hidden */}
