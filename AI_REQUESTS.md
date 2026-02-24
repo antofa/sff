@@ -8,6 +8,12 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: e35aa49
+  Request: Make the changelog indicator look cleaner: remove the white outline and the New text below, and use a compact blue numeric badge like a shopping cart counter.
+  Date: 2026-02-24
+- Commit: 49cb2e6
+  Request: Add a header changelog New indicator with unread release count, save the current UTC timestamp to localStorage when the changelog is opened, and hide New when changelog release timestamps are older than the saved read timestamp.
+  Date: 2026-02-24
 - Commit: 1d78ef6
   Request: User reported a missing rarity icon for Warped Technocrat and broken Discord deck OG preview image loading; add a red-question-mark placeholder fallback and logging when rarity assets are missing.
   Date: 2026-02-24
