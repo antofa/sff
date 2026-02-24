@@ -390,6 +390,60 @@ const makeImageCacheKey = (cardId: string, level: number, isForgeborn: boolean) 
 const staticIconCache = new Map<string, string>()
 const staticIconLoading = new Map<string, Promise<string>>()
 const normalizeId = (value?: string | null) => (value || '').toLowerCase()
+const RARITY_ICON_PLACEHOLDER_PATH = '/images/icons/rarity/missing-rarity-placeholder.svg'
+const missingRarityIconLogCache = new Set<string>()
+
+const logMissingRarityIcon = (details: {
+  source: 'cache-load' | 'img-error'
+  requestedPath?: string | null
+  cardId?: string | null
+  cardName?: string | null
+  rarity?: string | null
+}) => {
+  const key = [
+    details.source,
+    details.requestedPath || '',
+    details.cardId || '',
+    details.cardName || '',
+    details.rarity || '',
+  ].join('|')
+  if (missingRarityIconLogCache.has(key)) return
+  missingRarityIconLogCache.add(key)
+  logWithTimestamp('[DeckDetails] Missing rarity icon, using placeholder', {
+    source: details.source,
+    requestedPath: details.requestedPath || null,
+    cardId: details.cardId || null,
+    cardName: details.cardName || null,
+    rarity: details.rarity || null,
+  })
+}
+
+const applyRarityIconFallback = (
+  event: React.SyntheticEvent<HTMLImageElement>,
+  details: {
+    requestedPath?: string | null
+    cardId?: string | null
+    cardName?: string | null
+    rarity?: string | null
+  }
+) => {
+  const imageElement = event.currentTarget
+  const currentSrc = imageElement.currentSrc || imageElement.getAttribute('src') || ''
+  if (currentSrc.includes(RARITY_ICON_PLACEHOLDER_PATH) || imageElement.dataset.rarityFallbackApplied === '1') {
+    return
+  }
+  imageElement.dataset.rarityFallbackApplied = '1'
+  logMissingRarityIcon({
+    source: 'img-error',
+    requestedPath: details.requestedPath || currentSrc || null,
+    cardId: details.cardId || null,
+    cardName: details.cardName || null,
+    rarity: details.rarity || null,
+  })
+  imageElement.src = RARITY_ICON_PLACEHOLDER_PATH
+  imageElement.srcset = ''
+  imageElement.setAttribute('srcset', '')
+}
 
 async function fetchAsDataUrl(url: string): Promise<string> {
   const response = await fetch(url)
@@ -512,6 +566,8 @@ interface CardListItemProps {
   isSelected: boolean
   factionIconPath: string | null
   rarityIconPath: string | null
+  rarityRawPath?: string | null
+  rarity?: string | null
   factionColor: string
   inlineFrame?: React.ReactNode
   onClick: () => void
@@ -522,6 +578,8 @@ const CardListItem = memo(function CardListItem({
   isSelected, 
   factionIconPath, 
   rarityIconPath, 
+  rarityRawPath,
+  rarity,
   factionColor,
   inlineFrame,
   onClick 
@@ -588,6 +646,14 @@ const CardListItem = memo(function CardListItem({
               w={16}
               h={16}
               style={{ flexShrink: 0 }}
+              onError={(event) => {
+                applyRarityIconFallback(event, {
+                  requestedPath: rarityRawPath || rarityIconPath || null,
+                  cardId: card.id,
+                  cardName: card.name,
+                  rarity: rarity || card.rarity || null,
+                })
+              }}
             />
           ) : (
             <div
@@ -751,6 +817,15 @@ export function DeckDetails({ deck, opened, onClose, onDeckClick, allDecks = [],
           })
           .catch(() => {
             staticIconLoading.delete(key)
+            if (key.startsWith('rarity:')) {
+              logMissingRarityIcon({
+                source: 'cache-load',
+                requestedPath: rawPath,
+              })
+              staticIconCache.set(key, RARITY_ICON_PLACEHOLDER_PATH)
+              setIconVersion(v => v + 1)
+              return RARITY_ICON_PLACEHOLDER_PATH
+            }
             return rawPath
           })
         staticIconLoading.set(key, promise)
@@ -4186,6 +4261,8 @@ const originalCardMeta = useMemo(() => {
     return {
       factionIconPath,
       rarityIconPath,
+      rarityRawPath,
+      rarity: rarity || null,
       factionColor: getFactionBadgeColor(factionForIcon),
     }
   }
@@ -4646,6 +4723,8 @@ const originalCardMeta = useMemo(() => {
                           isSelected={selectedCard?.id === card.id}
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
+                          rarityRawPath={props.rarityRawPath}
+                          rarity={props.rarity}
                           factionColor={props.factionColor}
                           inlineFrame={isInline ? renderSelectedCardFrame(true) : null}
                           onClick={() => handleSelectCard(card)}
@@ -4673,6 +4752,8 @@ const originalCardMeta = useMemo(() => {
                           isSelected={selectedCard?.id === card.id}
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
+                          rarityRawPath={props.rarityRawPath}
+                          rarity={props.rarity}
                           factionColor={props.factionColor}
                           inlineFrame={isInline ? renderSelectedCardFrame(true) : null}
                           onClick={() => handleSelectCard(card)}
@@ -4700,6 +4781,8 @@ const originalCardMeta = useMemo(() => {
                           isSelected={selectedCard?.id === card.id}
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
+                          rarityRawPath={props.rarityRawPath}
+                          rarity={props.rarity}
                           factionColor={props.factionColor}
                           inlineFrame={isInline ? renderSelectedCardFrame(true) : null}
                           onClick={() => handleSelectCard(card)}
@@ -4727,6 +4810,8 @@ const originalCardMeta = useMemo(() => {
                           isSelected={selectedCard?.id === card.id}
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
+                          rarityRawPath={props.rarityRawPath}
+                          rarity={props.rarity}
                           factionColor={props.factionColor}
                           inlineFrame={isInline ? renderSelectedCardFrame(true) : null}
                           onClick={() => handleSelectCard(card)}
@@ -4754,6 +4839,8 @@ const originalCardMeta = useMemo(() => {
                           isSelected={selectedCard?.id === card.id}
                           factionIconPath={props.factionIconPath}
                           rarityIconPath={props.rarityIconPath}
+                          rarityRawPath={props.rarityRawPath}
+                          rarity={props.rarity}
                           factionColor={props.factionColor}
                           inlineFrame={isInline ? renderSelectedCardFrame(true) : null}
                           onClick={() => handleSelectCard(card)}
