@@ -866,12 +866,12 @@ export async function generateMetadata(
   const titleFallback = `Deck ${deckId}`
   const headersList = await headers()
   const baseUrl = resolveBaseUrlFromHeaders(headersList)
+  const fallbackOgImageUrl = baseUrl
+    ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}?v=${encodeURIComponent(OG_IMAGE_VERSION)}`
+    : undefined
 
   // Keep interactive deck page loads fast; reserve heavy metadata enrichment for bots/crawlers.
   if (!isCrawlerUserAgent(headersList.get('user-agent'))) {
-    const quickOgImageUrl = baseUrl
-      ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}?v=${encodeURIComponent(OG_IMAGE_VERSION)}`
-      : undefined
     const quickDescription = 'SolForge Fusion deck overview.'
     return {
       title: titleFallback,
@@ -880,10 +880,10 @@ export async function generateMetadata(
         title: titleFallback,
         description: quickDescription,
         type: 'website',
-        images: quickOgImageUrl
+        images: fallbackOgImageUrl
           ? [
               {
-                url: quickOgImageUrl,
+                url: fallbackOgImageUrl,
                 width: 1200,
                 height: 630,
                 alt: 'Deck preview image',
@@ -892,10 +892,10 @@ export async function generateMetadata(
           : undefined,
       },
       twitter: {
-        card: quickOgImageUrl ? 'summary_large_image' : 'summary',
+        card: fallbackOgImageUrl ? 'summary_large_image' : 'summary',
         title: titleFallback,
         description: quickDescription,
-        images: quickOgImageUrl ? [quickOgImageUrl] : undefined,
+        images: fallbackOgImageUrl ? [fallbackOgImageUrl] : undefined,
       },
     }
   }
@@ -903,16 +903,39 @@ export async function generateMetadata(
   try {
     const previewCore = await getDeckPreviewCore(deckId, titleFallback, baseUrl)
     if (!previewCore) {
-      return { title: titleFallback, description: 'SolForge Fusion deck overview.' }
+      const fallbackDescription = 'SolForge Fusion deck overview.'
+      return {
+        title: titleFallback,
+        description: fallbackDescription,
+        openGraph: {
+          title: titleFallback,
+          description: fallbackDescription,
+          type: 'website',
+          images: fallbackOgImageUrl
+            ? [
+                {
+                  url: fallbackOgImageUrl,
+                  width: 1200,
+                  height: 630,
+                  alt: 'Deck preview image',
+                },
+              ]
+            : undefined,
+        },
+        twitter: {
+          card: fallbackOgImageUrl ? 'summary_large_image' : 'summary',
+          title: titleFallback,
+          description: fallbackDescription,
+          images: fallbackOgImageUrl ? [fallbackOgImageUrl] : undefined,
+        },
+      }
     }
 
     const { title, description, imageAlt } = previewCore
     const resolvedSearchParams = searchParams ? await searchParams : undefined
     const ogVariant = buildOgQueryVariant(resolvedSearchParams)
-    const ogImageUrl = baseUrl
-      ? `${baseUrl}/api/og/deck/${encodeURIComponent(deckId)}?v=${encodeURIComponent(OG_IMAGE_VERSION)}${
-          ogVariant ? `&uq=${encodeURIComponent(ogVariant)}` : ''
-        }`
+    const ogImageUrl = fallbackOgImageUrl
+      ? `${fallbackOgImageUrl}${ogVariant ? `&uq=${encodeURIComponent(ogVariant)}` : ''}`
       : undefined
 
     return {
@@ -941,7 +964,32 @@ export async function generateMetadata(
       },
     }
   } catch {
-    return { title: titleFallback, description: 'SolForge Fusion deck overview.' }
+    const fallbackDescription = 'SolForge Fusion deck overview.'
+    return {
+      title: titleFallback,
+      description: fallbackDescription,
+      openGraph: {
+        title: titleFallback,
+        description: fallbackDescription,
+        type: 'website',
+        images: fallbackOgImageUrl
+          ? [
+              {
+                url: fallbackOgImageUrl,
+                width: 1200,
+                height: 630,
+                alt: 'Deck preview image',
+              },
+            ]
+          : undefined,
+      },
+      twitter: {
+        card: fallbackOgImageUrl ? 'summary_large_image' : 'summary',
+        title: titleFallback,
+        description: fallbackDescription,
+        images: fallbackOgImageUrl ? [fallbackOgImageUrl] : undefined,
+      },
+    }
   }
 }
 

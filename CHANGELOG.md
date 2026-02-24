@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.2c] - 2026-02-24
+
+### Fixed
+- (2026-02-24 UTC) Added a visible red-question-mark placeholder icon for missing card rarity assets in deck details, so card rows no longer show broken image icons when a rarity file is unavailable.
+- (2026-02-24 UTC) Hardened deck OG image generation to fall back to the same rarity placeholder and log missing rarity asset paths instead of failing or producing incomplete previews.
+- (2026-02-24 UTC) Improved `/deck/[id]` metadata fallback behavior so Open Graph and Twitter image tags continue to point to the deck OG endpoint even when enriched metadata generation fails.
+
 ## [0.0.2b] - 2026-02-18
 
 ### Changed

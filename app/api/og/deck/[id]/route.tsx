@@ -57,6 +57,8 @@ const ogImageCache = new Map<string, OgImageCacheEntry>()
 const iconSrcCache = new Map<string, IconSrcCacheEntry>()
 const iconSrcInFlight = new Map<string, Promise<string | null>>()
 const localAssetDataCache = new Map<string, string>()
+const missingOgRarityIconLogCache = new Set<string>()
+const RARITY_ICON_PLACEHOLDER_PATH = '/images/icons/rarity/missing-rarity-placeholder.svg'
 
 const nowPerfMs = () => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now())
 const roundTimingMs = (value: number) => Math.round(value * 100) / 100
@@ -228,6 +230,31 @@ const getMimeTypeByPath = (assetPath: string) => {
   if (lower.endsWith('.webp')) return 'image/webp'
   if (lower.endsWith('.gif')) return 'image/gif'
   return 'application/octet-stream'
+}
+
+const getLocalPathForAssetUrl = (origin: string, url: string): string | null => {
+  if (!url) return null
+  if (url.startsWith(`${origin}/images/`)) {
+    try {
+      return new URL(url).pathname
+    } catch {
+      return null
+    }
+  }
+  if (url.startsWith('/images/')) return url
+  return null
+}
+
+const isRarityIconPath = (assetPath: string | null | undefined): assetPath is string =>
+  !!assetPath &&
+  assetPath.startsWith('/images/icons/rarity/') &&
+  assetPath !== RARITY_ICON_PLACEHOLDER_PATH
+
+const logMissingOgRarityIcon = (pathValue: string, reason: string) => {
+  const key = `${reason}|${pathValue}`
+  if (missingOgRarityIconLogCache.has(key)) return
+  missingOgRarityIconLogCache.add(key)
+  console.warn(`[OG] Missing rarity icon asset (${reason}), using placeholder: ${pathValue}`)
 }
 
 const getLocalAssetDataUrl = async (assetPath: string): Promise<string | null> => {
@@ -814,6 +841,10 @@ const normalizeRarityLabel = (rarity?: string | null): string | null => {
     normalized = 'RareRare'
   } else if (lower.includes('darkforge') && lower.includes('rare')) {
     normalized = 'DarkforgeRare'
+  } else if (lower.includes('darkforge') && lower.includes('common')) {
+    normalized = 'DarkforgeCommon'
+  } else if (lower.includes('darkforge') && (lower.includes('ls') || lower.includes('legendary'))) {
+    normalized = 'Darkforge LS'
   } else if (lower.match(/^rare\s+common$/i) || (lower.startsWith('rare') && lower.includes('common') && !lower.startsWith('common'))) {
     normalized = 'RareCommon'
   } else if (lower.match(/^common\s+rare$/i) || (lower.startsWith('common') && lower.includes('rare'))) {
@@ -842,6 +873,7 @@ const getRarityIconPath = (
 ): string | null => {
   const normalizedRarity = normalizeRarityLabel(rarity)
   if (!normalizedRarity) return null
+  const iconRarity = normalizedRarity === 'Darkforge LS' ? 'Darkforge_LS' : normalizedRarity
 
   let cardSet: string | undefined
   if (cardData) {
@@ -878,9 +910,9 @@ const getRarityIconPath = (
     (cardSet && (cardSet.toUpperCase() === 'B1' || cardSet === 'b1')) ||
     (cardId && /^b1_/i.test(cardId))
 
-  if (isB3Set) return `/images/icons/rarity/B3_${normalizedRarity}.png`
-  if (isB2Set) return `/images/icons/rarity/B2_${normalizedRarity}.png`
-  if (isB1Set) return `/images/icons/rarity/B1_${normalizedRarity}.png`
+  if (isB3Set) return `/images/icons/rarity/B3_${iconRarity}.png`
+  if (isB2Set) return `/images/icons/rarity/B2_${iconRarity}.png`
+  if (isB1Set) return `/images/icons/rarity/B1_${iconRarity}.png`
 
   let setNo = '1'
   if (cardSet) {
@@ -892,7 +924,7 @@ const getRarityIconPath = (
     }
   }
   if (setNo === '99') setNo = '1'
-  return `/images/icons/rarity/S${setNo}_${normalizedRarity}.png`
+  return `/images/icons/rarity/S${setNo}_${iconRarity}.png`
 }
 
 type AbilityRenderToken =
@@ -1426,16 +1458,20 @@ export async function GET(
     return `${origin}${url.startsWith('/') ? '' : '/'}${url}`
   }
 
+  const rarityIconPlaceholderSrc =
+    (await getLocalAssetDataUrl(RARITY_ICON_PLACEHOLDER_PATH)) || resolveAssetUrl(RARITY_ICON_PLACEHOLDER_PATH)
+  const getRarityFallbackSrc = () => rarityIconPlaceholderSrc || null
+
   const loadIconSrc = async (url: string | null) => {
     if (!url) return null
-    const localPath = url.startsWith(`${origin}/images/`)
-      ? new URL(url).pathname
-      : url.startsWith('/images/')
-        ? url
-        : null
+    const localPath = getLocalPathForAssetUrl(origin, url)
     if (localPath) {
       const localDataUrl = await getLocalAssetDataUrl(localPath)
       if (localDataUrl) return localDataUrl
+      if (isRarityIconPath(localPath)) {
+        logMissingOgRarityIcon(localPath, 'local-not-found')
+        return getRarityFallbackSrc()
+      }
     }
     const cached = iconSrcCache.get(url)
     if (cached) {
@@ -1462,8 +1498,15 @@ export async function GET(
           const data = await withTimeout(iconRes.arrayBuffer().catch(() => null), OG_ICON_TIMEOUT_MS, null)
           if (data) return `data:image/png;base64,${toBase64(data)}`
         }
+        if (isRarityIconPath(localPath)) {
+          logMissingOgRarityIcon(localPath, iconRes ? `http-${iconRes.status}` : 'fetch-failed')
+          return getRarityFallbackSrc()
+        }
       } catch {
-        // ignore
+        if (isRarityIconPath(localPath)) {
+          logMissingOgRarityIcon(localPath, 'fetch-exception')
+          return getRarityFallbackSrc()
+        }
       }
       return url
     })().finally(() => {
@@ -1494,7 +1537,7 @@ export async function GET(
     )
     loaded.forEach((src, idx) => {
       const path = cardIconPaths[idx]
-      cardIconMap.set(path, src || resolveAssetUrl(path))
+      cardIconMap.set(path, src || (isRarityIconPath(path) ? getRarityFallbackSrc() : resolveAssetUrl(path)))
     })
   }
   const abilityLevels = new Set<number>()
