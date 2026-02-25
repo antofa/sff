@@ -32,14 +32,145 @@ body {
 
 .filters-panel *::-webkit-scrollbar-thumb {
   background-color: rgba(148, 163, 184, 0.6);
-  border-radius: 12px;
+  border-radius: 0;
   border: 4px solid transparent;
   background-clip: content-box;
 }
 
 .filters-panel *::-webkit-scrollbar-track {
   background-color: rgba(15, 23, 42, 0.35);
-  border-radius: 12px;
+  border-radius: 0;
+}
+
+.filters-panel :is(
+  .mantine-Paper-root,
+  .mantine-Button-root,
+  .mantine-ActionIcon-root,
+  .mantine-Badge-root,
+  .mantine-Input-input,
+  .mantine-PillsInput-input,
+  .mantine-Select-input,
+  .mantine-MultiSelect-input,
+  .mantine-NumberInput-input,
+  .mantine-Combobox-dropdown,
+  .mantine-Combobox-option,
+  .mantine-Select-dropdown,
+  .mantine-MultiSelect-dropdown,
+  .mantine-SegmentedControl-root,
+  .mantine-SegmentedControl-indicator,
+  .mantine-SegmentedControl-label
+) {
+  border-radius: 0 !important;
+}
+
+.filters-panel :is(
+  .mantine-Input-input,
+  .mantine-PillsInput-input,
+  .mantine-Select-input,
+  .mantine-MultiSelect-input,
+  .mantine-NumberInput-input
+) {
+  background-color: #060b12 !important;
+  color: #dbeafe !important;
+  border-color: rgba(74, 144, 226, 0.3) !important;
+}
+
+.filters-panel :is(
+  .mantine-Input-input,
+  .mantine-PillsInput-input,
+  .mantine-Select-input,
+  .mantine-MultiSelect-input,
+  .mantine-NumberInput-input
+)::placeholder {
+  color: rgba(191, 219, 254, 0.48) !important;
+}
+
+.filters-panel :is(.mantine-Pill-root, .mantine-MultiSelect-pill) {
+  background-color: rgba(30, 41, 59, 0.52) !important;
+  border: 1px solid rgba(74, 144, 226, 0.35) !important;
+  color: #dbeafe !important;
+}
+
+.filters-panel :is(.mantine-Input-section, .mantine-MultiSelect-section, .mantine-Select-section) {
+  color: #93c5fd !important;
+}
+
+.filters-panel .mantine-SegmentedControl-root {
+  background-color: #060b12 !important;
+  border-color: rgba(74, 144, 226, 0.3) !important;
+}
+
+.filters-panel .mantine-SegmentedControl-control {
+  background-color: transparent !important;
+}
+
+.filters-panel :is(.mantine-SegmentedControl-label) {
+  color: #dbeafe !important;
+}
+
+.filters-panel .mantine-SegmentedControl-control[data-active] {
+  background-color: rgba(147, 51, 234, 0.48) !important;
+  box-shadow: inset 0 0 0 1px rgba(147, 51, 234, 0.72) !important;
+}
+
+.filters-panel .mantine-SegmentedControl-control[data-active] .mantine-SegmentedControl-label {
+  color: #f5f3ff !important;
+}
+
+.filters-panel .mantine-SegmentedControl-label[data-active] {
+  color: #f5f3ff !important;
+}
+
+.filters-panel .mantine-SegmentedControl-input:checked + .mantine-SegmentedControl-label {
+  color: #f5f3ff !important;
+}
+
+.filters-panel :is(.mantine-SegmentedControl-indicator) {
+  background-color: rgba(147, 51, 234, 0.48) !important;
+  border: 1px solid rgba(147, 51, 234, 0.72) !important;
+}
+
+/* Dropdowns are portaled by Mantine, so keep these global for consistent filter styling. */
+:is(.mantine-Combobox-dropdown, .mantine-Select-dropdown, .mantine-MultiSelect-dropdown) {
+  background-color: #101a26 !important;
+  border: 1px solid rgba(74, 144, 226, 0.3) !important;
+  border-radius: 0 !important;
+}
+
+:is(.mantine-Combobox-option, .mantine-Select-option, .mantine-MultiSelect-option) {
+  color: #dbeafe !important;
+  border-radius: 0 !important;
+}
+
+:is(.mantine-Combobox-option, .mantine-Select-option, .mantine-MultiSelect-option):hover {
+  background-color: rgba(30, 58, 138, 0.35) !important;
+}
+
+:is(
+  .mantine-Combobox-option[data-combobox-selected],
+  .mantine-Select-option[data-combobox-selected],
+  .mantine-MultiSelect-option[data-combobox-selected]
+) {
+  background-color: rgba(147, 51, 234, 0.32) !important;
+  color: #ede9fe !important;
+}
+
+.mantine-Combobox-empty {
+  color: rgba(191, 219, 254, 0.7) !important;
+}
+
+.filters-panel .mantine-NumberInput-controls {
+  display: none !important;
+}
+
+.filters-panel input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.filters-panel input[type='number']::-webkit-outer-spin-button,
+.filters-panel input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 @layer utilities {

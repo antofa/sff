@@ -1961,6 +1961,9 @@ interface DeckListProps {
 interface FilterState {
   faction: string[]
   factionMode: 'include' | 'exclude'
+  factionForgeborn: string[]
+  factionForgebornMin: number | null
+  factionForgebornMax: number | null
   forgebornName: string[]
   forgebornMode: 'include' | 'exclude'
   forgebornNameMin: number | null
@@ -1979,6 +1982,18 @@ interface FilterState {
   rarityOperator: '>=' | '<=' | '='
   rarityCount: number | null
   rarityMode: 'include' | 'exclude'
+  quickRarityCommonMin: number | null
+  quickRarityCommonMax: number | null
+  quickRarityDarkforgeCommonMin: number | null
+  quickRarityDarkforgeCommonMax: number | null
+  quickRarityRareMin: number | null
+  quickRarityRareMax: number | null
+  quickRarityDarkforgeRareMin: number | null
+  quickRarityDarkforgeRareMax: number | null
+  quickRarityLsMin: number | null
+  quickRarityLsMax: number | null
+  quickRarityDarkforgeLsMin: number | null
+  quickRarityDarkforgeLsMax: number | null
   rarityWord: string
   rarityWordOperator: '>=' | '<=' | '='
   rarityWordCount: number | null
@@ -1992,6 +2007,10 @@ interface FilterState {
   freeCreaturesOperator: '>=' | '<=' | '='
   freeCreaturesValue: number | null
   freeCreaturesMode: 'include' | 'exclude'
+  quickCreatureRanges: Record<string, { min: number | null; max: number | null }>
+  quickCreatureType: string
+  quickCreatureTypeMin: number | null
+  quickCreatureTypeMax: number | null
   creatureType: string
   creatureTypeOperator: '>=' | '<=' | '='
   creatureTypeCount: number | null
@@ -2021,6 +2040,9 @@ interface FilterState {
 const createDefaultFilters = (): FilterState => ({
   faction: [],
   factionMode: 'include',
+  factionForgeborn: [],
+  factionForgebornMin: null,
+  factionForgebornMax: null,
   forgebornName: [],
   forgebornMode: 'include',
   forgebornNameMin: null,
@@ -2039,6 +2061,18 @@ const createDefaultFilters = (): FilterState => ({
   rarityOperator: '>=',
   rarityCount: null,
   rarityMode: 'include',
+  quickRarityCommonMin: null,
+  quickRarityCommonMax: null,
+  quickRarityDarkforgeCommonMin: null,
+  quickRarityDarkforgeCommonMax: null,
+  quickRarityRareMin: null,
+  quickRarityRareMax: null,
+  quickRarityDarkforgeRareMin: null,
+  quickRarityDarkforgeRareMax: null,
+  quickRarityLsMin: null,
+  quickRarityLsMax: null,
+  quickRarityDarkforgeLsMin: null,
+  quickRarityDarkforgeLsMax: null,
   rarityWord: '',
   rarityWordOperator: '>=',
   rarityWordCount: null,
@@ -2052,6 +2086,10 @@ const createDefaultFilters = (): FilterState => ({
   freeCreaturesOperator: '>=',
   freeCreaturesValue: null,
   freeCreaturesMode: 'include',
+  quickCreatureRanges: {},
+  quickCreatureType: '',
+  quickCreatureTypeMin: null,
+  quickCreatureTypeMax: null,
   creatureType: '',
   creatureTypeOperator: '>=',
   creatureTypeCount: null,
@@ -2184,12 +2222,59 @@ const FACTION_BUTTONS = [
   { value: 'Uterra', label: 'UTERRA', color: 'green' },
   { value: 'Nekrium', label: 'NEKRIUM', color: 'grape' },
 ]
+const QUICK_RARITY_PAIRS = [
+  {
+    baseLabel: 'Common',
+    darkforgeLabel: 'Darkforge Common',
+    baseMinKey: 'quickRarityCommonMin' as const,
+    baseMaxKey: 'quickRarityCommonMax' as const,
+    darkforgeMinKey: 'quickRarityDarkforgeCommonMin' as const,
+    darkforgeMaxKey: 'quickRarityDarkforgeCommonMax' as const,
+  },
+  {
+    baseLabel: 'Rare',
+    darkforgeLabel: 'Darkforge Rare',
+    baseMinKey: 'quickRarityRareMin' as const,
+    baseMaxKey: 'quickRarityRareMax' as const,
+    darkforgeMinKey: 'quickRarityDarkforgeRareMin' as const,
+    darkforgeMaxKey: 'quickRarityDarkforgeRareMax' as const,
+  },
+  {
+    baseLabel: 'LS',
+    darkforgeLabel: 'Darkforge LS',
+    baseMinKey: 'quickRarityLsMin' as const,
+    baseMaxKey: 'quickRarityLsMax' as const,
+    darkforgeMinKey: 'quickRarityDarkforgeLsMin' as const,
+    darkforgeMaxKey: 'quickRarityDarkforgeLsMax' as const,
+  },
+]
+const FACTION_FORGEBORN_FALLBACK: Record<string, string[]> = {
+  Uterra: ['Tundra', 'Nova', 'Oros', 'Tyran'],
+}
+const FACTION_FORGEBORN_BORDER: Record<string, string> = {
+  alloyin: 'rgba(56, 189, 248, 0.78)',
+  tempys: 'rgba(251, 146, 60, 0.78)',
+  uterra: 'rgba(74, 222, 128, 0.78)',
+  nekrium: 'rgba(167, 139, 250, 0.78)',
+}
+type FilterSectionKey = 'factions' | 'rarities' | 'creatures' | 'controls' | 'customFilters'
+const FILTER_SECTION_STORAGE_KEY = 'sff.filter-sections.v1'
+const DEFAULT_FILTER_SECTION_STATE: Record<FilterSectionKey, boolean> = {
+  factions: true,
+  rarities: true,
+  creatures: true,
+  controls: true,
+  customFilters: true,
+}
 const FILTER_QUERY_KEYS = [
   'activeFilters',
   'deckName',
   'deckNameMode',
   'faction',
   'factionMode',
+  'factionForgeborn',
+  'factionForgebornMin',
+  'factionForgebornMax',
   'forgeborn',
   'forgebornName',
   'forgebornMode',
@@ -2232,10 +2317,26 @@ const FILTER_QUERY_KEYS = [
   'rarityOperator',
   'rarityCount',
   'rarityMode',
+  'quickRarityCommonMin',
+  'quickRarityCommonMax',
+  'quickRarityDarkforgeCommonMin',
+  'quickRarityDarkforgeCommonMax',
+  'quickRarityRareMin',
+  'quickRarityRareMax',
+  'quickRarityDarkforgeRareMin',
+  'quickRarityDarkforgeRareMax',
+  'quickRarityLsMin',
+  'quickRarityLsMax',
+  'quickRarityDarkforgeLsMin',
+  'quickRarityDarkforgeLsMax',
   'rarityWord',
   'rarityWordOperator',
   'rarityWordCount',
   'rarityWordMode',
+  'quickCreatureRanges',
+  'quickCreatureType',
+  'quickCreatureTypeMin',
+  'quickCreatureTypeMax',
   'eloOperator',
   'eloValue',
   'eloMode',
@@ -2247,6 +2348,47 @@ const FILTER_QUERY_KEYS = [
 ]
 
 const FILTER_QUERY_KEY_SET = new Set(FILTER_QUERY_KEYS)
+
+const parseQuickCreatureRanges = (
+  raw: string | null | undefined
+): Record<string, { min: number | null; max: number | null }> => {
+  if (!raw) return {}
+  const next: Record<string, { min: number | null; max: number | null }> = {}
+  raw
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((item) => {
+      const [rawType, rawRange] = item.split(':')
+      const type = (rawType || '').trim().toLowerCase()
+      if (!type) return
+      const [rawMin, rawMax] = (rawRange || '').split('-')
+      const parsedMin = rawMin === '' || rawMin === undefined ? null : Number(rawMin)
+      const parsedMax = rawMax === '' || rawMax === undefined ? null : Number(rawMax)
+      const min = Number.isFinite(parsedMin) ? parsedMin : null
+      const max = Number.isFinite(parsedMax) ? parsedMax : null
+      if (min === null && max === null) return
+      next[type] = { min, max }
+    })
+  return next
+}
+
+const serializeQuickCreatureRanges = (ranges: Record<string, { min: number | null; max: number | null }>) => {
+  return Object.entries(ranges || {})
+    .map(([type, range]) => {
+      const normalizedType = type.trim().toLowerCase()
+      if (!normalizedType) return null
+      const min = range?.min
+      const max = range?.max
+      if (min === null && max === null) return null
+      const minPart = min === null || min === undefined ? '' : String(min)
+      const maxPart = max === null || max === undefined ? '' : String(max)
+      return `${normalizedType}:${minPart}-${maxPart}`
+    })
+    .filter((entry): entry is string => Boolean(entry))
+    .sort((a, b) => a.localeCompare(b))
+    .join('|')
+}
 
 const FIELD_TO_BLOCK: Record<string, FilterBlockKey> = Object.entries(FILTER_BLOCK_FIELDS).reduce(
   (acc, [blockKey, fields]) => {
@@ -2456,8 +2598,13 @@ const parseFiltersFromSearch = (
   next.deckNameMode = (params.get('deckNameMode') as FilterState['deckNameMode']) || 'include'
   next.faction = getArray('faction')
   next.factionMode = (params.get('factionMode') as FilterState['factionMode']) || 'include'
+  next.factionForgeborn = getArray('factionForgeborn')
+  next.factionForgebornMin = getNumber('factionForgebornMin')
+  next.factionForgebornMax = getNumber('factionForgebornMax')
   next.forgebornName = getArray('forgebornName')
   next.forgebornMode = (params.get('forgebornMode') as FilterState['forgebornMode']) || 'include'
+  next.forgebornNameMin = getNumber('forgebornNameMin')
+  next.forgebornNameMax = getNumber('forgebornNameMax')
   next.cardName = getArray('cardName')
   next.cardNameMode = (params.get('cardNameMode') as FilterState['cardNameMode']) || 'include'
   next.cardText = params.get('cardText') || ''
@@ -2520,6 +2667,18 @@ const parseFiltersFromSearch = (
   next.rarityOperator = (params.get('rarityOperator') as FilterState['rarityOperator']) || next.rarityOperator
   next.rarityCount = getNumber('rarityCount')
   next.rarityMode = (params.get('rarityMode') as FilterState['rarityMode']) || 'include'
+  next.quickRarityCommonMin = getNumber('quickRarityCommonMin')
+  next.quickRarityCommonMax = getNumber('quickRarityCommonMax')
+  next.quickRarityDarkforgeCommonMin = getNumber('quickRarityDarkforgeCommonMin')
+  next.quickRarityDarkforgeCommonMax = getNumber('quickRarityDarkforgeCommonMax')
+  next.quickRarityRareMin = getNumber('quickRarityRareMin')
+  next.quickRarityRareMax = getNumber('quickRarityRareMax')
+  next.quickRarityDarkforgeRareMin = getNumber('quickRarityDarkforgeRareMin')
+  next.quickRarityDarkforgeRareMax = getNumber('quickRarityDarkforgeRareMax')
+  next.quickRarityLsMin = getNumber('quickRarityLsMin')
+  next.quickRarityLsMax = getNumber('quickRarityLsMax')
+  next.quickRarityDarkforgeLsMin = getNumber('quickRarityDarkforgeLsMin')
+  next.quickRarityDarkforgeLsMax = getNumber('quickRarityDarkforgeLsMax')
   next.rarityWord = params.get('rarityWord') || ''
   next.rarityWordOperator =
     (params.get('rarityWordOperator') as FilterState['rarityWordOperator']) || next.rarityWordOperator
@@ -2538,6 +2697,21 @@ const parseFiltersFromSearch = (
     next.scoreValue = scoreValue
     next.scoreOperator = (params.get('scoreOperator') as FilterState['scoreOperator']) || next.scoreOperator
     next.scoreMode = (params.get('scoreMode') as FilterState['scoreMode']) || 'include'
+  }
+
+  next.quickCreatureType = params.get('quickCreatureType') || ''
+  next.quickCreatureTypeMin = getNumber('quickCreatureTypeMin')
+  next.quickCreatureTypeMax = getNumber('quickCreatureTypeMax')
+  next.quickCreatureRanges = parseQuickCreatureRanges(params.get('quickCreatureRanges'))
+  if (
+    Object.keys(next.quickCreatureRanges).length === 0 &&
+    next.quickCreatureType &&
+    (next.quickCreatureTypeMin !== null || next.quickCreatureTypeMax !== null)
+  ) {
+    next.quickCreatureRanges[next.quickCreatureType.trim().toLowerCase()] = {
+      min: next.quickCreatureTypeMin,
+      max: next.quickCreatureTypeMax,
+    }
   }
 
   // Active filter blocks (derived from URL order)
@@ -2696,6 +2870,26 @@ const buildSearchParamsFromState = (
   if ((filters.factionMode || defaults.factionMode) !== defaults.factionMode) {
     params.set('factionMode', filters.factionMode || defaults.factionMode)
   }
+  setArray('factionForgeborn', filters.factionForgeborn || [])
+  setNumber('factionForgebornMin', filters.factionForgebornMin)
+  setNumber('factionForgebornMax', filters.factionForgebornMax)
+
+  setNumber('quickRarityCommonMin', filters.quickRarityCommonMin)
+  setNumber('quickRarityCommonMax', filters.quickRarityCommonMax)
+  setNumber('quickRarityDarkforgeCommonMin', filters.quickRarityDarkforgeCommonMin)
+  setNumber('quickRarityDarkforgeCommonMax', filters.quickRarityDarkforgeCommonMax)
+  setNumber('quickRarityRareMin', filters.quickRarityRareMin)
+  setNumber('quickRarityRareMax', filters.quickRarityRareMax)
+  setNumber('quickRarityDarkforgeRareMin', filters.quickRarityDarkforgeRareMin)
+  setNumber('quickRarityDarkforgeRareMax', filters.quickRarityDarkforgeRareMax)
+  setNumber('quickRarityLsMin', filters.quickRarityLsMin)
+  setNumber('quickRarityLsMax', filters.quickRarityLsMax)
+  setNumber('quickRarityDarkforgeLsMin', filters.quickRarityDarkforgeLsMin)
+  setNumber('quickRarityDarkforgeLsMax', filters.quickRarityDarkforgeLsMax)
+
+  const quickCreatureRangesValue = serializeQuickCreatureRanges(filters.quickCreatureRanges || {})
+  setString('quickCreatureRanges', quickCreatureRangesValue)
+
   if ((filters.sortBy || defaults.sortBy) !== defaults.sortBy) {
     params.set('sortBy', filters.sortBy || defaults.sortBy)
   }
@@ -2724,6 +2918,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const [cardSetInstances, setCardSetInstances] = useState<Record<string, CardSetInstanceState>>({})
   const [instanceFilters, setInstanceFilters] = useState<Record<string, FilterInstanceState>>({})
   const [filters, setFilters] = useState<FilterState>(() => createDefaultFilters())
+  const [filterDecksExpanded, setFilterDecksExpanded] = useState(true)
+  const [sectionOpenState, setSectionOpenState] = useState<Record<FilterSectionKey, boolean>>(
+    DEFAULT_FILTER_SECTION_STATE
+  )
   const router = useRouter()
   const searchParams = useSearchParams()
   const searchParamsString = useMemo(
@@ -2738,6 +2936,24 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   // Use Mantine's useDebouncedValue with trailing: true (default behavior)
   const [debouncedFilters] = useDebouncedValue(filters, 500)
   const [debouncedInstanceFilters] = useDebouncedValue(instanceFilters, 500)
+  const sectionVisibility = useMemo(
+    () => ({
+      factions: filterDecksExpanded && sectionOpenState.factions,
+      rarities: filterDecksExpanded && sectionOpenState.rarities,
+      creatures: filterDecksExpanded && sectionOpenState.creatures,
+      customFilters: filterDecksExpanded && sectionOpenState.customFilters,
+      controls: sectionOpenState.controls,
+    }),
+    [filterDecksExpanded, sectionOpenState]
+  )
+  const effectiveExpiryFilter = useMemo<FilterState['expiryFilter']>(() => {
+    const defaults = createDefaultFilters()
+    return sectionVisibility.controls ? debouncedFilters.expiryFilter : defaults.expiryFilter
+  }, [debouncedFilters.expiryFilter, sectionVisibility.controls])
+  const effectiveSortBy = useMemo(() => {
+    const defaults = createDefaultFilters()
+    return sectionVisibility.controls ? (filters.sortBy || defaults.sortBy) : defaults.sortBy
+  }, [filters.sortBy, sectionVisibility.controls])
 
   const getInstanceState = useCallback(
     (block: FilterBlockInstance) => {
@@ -2795,16 +3011,88 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   }, [searchParamsString])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(FILTER_SECTION_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Partial<Record<FilterSectionKey, unknown>>
+      const nextState: Record<FilterSectionKey, boolean> = { ...DEFAULT_FILTER_SECTION_STATE }
+      ;(Object.keys(DEFAULT_FILTER_SECTION_STATE) as FilterSectionKey[]).forEach((key) => {
+        if (typeof parsed[key] === 'boolean') {
+          nextState[key] = parsed[key] as boolean
+        }
+      })
+      setSectionOpenState(nextState)
+    } catch (error) {
+      console.warn('[DeckList] Failed to parse filter section state from localStorage', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(FILTER_SECTION_STORAGE_KEY, JSON.stringify(sectionOpenState))
+    } catch (error) {
+      console.warn('[DeckList] Failed to persist filter section state to localStorage', error)
+    }
+  }, [sectionOpenState])
+
+  useEffect(() => {
     if (!isHydratedRef.current) return
+    const defaults = createDefaultFilters()
+    const filtersForUrl: FilterState = { ...debouncedFilters }
+    if (!sectionVisibility.factions) {
+      filtersForUrl.faction = defaults.faction
+      filtersForUrl.factionMode = defaults.factionMode
+      filtersForUrl.factionForgeborn = defaults.factionForgeborn
+      filtersForUrl.factionForgebornMin = defaults.factionForgebornMin
+      filtersForUrl.factionForgebornMax = defaults.factionForgebornMax
+    }
+    if (!sectionVisibility.rarities) {
+      filtersForUrl.quickRarityCommonMin = defaults.quickRarityCommonMin
+      filtersForUrl.quickRarityCommonMax = defaults.quickRarityCommonMax
+      filtersForUrl.quickRarityDarkforgeCommonMin = defaults.quickRarityDarkforgeCommonMin
+      filtersForUrl.quickRarityDarkforgeCommonMax = defaults.quickRarityDarkforgeCommonMax
+      filtersForUrl.quickRarityRareMin = defaults.quickRarityRareMin
+      filtersForUrl.quickRarityRareMax = defaults.quickRarityRareMax
+      filtersForUrl.quickRarityDarkforgeRareMin = defaults.quickRarityDarkforgeRareMin
+      filtersForUrl.quickRarityDarkforgeRareMax = defaults.quickRarityDarkforgeRareMax
+      filtersForUrl.quickRarityLsMin = defaults.quickRarityLsMin
+      filtersForUrl.quickRarityLsMax = defaults.quickRarityLsMax
+      filtersForUrl.quickRarityDarkforgeLsMin = defaults.quickRarityDarkforgeLsMin
+      filtersForUrl.quickRarityDarkforgeLsMax = defaults.quickRarityDarkforgeLsMax
+    }
+    if (!sectionVisibility.creatures) {
+      filtersForUrl.quickCreatureRanges = defaults.quickCreatureRanges
+      filtersForUrl.quickCreatureType = defaults.quickCreatureType
+      filtersForUrl.quickCreatureTypeMin = defaults.quickCreatureTypeMin
+      filtersForUrl.quickCreatureTypeMax = defaults.quickCreatureTypeMax
+    }
+    if (!sectionVisibility.controls) {
+      filtersForUrl.sortBy = defaults.sortBy
+      filtersForUrl.expiryFilter = defaults.expiryFilter
+    }
+
+    const activeBlocksForUrl = sectionVisibility.customFilters
+      ? activeFilterBlocks
+      : activeFilterBlocks.filter((block) => block.key === 'deck-status')
+    const activeBlockIds = new Set(activeBlocksForUrl.map((block) => block.id))
+    const instanceFiltersForUrl = Object.fromEntries(
+      Object.entries(debouncedInstanceFilters).filter(([id]) => activeBlockIds.has(id))
+    )
+    const cardSetInstancesForUrl = Object.fromEntries(
+      Object.entries(cardSetInstances).filter(([id]) => activeBlockIds.has(id))
+    )
+
     const baseParams =
       typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search)
         : new URLSearchParams(searchParamsString)
     const params = buildSearchParamsFromState(
-      debouncedFilters,
-      activeFilterBlocks,
-      cardSetInstances,
-      debouncedInstanceFilters,
+      filtersForUrl,
+      activeBlocksForUrl,
+      cardSetInstancesForUrl,
+      instanceFiltersForUrl,
       baseParams
     )
     if (viewMode === 'fused') {
@@ -2816,7 +3104,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     if (nextString === lastSyncedQueryRef.current) return
     lastSyncedQueryRef.current = nextString
     router.replace(`?${nextString}`, { scroll: false })
-  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, router, searchParamsString, viewMode])
+  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, router, searchParamsString, viewMode, sectionVisibility])
   
   // Ref to store scroll position and first visible deck ID
   const scrollPositionRef = useRef<number>(0)
@@ -2874,6 +3162,150 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     })
     return Array.from(forgebornNamesSet).sort()
   }, [decks, fusedDecks, precomputedForgebornNames])
+
+  const { factionForgebornMap, forgebornFactionsMap } = useMemo(() => {
+    const normalizeFactionKey = (value?: string | null) => (value ? value.trim().toLowerCase() : '')
+    const normalizeForgebornKey = (value?: string | null) => (value ? value.trim().toLowerCase() : '')
+    const byFaction = new Map<string, Set<string>>()
+    const byForgeborn = new Map<string, Set<string>>()
+    const add = (faction?: string | null, forgeborn?: string | null) => {
+      const factionKey = normalizeFactionKey(faction)
+      const forgebornName = forgeborn?.trim()
+      if (!factionKey || !forgebornName) return
+      if (!byFaction.has(factionKey)) byFaction.set(factionKey, new Set<string>())
+      byFaction.get(factionKey)!.add(forgebornName)
+      const forgebornKey = normalizeForgebornKey(forgebornName)
+      if (!forgebornKey) return
+      if (!byForgeborn.has(forgebornKey)) byForgeborn.set(forgebornKey, new Set<string>())
+      byForgeborn.get(forgebornKey)!.add(factionKey)
+    }
+
+    ;[...decks, ...fusedDecks].forEach((deck) => {
+      add(deck.faction, getForgebornNameFromDeck(deck))
+    })
+
+    Object.entries(FACTION_FORGEBORN_FALLBACK).forEach(([faction, forgeborns]) => {
+      forgeborns.forEach((forgeborn) => add(faction, forgeborn))
+    })
+
+    const mappedByFaction: Record<string, string[]> = {}
+    byFaction.forEach((names, key) => {
+      mappedByFaction[key] = Array.from(names).sort((a, b) => a.localeCompare(b))
+    })
+    const mappedByForgeborn: Record<string, string[]> = {}
+    byForgeborn.forEach((factions, key) => {
+      mappedByForgeborn[key] = Array.from(factions)
+    })
+    return {
+      factionForgebornMap: mappedByFaction,
+      forgebornFactionsMap: mappedByForgeborn,
+    }
+  }, [decks, fusedDecks])
+
+  const handleFactionToggle = useCallback(
+    (factionValue: string) => {
+      setFilters((prev) => {
+        const current = (prev.faction as string[]) || []
+        const nextFactions = current.includes(factionValue)
+          ? current.filter((item) => item !== factionValue)
+          : [...current, factionValue]
+
+        const nextForgeborn = Array.from(
+          new Set(
+            nextFactions.flatMap((faction) => {
+              const key = faction.trim().toLowerCase()
+              return factionForgebornMap[key] || []
+            })
+          )
+        ).sort((a, b) => a.localeCompare(b))
+
+        return {
+          ...prev,
+          faction: nextFactions,
+          factionMode: 'include',
+          factionForgeborn: nextForgeborn,
+          factionForgebornMin: nextForgeborn.length > 0 ? 1 : null,
+          factionForgebornMax: nextForgeborn.length > 0 ? nextForgeborn.length : null,
+        }
+      })
+    },
+    [factionForgebornMap]
+  )
+
+  const toggleFilterSection = useCallback((section: FilterSectionKey) => {
+    setSectionOpenState((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }))
+  }, [])
+
+  const clearFilterSection = useCallback((section: FilterSectionKey) => {
+    const defaults = createDefaultFilters()
+    if (section === 'factions') {
+      setFilters((prev) => ({
+        ...prev,
+        faction: defaults.faction,
+        factionMode: defaults.factionMode,
+        factionForgeborn: defaults.factionForgeborn,
+        factionForgebornMin: defaults.factionForgebornMin,
+        factionForgebornMax: defaults.factionForgebornMax,
+      }))
+      return
+    }
+    if (section === 'rarities') {
+      setFilters((prev) => ({
+        ...prev,
+        quickRarityCommonMin: defaults.quickRarityCommonMin,
+        quickRarityCommonMax: defaults.quickRarityCommonMax,
+        quickRarityDarkforgeCommonMin: defaults.quickRarityDarkforgeCommonMin,
+        quickRarityDarkforgeCommonMax: defaults.quickRarityDarkforgeCommonMax,
+        quickRarityRareMin: defaults.quickRarityRareMin,
+        quickRarityRareMax: defaults.quickRarityRareMax,
+        quickRarityDarkforgeRareMin: defaults.quickRarityDarkforgeRareMin,
+        quickRarityDarkforgeRareMax: defaults.quickRarityDarkforgeRareMax,
+        quickRarityLsMin: defaults.quickRarityLsMin,
+        quickRarityLsMax: defaults.quickRarityLsMax,
+        quickRarityDarkforgeLsMin: defaults.quickRarityDarkforgeLsMin,
+        quickRarityDarkforgeLsMax: defaults.quickRarityDarkforgeLsMax,
+      }))
+      return
+    }
+    if (section === 'creatures') {
+      setFilters((prev) => ({
+        ...prev,
+        quickCreatureRanges: defaults.quickCreatureRanges,
+        quickCreatureType: defaults.quickCreatureType,
+        quickCreatureTypeMin: defaults.quickCreatureTypeMin,
+        quickCreatureTypeMax: defaults.quickCreatureTypeMax,
+      }))
+      return
+    }
+    if (section === 'controls') {
+      setFilters((prev) => ({
+        ...prev,
+        sortBy: defaults.sortBy,
+        expiryFilter: defaults.expiryFilter,
+      }))
+      setFilterToAdd(null)
+      return
+    }
+    if (section === 'customFilters') {
+      const customFieldKeys = new Set<keyof FilterState>()
+      FILTER_BLOCK_OPTIONS.forEach((option) => {
+        FILTER_BLOCK_FIELDS[option.value].forEach((field) => customFieldKeys.add(field))
+      })
+      setFilters((prev) => {
+        const next = { ...prev }
+        customFieldKeys.forEach((field) => {
+          ;(next as any)[field] = (defaults as any)[field]
+        })
+        return next
+      })
+      setActiveFilterBlocks((prev) => prev.filter((block) => block.key === 'deck-status'))
+      setCardSetInstances({})
+      setInstanceFilters({})
+    }
+  }, [])
   
   // Collect all unique tags from all decks for the dropdown
   const allTags = useMemo(() => {
@@ -3217,21 +3649,36 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       } = {}
     ) => (
       <Grid.Col key={block.id} span={options.span || { base: 12, sm: 6, md: 6 }}>
-        <div className="h-full">
-          <Stack gap={2}>
+        <div
+          className="h-full rounded-sm"
+          style={{
+            backgroundColor: '#090f16',
+            border: '1px solid rgba(74, 144, 226, 0.34)',
+            boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.68)',
+            padding: '8px',
+          }}
+        >
+          <Stack gap={6}>
             {(options.header || options.actions || (options.removable !== false && block.key !== 'deck-status')) && (
               <Group justify="space-between" align="center">
-                <div>{options.header}</div>
+                <div style={{ color: '#dbeafe' }}>{options.header}</div>
                 {(options.actions || (options.removable !== false && block.key !== 'deck-status')) && (
                   <Group gap={8} align="center">
                     {options.actions}
                     {options.removable !== false && block.key !== 'deck-status' && (
                       <ActionIcon
-                        variant="subtle"
-                        color="gray"
+                        variant="light"
+                        color="yellow"
                         size="sm"
                         onClick={() => removeFilterBlock(block.id, block.key)}
                         aria-label={`Remove ${FILTER_BLOCK_LABELS[block.key]} filter`}
+                        styles={{
+                          root: {
+                            border: '1px solid rgba(74, 144, 226, 0.35)',
+                            backgroundColor: 'rgba(20, 26, 34, 0.95)',
+                            color: '#dbeafe',
+                          },
+                        }}
                       >
                         <IconX size={14} />
                       </ActionIcon>
@@ -3250,8 +3697,37 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
 
   const hasActiveFilters = useMemo(() => {
     const defaults = createDefaultFilters()
-    if ((filters.faction as string[])?.length) return true
-    const nonStatusBlocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status' && block.key !== 'sort' && block.key !== 'faction')
+    if (sectionVisibility.factions && (filters.faction as string[])?.length) return true
+    if (sectionVisibility.factions && (filters.factionForgeborn as string[])?.length) return true
+    if (
+      sectionVisibility.creatures &&
+      Object.values(filters.quickCreatureRanges || {}).some(
+        (range) =>
+          !!range &&
+          ((range.min !== null && range.min !== undefined) ||
+            (range.max !== null && range.max !== undefined))
+      )
+    ) {
+      return true
+    }
+    const quickRarityValues = [
+      filters.quickRarityCommonMin,
+      filters.quickRarityCommonMax,
+      filters.quickRarityDarkforgeCommonMin,
+      filters.quickRarityDarkforgeCommonMax,
+      filters.quickRarityRareMin,
+      filters.quickRarityRareMax,
+      filters.quickRarityDarkforgeRareMin,
+      filters.quickRarityDarkforgeRareMax,
+      filters.quickRarityLsMin,
+      filters.quickRarityLsMax,
+      filters.quickRarityDarkforgeLsMin,
+      filters.quickRarityDarkforgeLsMax,
+    ]
+    if (sectionVisibility.rarities && quickRarityValues.some((value) => value !== null && value !== undefined)) return true
+    const nonStatusBlocks = sectionVisibility.customFilters
+      ? activeFilterBlocks.filter((block) => block.key !== 'deck-status' && block.key !== 'sort' && block.key !== 'faction')
+      : []
     for (const block of nonStatusBlocks) {
       const state = getInstanceState(block)
       switch (block.key) {
@@ -3317,7 +3793,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       }
     }
     return false
-  }, [activeFilterBlocks, cardSetInstances, filters.faction, getInstanceState])
+  }, [activeFilterBlocks, cardSetInstances, filters, getInstanceState, sectionVisibility])
   
   // Helper function to get two source decks from fused deck
   const getFusedDeckSourceDecks = useCallback((fusedDeck: Deck, allDecks: Deck[]): [Deck | null, Deck | null] => {
@@ -3430,13 +3906,13 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       const expiry = getExpiryTimestamp(deck)
       if (expiry === null) {
         // No expiry info: treat as active unless explicitly filtering only expired/expiring
-        if (debouncedFilters.expiryFilter === 'expired') return false
-        if (debouncedFilters.expiryFilter === 'expiring') return false
+        if (effectiveExpiryFilter === 'expired') return false
+        if (effectiveExpiryFilter === 'expiring') return false
         return true
       }
       const isExpired = expiry < now
       const isExpiring = expiry >= now
-      switch (debouncedFilters.expiryFilter) {
+      switch (effectiveExpiryFilter) {
         case 'all':
           return true
         case 'active':
@@ -3449,14 +3925,14 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
           return true
       }
     })
-  }, [decks, debouncedFilters.expiryFilter])
+  }, [decks, effectiveExpiryFilter])
   
   // Filter fused decks based on expiry status
   const filteredFusedDecksByExpiry = useMemo(() => {
     return fusedDecks.filter(fusedDeck => {
       const expiryStatus = getFusedDeckExpiryStatus(fusedDeck, decks)
       
-      switch (debouncedFilters.expiryFilter) {
+      switch (effectiveExpiryFilter) {
         case 'all':
           return true // Show all fused decks
         case 'active':
@@ -3472,7 +3948,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
           return true
       }
     })
-  }, [fusedDecks, decks, debouncedFilters.expiryFilter, getFusedDeckExpiryStatus])
+  }, [fusedDecks, decks, effectiveExpiryFilter, getFusedDeckExpiryStatus])
   
   // Calculate total decks count for display (respecting expiryFilter and viewMode)
   const totalDecksCount = useMemo(() => {
@@ -3484,14 +3960,14 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       regularDecksCount = decks.filter(deck => {
         const expiry = getExpiryTimestamp(deck)
         if (expiry === null) {
-          if (debouncedFilters.expiryFilter === 'expired') return false
-          if (debouncedFilters.expiryFilter === 'expiring') return false
+          if (effectiveExpiryFilter === 'expired') return false
+          if (effectiveExpiryFilter === 'expiring') return false
           return true
         }
         const isExpired = expiry < currentTimeUTC
         const isExpiring = expiry >= currentTimeUTC
         
-        switch (debouncedFilters.expiryFilter) {
+        switch (effectiveExpiryFilter) {
           case 'all':
             return true
           case 'active':
@@ -3512,7 +3988,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       fusedDecksCount = fusedDecks.filter(fusedDeck => {
         const expiryStatus = getFusedDeckExpiryStatus(fusedDeck, decks)
         
-        switch (debouncedFilters.expiryFilter) {
+        switch (effectiveExpiryFilter) {
           case 'all':
             return true
           case 'active':
@@ -3528,7 +4004,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     }
     
     return regularDecksCount + fusedDecksCount
-  }, [decks, fusedDecks, viewMode, debouncedFilters.expiryFilter, getFusedDeckExpiryStatus])
+  }, [decks, fusedDecks, viewMode, effectiveExpiryFilter, getFusedDeckExpiryStatus])
   
   // Determine which decks to show based on view mode
   const showHalfDecks = viewMode === 'decks'
@@ -3538,9 +4014,61 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const filterDeckArray = useCallback((deckArray: Deck[]) => {
     if (!hasActiveFilters) return deckArray
 
-    const selectedFactions = (debouncedFilters.faction as string[]) || []
-    const factionMode = (debouncedFilters.factionMode as FilterState['factionMode']) || 'include'
-    const blocks = activeFilterBlocks.filter((block) => block.key !== 'deck-status' && block.key !== 'sort' && block.key !== 'faction')
+    const defaults = createDefaultFilters()
+    const selectedFactions = sectionVisibility.factions ? ((debouncedFilters.faction as string[]) || []) : []
+    const factionMode = sectionVisibility.factions
+      ? ((debouncedFilters.factionMode as FilterState['factionMode']) || 'include')
+      : defaults.factionMode
+    const selectedFactionForgeborn = (sectionVisibility.factions ? ((debouncedFilters.factionForgeborn as string[]) || []) : [])
+      .map((name) => name.trim().toLowerCase())
+      .filter(Boolean)
+    const selectedFactionForgebornSet = new Set(selectedFactionForgeborn)
+    const factionForgebornMin = sectionVisibility.factions ? debouncedFilters.factionForgebornMin : defaults.factionForgebornMin
+    const factionForgebornMax = sectionVisibility.factions ? debouncedFilters.factionForgebornMax : defaults.factionForgebornMax
+    const quickCreatureRanges = sectionVisibility.creatures ? (debouncedFilters.quickCreatureRanges || {}) : {}
+    const activeQuickCreatureRanges = Object.entries(quickCreatureRanges).filter(
+      ([type, range]) =>
+        Boolean(type) &&
+        !!range &&
+        ((range.min !== null && range.min !== undefined) ||
+          (range.max !== null && range.max !== undefined))
+    )
+    const quickRaritySource = sectionVisibility.rarities ? debouncedFilters : defaults
+    const quickRarityRanges = [
+      {
+        label: 'Common',
+        min: quickRaritySource.quickRarityCommonMin,
+        max: quickRaritySource.quickRarityCommonMax,
+      },
+      {
+        label: 'Darkforge Common',
+        min: quickRaritySource.quickRarityDarkforgeCommonMin,
+        max: quickRaritySource.quickRarityDarkforgeCommonMax,
+      },
+      {
+        label: 'Rare',
+        min: quickRaritySource.quickRarityRareMin,
+        max: quickRaritySource.quickRarityRareMax,
+      },
+      {
+        label: 'Darkforge Rare',
+        min: quickRaritySource.quickRarityDarkforgeRareMin,
+        max: quickRaritySource.quickRarityDarkforgeRareMax,
+      },
+      {
+        label: 'LS',
+        min: quickRaritySource.quickRarityLsMin,
+        max: quickRaritySource.quickRarityLsMax,
+      },
+      {
+        label: 'Darkforge LS',
+        min: quickRaritySource.quickRarityDarkforgeLsMin,
+        max: quickRaritySource.quickRarityDarkforgeLsMax,
+      },
+    ] as const
+    const blocks = sectionVisibility.customFilters
+      ? activeFilterBlocks.filter((block) => block.key !== 'deck-status' && block.key !== 'sort' && block.key !== 'faction')
+      : []
     const blockStates = blocks.map((block) => ({
       block,
       state: getDebouncedInstanceState(block),
@@ -3698,6 +4226,102 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         const min = minValue ?? 1
         const max = maxValue ?? selectedCount
         return { min, max }
+      }
+
+      let rarityCountsCache: Map<string, number> | null = null
+      const getDeckRarityCounts = () => {
+        if (rarityCountsCache) return rarityCountsCache
+        if (deck.computed?.rarityCounts) {
+          rarityCountsCache = normalizeRarityCounts(deck.computed.rarityCounts)
+          return rarityCountsCache
+        }
+
+        const baseCards = Array.isArray(deck.cardList)
+          ? deck.cardList
+          : Array.isArray(deck.cards)
+            ? deck.cards
+            : Array.isArray((deck as any).cardIds) && (deck as any).cards && typeof (deck as any).cards === 'object'
+              ? (deck as any).cardIds.map((id: string, idx: number) => {
+                  const data = Object.values((deck as any).cards as any)[idx] as any
+                  return {
+                    ...((typeof data === 'object' && data) || {}),
+                    id,
+                    cardId: id,
+                    name: (data as any)?.name || (data as any)?.title || id,
+                  }
+                })
+              : []
+
+        const normalizedBaseCards: CardInfo[] = baseCards.map((card: any, idx: number) => {
+          if (typeof card === 'string') return getCardInfo(card)
+          if (card && typeof card === 'object') {
+            const cardId = card.id || card.cardId || card.name || `card-${idx}`
+            return getCardInfo(cardId, card)
+          }
+          return getCardInfo(`card-${idx}`)
+        })
+
+        const forgebornIds = new Set<string>()
+        if (deck.forgebornId) forgebornIds.add(deck.forgebornId)
+        normalizedBaseCards.forEach((card: CardInfo) => {
+          const typeLower = (card.cardType || card.type || '').toLowerCase()
+          if (typeLower.includes('forgeborn') && card.id) forgebornIds.add(card.id)
+        })
+
+        const counts = new Map<string, number>()
+        normalizedBaseCards.forEach((card) => {
+          if (forgebornIds.has(card.id)) return
+          const rarity = (card as any).rarity
+          if (rarity && typeof rarity === 'string') {
+            const normalizedRarity = normalizeRarityLabel(rarity)
+            counts.set(normalizedRarity, (counts.get(normalizedRarity) || 0) + 1)
+          }
+        })
+        rarityCountsCache = counts
+        return rarityCountsCache
+      }
+
+      const getDeckRarityCount = (label: string) => {
+        const normalizedLabel = normalizeRarityLabel(label)
+        return getDeckRarityCounts().get(normalizedLabel) || 0
+      }
+
+      if (selectedFactionForgebornSet.size > 0) {
+        const forgebornName = getForgebornNameFromDeck(deck)
+        const key = forgebornName?.trim().toLowerCase()
+        const matchCount = key && selectedFactionForgebornSet.has(key) ? 1 : 0
+        const { min, max } = resolveSelectionRange(
+          selectedFactionForgebornSet.size,
+          factionForgebornMin,
+          factionForgebornMax
+        )
+        if (!(matchCount >= min && matchCount <= max)) {
+          return false
+        }
+      }
+
+      if (activeQuickCreatureRanges.length > 0) {
+        const creatureTypesMap =
+          (deck.computed?.creatureType as Record<string, number> | undefined) ||
+          ((deck as any).creatureType as Record<string, number> | undefined) ||
+          computeCreatureTypesForDeck(deck)
+        for (const [creatureType, range] of activeQuickCreatureRanges) {
+          const typeCount = creatureTypesMap?.[creatureType] ?? 0
+          const min = range.min ?? 0
+          const max = range.max ?? Number.POSITIVE_INFINITY
+          if (typeCount < min || typeCount > max) {
+            return false
+          }
+        }
+      }
+
+      for (const range of quickRarityRanges) {
+        const hasMin = range.min !== null && range.min !== undefined
+        const hasMax = range.max !== null && range.max !== undefined
+        if (!hasMin && !hasMax) continue
+        const count = getDeckRarityCount(range.label)
+        if (hasMin && count < (range.min as number)) return false
+        if (hasMax && count > (range.max as number)) return false
       }
 
       for (const { block, state } of blockStates) {
@@ -4414,57 +5038,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
           const rarityType = (state.rarityType as string) || ''
           const rarityCount = state.rarityCount as number | null | undefined
           if (rarityType && rarityCount !== null && rarityCount !== undefined) {
-            const normalizedRarityType = normalizeRarityLabel(rarityType)
-            // Prefer precomputed rarity counts (base deck only)
-            let deckRarityCount = deck.computed?.rarityCounts
-              ? normalizeRarityCounts(deck.computed.rarityCounts).get(normalizedRarityType) || 0
-              : 0
-
-            // Fallback lightweight count on base cards if computed missing
-            if (!deck.computed?.rarityCounts) {
-              const baseCards = Array.isArray(deck.cardList)
-                ? deck.cardList
-                : Array.isArray(deck.cards)
-                  ? deck.cards
-                  : Array.isArray((deck as any).cardIds) && (deck as any).cards && typeof (deck as any).cards === 'object'
-                    ? (deck as any).cardIds.map((id: string, idx: number) => {
-                        const data = Object.values((deck as any).cards as any)[idx] as any
-                        return {
-                          ...((typeof data === 'object' && data) || {}),
-                          id,
-                          cardId: id,
-                          name: (data as any)?.name || (data as any)?.title || id,
-                        }
-                      })
-                    : []
-
-              const normalizedBaseCards: CardInfo[] = baseCards.map((card: any, idx: number) => {
-                if (typeof card === 'string') return getCardInfo(card)
-                if (card && typeof card === 'object') {
-                  const cardId = card.id || card.cardId || card.name || `card-${idx}`
-                  return getCardInfo(cardId, card)
-                }
-                return getCardInfo(`card-${idx}`)
-              })
-
-              const forgebornIds = new Set<string>()
-              if (deck.forgebornId) forgebornIds.add(deck.forgebornId)
-              normalizedBaseCards.forEach((c: CardInfo) => {
-                const typeLower = (c.cardType || c.type || '').toLowerCase()
-                if (typeLower.includes('forgeborn') && c.id) forgebornIds.add(c.id)
-              })
-
-              const counts = new Map<string, number>()
-              normalizedBaseCards.forEach(card => {
-                if (forgebornIds.has(card.id)) return
-                const rarity = (card as any).rarity
-                if (rarity && typeof rarity === 'string') {
-                  const normalizedRarity = normalizeRarityLabel(rarity)
-                  counts.set(normalizedRarity, (counts.get(normalizedRarity) || 0) + 1)
-                }
-              })
-              deckRarityCount = counts.get(normalizedRarityType) || 0
-            }
+            const deckRarityCount = getDeckRarityCount(rarityType)
 
             let matches = false
             switch (state.rarityOperator as FilterState['rarityOperator']) {
@@ -4621,11 +5195,11 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
 
       return true
     })
-  }, [activeFilterBlocks, cardSetInstances, deckTagsMap, getDebouncedInstanceState, hasActiveFilters, debouncedFilters.faction, debouncedFilters.factionMode])
+  }, [activeFilterBlocks, cardSetInstances, deckTagsMap, getDebouncedInstanceState, hasActiveFilters, debouncedFilters, decks, sectionVisibility])
   
   const sortByValue = useMemo(() => {
-    return filters.sortBy || createDefaultFilters().sortBy
-  }, [filters.sortBy])
+    return effectiveSortBy
+  }, [effectiveSortBy])
 
   // Helper function to sort decks
   const sortDecks = useCallback((deckArray: Deck[]): Deck[] => {
@@ -4828,6 +5402,165 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     }
   }, [filteredHalfDecks.length, filteredFusedDecks.length, columnCount, fusedColumnCount]) // Only depend on length to avoid unnecessary runs
 
+  const sectionHasValues = useMemo(() => {
+    const defaults = createDefaultFilters()
+    const factions =
+      ((filters.faction as string[]) || []).length > 0 ||
+      ((filters.factionForgeborn as string[]) || []).length > 0
+    const rarityValues = [
+      filters.quickRarityCommonMin,
+      filters.quickRarityCommonMax,
+      filters.quickRarityDarkforgeCommonMin,
+      filters.quickRarityDarkforgeCommonMax,
+      filters.quickRarityRareMin,
+      filters.quickRarityRareMax,
+      filters.quickRarityDarkforgeRareMin,
+      filters.quickRarityDarkforgeRareMax,
+      filters.quickRarityLsMin,
+      filters.quickRarityLsMax,
+      filters.quickRarityDarkforgeLsMin,
+      filters.quickRarityDarkforgeLsMax,
+    ]
+    const rarities = rarityValues.some((value) => value !== null && value !== undefined)
+    const creatures = Object.values(filters.quickCreatureRanges || {}).some(
+      (range) =>
+        !!range &&
+        ((range.min !== null && range.min !== undefined) || (range.max !== null && range.max !== undefined))
+    )
+    const controls = filters.sortBy !== defaults.sortBy || filters.expiryFilter !== defaults.expiryFilter
+    const customBlocks = activeFilterBlocks.filter(
+      (block) => block.key !== 'deck-status' && block.key !== 'sort' && block.key !== 'faction'
+    )
+    const customFilters = customBlocks.some((block) => {
+      const state = getInstanceState(block) as Record<string, unknown>
+      return FILTER_BLOCK_FIELDS[block.key].some((field) => {
+        const value = state[field as string]
+        const defaultValue = (defaults as any)[field]
+        if (Array.isArray(value)) return value.length > 0
+        if (typeof value === 'number') return Number.isFinite(value)
+        if (typeof value === 'string') return value.trim() !== '' && value !== defaultValue
+        return value !== null && value !== undefined && value !== defaultValue
+      })
+    })
+
+    return {
+      factions,
+      rarities,
+      creatures,
+      controls,
+      customFilters,
+    }
+  }, [filters, activeFilterBlocks, getInstanceState])
+  const hasCustomFilterBlocks = useMemo(
+    () => activeFilterBlocks.some((block) => block.key !== 'deck-status' && block.key !== 'sort' && block.key !== 'faction'),
+    [activeFilterBlocks]
+  )
+  const hasAnySectionClear = useMemo(
+    () =>
+      Boolean(
+        sectionHasValues.factions ||
+          sectionHasValues.rarities ||
+          sectionHasValues.creatures ||
+          sectionHasValues.customFilters
+      ),
+    [sectionHasValues]
+  )
+
+  const poePanelStyle = {
+    backgroundColor: 'rgba(8, 12, 18, 0.9)',
+    border: '1px solid rgba(74, 144, 226, 0.3)',
+    boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.65)',
+  } as const
+
+  const poeCellLabelStyle = {
+    color: '#dbeafe',
+    fontSize: '0.88rem',
+    fontWeight: 600,
+    letterSpacing: '0.04em',
+  } as const
+
+  const poeSectionHeader = (section: FilterSectionKey, label: string) => (
+    <Group gap="xs" align="center" wrap="nowrap" style={{ minHeight: 28 }}>
+      <button
+        type="button"
+        onClick={() => toggleFilterSection(section)}
+        aria-expanded={sectionOpenState[section]}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          background: 'transparent',
+          border: 'none',
+          padding: '2px 0',
+          cursor: 'pointer',
+          minHeight: 28,
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 14,
+            height: 14,
+            border: '1px solid rgba(74, 144, 226, 0.85)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(4, 6, 10, 0.95)',
+            boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.75)',
+          }}
+        >
+          {sectionOpenState[section] && (
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                backgroundColor: 'rgba(147, 51, 234, 0.95)',
+              }}
+            />
+          )}
+        </span>
+        <Text
+          size="sm"
+          style={{
+            color: '#dbeafe',
+            textTransform: 'uppercase',
+            letterSpacing: '0.09em',
+            fontWeight: 700,
+            lineHeight: 1.1,
+            fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
+            textAlign: 'left',
+          }}
+        >
+          {label}
+        </Text>
+        <span
+          aria-hidden
+          style={{
+            flex: 1,
+            height: 1,
+            background: 'linear-gradient(90deg, rgba(74,144,226,0.75), rgba(147,51,234,0.12))',
+          }}
+        />
+      </button>
+      <ActionIcon
+        size="sm"
+        variant="transparent"
+        onClick={() => clearFilterSection(section)}
+        aria-label={`Clear ${label}`}
+        styles={{
+          root: {
+            color: '#dbeafe',
+            visibility: sectionHasValues[section] ? 'visible' : 'hidden',
+            pointerEvents: sectionHasValues[section] ? 'auto' : 'none',
+          },
+        }}
+      >
+        <IconX size={16} />
+      </ActionIcon>
+    </Group>
+  )
+
   return (
     <>
       <div className="w-full max-w-6xl space-y-4">
@@ -4866,158 +5599,521 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
             >
               Filters
             </Button>
-            {hasActiveFilters && (
-              <Button
-                variant="subtle"
-                leftSection={<IconX size={16} />}
-                onClick={clearFilters}
-                size="sm"
-                color="red"
-              >
-                Clear
-              </Button>
-            )}
           </Group>
         </Group>
         
         <Collapse in={filtersOpened}>
           <Paper
             p="md"
-            className="filters-panel mb-4 backdrop-blur-md border border-sf-primary/30 rounded-xl"
-            style={{ backgroundColor: 'rgba(30, 41, 59, 0.6)' }}
+            className="filters-panel mb-4 rounded-xl"
+            style={poePanelStyle}
           >
             <Stack gap="md">
-              <Group justify="space-between" align="center" wrap="wrap" gap="sm">
-                <Title order={4} className="text-white">
-                  Filter Decks
-                </Title>
-                <Group gap="xs" wrap="wrap" justify="flex-end">
-                  {FACTION_BUTTONS.map((faction) => {
-                    const isActive = (filters.faction as string[])?.includes(faction.value)
-                    const activeBg = `var(--mantine-color-${faction.color}-light)`
-                    const activeBorder = `var(--mantine-color-${faction.color}-filled)`
-                    return (
-                      <Button
-                        key={faction.value}
-                        size="xs"
-                        variant="outline"
-                        color={faction.color}
-                        leftSection={
-                          <Image
-                            src={`/images/icons/${faction.value.toLowerCase()}.png`}
-                            alt={faction.value}
-                            h={16}
-                            w={16}
-                            fit="contain"
-                            style={{
-                              filter: isActive ? 'drop-shadow(0 0 2px rgba(0, 0, 0, 0.65))' : 'none',
+              <Group gap="xs" align="center" wrap="nowrap" style={{ minHeight: 30 }}>
+                <button
+                  type="button"
+                  onClick={() => setFilterDecksExpanded((prev) => !prev)}
+                  aria-expanded={filterDecksExpanded}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    background: 'transparent',
+                    border: 'none',
+                    padding: '2px 0',
+                    cursor: 'pointer',
+                    minHeight: 30,
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 14,
+                      height: 14,
+                      border: '1px solid rgba(74, 144, 226, 0.85)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(4, 6, 10, 0.95)',
+                      boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.75)',
+                    }}
+                  >
+                    {filterDecksExpanded && (
+                      <span
+                        style={{
+                          width: 6,
+                          height: 6,
+                          backgroundColor: 'rgba(147, 51, 234, 0.95)',
+                        }}
+                      />
+                    )}
+                  </span>
+                  <Title
+                    order={4}
+                    style={{
+                      color: '#dbeafe',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.12em',
+                      fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
+                      lineHeight: 1.1,
+                      textAlign: 'left',
+                    }}
+                  >
+                    Filter Decks
+                  </Title>
+                  <span
+                    aria-hidden
+                    style={{
+                      flex: 1,
+                      height: 1,
+                      background: 'linear-gradient(90deg, rgba(74,144,226,0.75), rgba(147,51,234,0.12))',
+                    }}
+                  />
+                </button>
+                <ActionIcon
+                  size="sm"
+                  variant="transparent"
+                  onClick={clearFilters}
+                  aria-label="Clear all filters"
+                  styles={{
+                    root: {
+                      color: '#dbeafe',
+                      visibility: hasAnySectionClear ? 'visible' : 'hidden',
+                      pointerEvents: hasAnySectionClear ? 'auto' : 'none',
+                    },
+                  }}
+                >
+                  <IconX size={16} />
+                </ActionIcon>
+              </Group>
+
+              {filterDecksExpanded && (
+              <Stack gap={8} style={{ marginTop: 4 }}>
+                {poeSectionHeader('factions', 'Faction Filters')}
+                <Collapse in={sectionOpenState.factions}>
+                  <Paper p="sm" className="rounded-sm" style={poePanelStyle}>
+                    <Stack gap="xs">
+                      <Group gap="xs" wrap="wrap">
+                        {FACTION_BUTTONS.map((faction) => {
+                          const isActive = (filters.faction as string[])?.includes(faction.value)
+                          return (
+                            <Button
+                              key={faction.value}
+                              size="xs"
+                              variant="outline"
+                              color={faction.color}
+                              leftSection={
+                                <Image
+                                  src={`/images/icons/${faction.value.toLowerCase()}.png`}
+                                  alt={faction.value}
+                                  h={16}
+                                  w={16}
+                                  fit="contain"
+                                  style={{
+                                    filter: isActive ? 'drop-shadow(0 0 2px rgba(0, 0, 0, 0.65))' : 'grayscale(25%)',
+                                  }}
+                                />
+                              }
+                              onClick={() => handleFactionToggle(faction.value)}
+                              styles={{
+                                root: {
+                                  backgroundColor: isActive ? 'rgba(74, 144, 226, 0.18)' : 'rgba(10, 14, 22, 0.95)',
+                                  borderColor: isActive ? 'rgba(74, 144, 226, 0.88)' : 'rgba(74, 144, 226, 0.35)',
+                                  color: '#dbeafe',
+                                  minHeight: 32,
+                                },
+                                label: {
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.05em',
+                                  fontWeight: 700,
+                                  color: '#dbeafe',
+                                },
+                              }}
+                            >
+                              {faction.label}
+                            </Button>
+                          )
+                        })}
+                      </Group>
+                      {(filters.factionForgeborn as string[])?.length > 0 && (
+                        <Group gap="xs" wrap="wrap">
+                          <Text size="xs" style={{ color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                            Forgeborn:
+                          </Text>
+                          {(filters.factionForgeborn as string[]).map((name) => {
+                            const selectedFactionKeys = ((filters.faction as string[]) || []).map((f) => f.trim().toLowerCase())
+                            const factionKeys = forgebornFactionsMap[name.trim().toLowerCase()] || []
+                            const matchedFactionKey =
+                              factionKeys.find((key) => selectedFactionKeys.includes(key)) || factionKeys[0]
+                            const borderColor = FACTION_FORGEBORN_BORDER[matchedFactionKey || ''] || 'rgba(147, 51, 234, 0.72)'
+                            return (
+                              <Badge
+                                key={`faction-fb-${name}`}
+                                size="sm"
+                                variant="outline"
+                                style={{ borderColor, color: '#ddd6fe' }}
+                              >
+                                {name}
+                              </Badge>
+                            )
+                          })}
+                        </Group>
+                      )}
+                    </Stack>
+                  </Paper>
+                </Collapse>
+              </Stack>
+              )}
+
+              {filterDecksExpanded && (
+              <Stack gap={8} style={{ marginTop: 4 }}>
+                {poeSectionHeader('rarities', 'Rarity Filters')}
+                <Collapse in={sectionOpenState.rarities}>
+                  <Paper p="sm" className="rounded-sm" style={poePanelStyle}>
+                    <Stack gap={4}>
+                      {QUICK_RARITY_PAIRS.map((pair) => (
+                        <div
+                          key={pair.baseLabel}
+                          style={{
+                            display: 'grid',
+                            gap: 2,
+                            alignItems: 'stretch',
+                            gridTemplateColumns: isSmUp
+                              ? 'minmax(0, 1fr) 74px 74px minmax(0, 1fr) 74px 74px'
+                              : 'minmax(0, 1fr) 74px 74px',
+                          }}
+                        >
+                          <div style={{ ...poeCellLabelStyle, padding: '7px 10px', backgroundColor: '#060b12', border: '1px solid rgba(74,144,226,0.3)' }}>
+                            {pair.baseLabel}
+                          </div>
+                          <NumberInput
+                            placeholder="MIN"
+                            value={filters[pair.baseMinKey] ?? ''}
+                            onChange={(value) =>
+                              setFilters((prev) => ({
+                                ...prev,
+                                [pair.baseMinKey]: typeof value === 'number' ? value : null,
+                              }))
+                            }
+                            min={0}
+                            styles={{
+                              input: {
+                                backgroundColor: '#060b12',
+                                color: '#dbeafe',
+                                borderColor: 'rgba(74,144,226,0.3)',
+                                textAlign: 'center',
+                                fontSize: '0.78rem',
+                                letterSpacing: '0.05em',
+                              },
                             }}
                           />
-                        }
-                        onClick={() => {
-                          setFilters((prev) => {
-                            const current = (prev.faction as string[]) || []
-                            const next = current.includes(faction.value)
-                              ? current.filter((item) => item !== faction.value)
-                              : [...current, faction.value]
-                            return { ...prev, faction: next, factionMode: 'include' }
-                          })
-                        }}
-                        styles={{
-                          root: {
-                            backgroundColor: isActive ? activeBg : 'transparent',
-                            borderColor: activeBorder,
-                            boxShadow: isActive ? `0 0 0 1px ${activeBorder}` : undefined,
-                            transition: 'background-color 150ms ease, box-shadow 150ms ease, border-color 150ms ease',
-                          },
-                          label: { textTransform: 'uppercase', letterSpacing: '0.02em' },
-                        }}
-                      >
-                        {faction.label}
-                      </Button>
-                    )
-                  })}
-                </Group>
-              </Group>
+                          <NumberInput
+                            placeholder="MAX"
+                            value={filters[pair.baseMaxKey] ?? ''}
+                            onChange={(value) =>
+                              setFilters((prev) => ({
+                                ...prev,
+                                [pair.baseMaxKey]: typeof value === 'number' ? value : null,
+                              }))
+                            }
+                            min={0}
+                            styles={{
+                              input: {
+                                backgroundColor: '#060b12',
+                                color: '#dbeafe',
+                                borderColor: 'rgba(74,144,226,0.3)',
+                                textAlign: 'center',
+                                fontSize: '0.78rem',
+                                letterSpacing: '0.05em',
+                              },
+                            }}
+                          />
+                          <div style={{ ...poeCellLabelStyle, padding: '7px 10px', backgroundColor: '#060b12', border: '1px solid rgba(147,51,234,0.34)' }}>
+                            {pair.darkforgeLabel}
+                          </div>
+                          <NumberInput
+                            placeholder="MIN"
+                            value={filters[pair.darkforgeMinKey] ?? ''}
+                            onChange={(value) =>
+                              setFilters((prev) => ({
+                                ...prev,
+                                [pair.darkforgeMinKey]: typeof value === 'number' ? value : null,
+                              }))
+                            }
+                            min={0}
+                            styles={{
+                              input: {
+                                backgroundColor: '#060b12',
+                                color: '#dbeafe',
+                                borderColor: 'rgba(147,51,234,0.36)',
+                                textAlign: 'center',
+                                fontSize: '0.78rem',
+                                letterSpacing: '0.05em',
+                              },
+                            }}
+                          />
+                          <NumberInput
+                            placeholder="MAX"
+                            value={filters[pair.darkforgeMaxKey] ?? ''}
+                            onChange={(value) =>
+                              setFilters((prev) => ({
+                                ...prev,
+                                [pair.darkforgeMaxKey]: typeof value === 'number' ? value : null,
+                              }))
+                            }
+                            min={0}
+                            styles={{
+                              input: {
+                                backgroundColor: '#060b12',
+                                color: '#dbeafe',
+                                borderColor: 'rgba(147,51,234,0.36)',
+                                textAlign: 'center',
+                                fontSize: '0.78rem',
+                                letterSpacing: '0.05em',
+                              },
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </Stack>
+                  </Paper>
+                </Collapse>
+              </Stack>
+              )}
 
-              <Group gap="md" align="flex-start" justify="space-between" wrap="nowrap">
-                <Stack gap={4} style={{ flex: '0 1 420px', maxWidth: 420 }}>
-                  <Text size="sm" fw={500} style={{ color: 'white' }}>
-                    Add filter
-                  </Text>
-                  <Select
-                    placeholder="Choose filter..."
-                    data={sortedFilterOptions}
-                    value={filterToAdd}
-                    onChange={(value) => addFilterBlock((value as FilterBlockKey) || null)}
-                    clearable
-                    allowDeselect
-                    searchable
-                    nothingFoundMessage="No matching filters"
-                    styles={{
-                      input: {
-                        backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                        color: 'white',
-                        borderColor: 'rgba(74, 144, 226, 0.3)',
-                      },
-                      dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                      option: { color: 'white' },
-                    }}
-                  />
-                </Stack>
+              {filterDecksExpanded && (
+              <Stack gap={8} style={{ marginTop: 4 }}>
+                {poeSectionHeader('creatures', 'Creature Filters')}
+                <Collapse in={sectionOpenState.creatures}>
+                  <Paper p="sm" className="rounded-sm" style={poePanelStyle}>
+                    <Stack gap={4}>
+                      {allCreatureTypes.length === 0 ? (
+                        <Text size="sm" style={{ color: 'rgba(191, 219, 254, 0.72)' }}>
+                          No creature types available
+                        </Text>
+                      ) : (
+                        allCreatureTypes.map((type) => {
+                          const currentRange = filters.quickCreatureRanges?.[type.value] || { min: null, max: null }
+                          const prettyType = type.value.charAt(0).toUpperCase() + type.value.slice(1)
+                          return (
+                            <div
+                              key={`quick-creature-range-${type.value}`}
+                              style={{
+                                display: 'grid',
+                                gap: 2,
+                                alignItems: 'stretch',
+                                gridTemplateColumns: isSmUp
+                                  ? 'minmax(0, 1fr) 74px 74px minmax(0, 1fr) 74px 74px'
+                                  : 'minmax(0, 1fr) 74px 74px',
+                              }}
+                            >
+                              <div style={{ ...poeCellLabelStyle, padding: '7px 10px', backgroundColor: '#060b12', border: '1px solid rgba(74,144,226,0.3)' }}>
+                                {prettyType}
+                              </div>
+                              <NumberInput
+                                placeholder="MIN"
+                                value={currentRange.min ?? ''}
+                                onChange={(value) =>
+                                  setFilters((prev) => {
+                                    const nextRanges = { ...(prev.quickCreatureRanges || {}) }
+                                    const normalizedType = type.value.trim().toLowerCase()
+                                    const current = nextRanges[normalizedType] || { min: null, max: null }
+                                    const nextMin = typeof value === 'number' ? value : null
+                                    const nextRange = { ...current, min: nextMin }
+                                    if (nextRange.min === null && nextRange.max === null) {
+                                      delete nextRanges[normalizedType]
+                                    } else {
+                                      nextRanges[normalizedType] = nextRange
+                                    }
+                                    return { ...prev, quickCreatureRanges: nextRanges }
+                                  })
+                                }
+                                min={0}
+                                styles={{
+                                  input: {
+                                    backgroundColor: '#060b12',
+                                    color: '#dbeafe',
+                                    borderColor: 'rgba(74,144,226,0.3)',
+                                    textAlign: 'center',
+                                    fontSize: '0.78rem',
+                                    letterSpacing: '0.05em',
+                                  },
+                                }}
+                              />
+                              <NumberInput
+                                placeholder="MAX"
+                                value={currentRange.max ?? ''}
+                                onChange={(value) =>
+                                  setFilters((prev) => {
+                                    const nextRanges = { ...(prev.quickCreatureRanges || {}) }
+                                    const normalizedType = type.value.trim().toLowerCase()
+                                    const current = nextRanges[normalizedType] || { min: null, max: null }
+                                    const nextMax = typeof value === 'number' ? value : null
+                                    const nextRange = { ...current, max: nextMax }
+                                    if (nextRange.min === null && nextRange.max === null) {
+                                      delete nextRanges[normalizedType]
+                                    } else {
+                                      nextRanges[normalizedType] = nextRange
+                                    }
+                                    return { ...prev, quickCreatureRanges: nextRanges }
+                                  })
+                                }
+                                min={0}
+                                styles={{
+                                  input: {
+                                    backgroundColor: '#060b12',
+                                    color: '#dbeafe',
+                                    borderColor: 'rgba(74,144,226,0.3)',
+                                    textAlign: 'center',
+                                    fontSize: '0.78rem',
+                                    letterSpacing: '0.05em',
+                                  },
+                                }}
+                              />
+                              <div
+                                style={{
+                                  ...poeCellLabelStyle,
+                                  padding: '7px 10px',
+                                  backgroundColor: '#060b12',
+                                  border: '1px solid rgba(74,144,226,0.3)',
+                                  color: 'rgba(147, 197, 253, 0.78)',
+                                }}
+                              >
+                                {prettyType} Synergy (coming soon)
+                              </div>
+                              <NumberInput
+                                placeholder="MIN"
+                                value=""
+                                disabled
+                                styles={{
+                                  input: {
+                                    backgroundColor: '#060b12',
+                                    color: 'rgba(191, 219, 254, 0.42)',
+                                    borderColor: 'rgba(74,144,226,0.24)',
+                                    textAlign: 'center',
+                                    fontSize: '0.78rem',
+                                    letterSpacing: '0.05em',
+                                  },
+                                }}
+                              />
+                              <NumberInput
+                                placeholder="MAX"
+                                value=""
+                                disabled
+                                styles={{
+                                  input: {
+                                    backgroundColor: '#060b12',
+                                    color: 'rgba(191, 219, 254, 0.42)',
+                                    borderColor: 'rgba(74,144,226,0.24)',
+                                    textAlign: 'center',
+                                    fontSize: '0.78rem',
+                                    letterSpacing: '0.05em',
+                                  },
+                                }}
+                              />
+                            </div>
+                          )
+                        })
+                      )}
+                    </Stack>
+                  </Paper>
+                </Collapse>
+              </Stack>
+              )}
 
-                <Stack gap={4} style={{ flex: '0 1 280px', maxWidth: 280 }}>
-                  <Text size="sm" fw={500} style={{ color: 'white' }}>
-                    Sort
-                  </Text>
-                  <Select
-                    value={filters.sortBy || 'date-desc'}
-                    onChange={(value) => setFilters({ ...filters, sortBy: value || 'date-desc' })}
-                    data={SORT_OPTIONS}
-                    styles={{
-                      input: {
-                        backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                        color: 'white',
-                        borderColor: 'rgba(74, 144, 226, 0.3)',
-                      },
-                      dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                      option: { color: 'white' },
-                    }}
-                  />
-                </Stack>
+              <Stack gap={8} style={{ marginTop: 4, order: 2 }}>
+                {poeSectionHeader('controls', 'Controls')}
+                <Collapse in={sectionOpenState.controls}>
+                  <Paper p="sm" className="rounded-sm" style={poePanelStyle}>
+                    <Group gap="md" align="flex-start" justify="space-between" wrap="wrap">
+                      <Stack gap={4} style={{ flex: '1 1 360px', minWidth: 260 }}>
+                        <Text size="sm" style={poeCellLabelStyle}>
+                          ADD FILTER
+                        </Text>
+                        <Select
+                          placeholder="Choose filter..."
+                          data={sortedFilterOptions}
+                          value={filterToAdd}
+                          onChange={(value) => addFilterBlock((value as FilterBlockKey) || null)}
+                          clearable
+                          allowDeselect
+                          searchable
+                          nothingFoundMessage="No matching filters"
+                          styles={{
+                            input: {
+                              backgroundColor: '#060b12',
+                              color: '#dbeafe',
+                              borderColor: 'rgba(74,144,226,0.3)',
+                            },
+                            dropdown: { backgroundColor: '#101a26' },
+                            option: { color: '#dbeafe' },
+                          }}
+                        />
+                      </Stack>
 
-                <Stack gap={6} align="flex-end" style={{ flex: '1 1 320px', minWidth: 320 }}>
-                  <Text size="sm" fw={500} style={{ color: 'white', textAlign: 'right' }}>
-                    Deck Status
-                  </Text>
-                  <SegmentedControl
-                    value={filters.expiryFilter}
-                    onChange={(value) => {
-                      const expiryValue = value as 'all' | 'active' | 'expiring' | 'expired'
-                      setFilters({ ...filters, expiryFilter: expiryValue })
-                    }}
-                    data={[
-                      { label: 'All', value: 'all' },
-                      { label: 'Active', value: 'active' },
-                      { label: 'Expiring', value: 'expiring' },
-                      { label: 'Expired', value: 'expired' },
-                    ]}
-                    styles={{
-                      root: {
-                        backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                      },
-                      label: {
-                        color: 'white',
-                      },
-                      indicator: {
-                        backgroundColor: 'rgba(74, 144, 226, 0.8)',
-                      },
-                    }}
-                  />
-                </Stack>
-              </Group>
+                      <Stack gap={4} style={{ flex: '0 1 280px', minWidth: 220 }}>
+                        <Text size="sm" style={poeCellLabelStyle}>
+                          SORT
+                        </Text>
+                        <Select
+                          value={filters.sortBy || 'date-desc'}
+                          onChange={(value) => setFilters({ ...filters, sortBy: value || 'date-desc' })}
+                          data={SORT_OPTIONS}
+                          styles={{
+                            input: {
+                              backgroundColor: '#060b12',
+                              color: '#dbeafe',
+                              borderColor: 'rgba(74,144,226,0.3)',
+                            },
+                            dropdown: { backgroundColor: '#101a26' },
+                            option: { color: '#dbeafe' },
+                          }}
+                        />
+                      </Stack>
 
-              <Grid gutter="md" columns={12}>
+                      <Stack gap={6} style={{ flex: '1 1 320px', minWidth: 280 }}>
+                        <Text size="sm" style={poeCellLabelStyle}>
+                          DECK STATUS
+                        </Text>
+                        <SegmentedControl
+                          value={filters.expiryFilter}
+                          onChange={(value) => {
+                            const expiryValue = value as 'all' | 'active' | 'expiring' | 'expired'
+                            setFilters({ ...filters, expiryFilter: expiryValue })
+                          }}
+                          data={[
+                            { label: 'All', value: 'all' },
+                            { label: 'Active', value: 'active' },
+                            { label: 'Expiring', value: 'expiring' },
+                            { label: 'Expired', value: 'expired' },
+                          ]}
+                          styles={{
+                            root: { backgroundColor: '#0e1621', border: '1px solid rgba(74,144,226,0.28)' },
+                            label: {
+                              color: '#dbeafe',
+                              letterSpacing: '0.03em',
+                              '&[data-active]': {
+                                color: '#f5f3ff',
+                                backgroundColor: 'rgba(147,51,234,0.48)',
+                                boxShadow: 'inset 0 0 0 1px rgba(147,51,234,0.72)',
+                              },
+                            },
+                            indicator: { backgroundColor: 'rgba(147,51,234,0.48)', border: '1px solid rgba(147,51,234,0.72)' },
+                          }}
+                        />
+                      </Stack>
+                    </Group>
+                  </Paper>
+                </Collapse>
+              </Stack>
+
+              {filterDecksExpanded && hasCustomFilterBlocks && (
+              <Stack gap={8} style={{ marginTop: 4, order: 1 }}>
+                {poeSectionHeader('customFilters', 'Custom Filters')}
+                <Collapse in={sectionOpenState.customFilters}>
+                  <Paper p="sm" className="rounded-sm" style={poePanelStyle}>
+                    <Grid gutter="md" columns={12}>
 
                 {activeFilterBlocks
                   .filter((block) => block.key !== 'deck-status' && block.key !== 'sort' && block.key !== 'faction')
@@ -5052,9 +6148,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             clearable
                             searchable
                             styles={{
-                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                              dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                              option: { color: 'white' }
+                              input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                              dropdown: { backgroundColor: '#101a26' },
+                              option: { color: '#dbeafe' }
                             }}
                             disabled={allDeckNames.length === 0}
                           />
@@ -5093,7 +6189,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             ]}
                             clearable
                             styles={{
-                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                             }}
                           />
                         </Stack>,
@@ -5124,7 +6220,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               style={{ width: '100%' }}
                               styles={{
                                 input: {
-                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  backgroundColor: '#060b12',
                                   color: 'white',
                                   borderColor: 'rgba(74, 144, 226, 0.3)',
                                   paddingRight: '46px',
@@ -5176,7 +6272,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               style={{ width: '100%' }}
                               styles={{
                                 input: {
-                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  backgroundColor: '#060b12',
                                   color: 'white',
                                   borderColor: 'rgba(74, 144, 226, 0.3)',
                                   paddingRight: '46px',
@@ -5236,9 +6332,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             searchable
                             className="text-white"
                             styles={{
-                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                              dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                              option: { color: 'white' }
+                              input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                              dropdown: { backgroundColor: '#101a26' },
+                              option: { color: '#dbeafe' }
                             }}
                           />
                         </Stack>,
@@ -5269,7 +6365,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               style={{ width: '100%' }}
                               styles={{
                                 input: {
-                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  backgroundColor: '#060b12',
                                   color: 'white',
                                   borderColor: 'rgba(74, 144, 226, 0.3)',
                                   paddingRight: '46px',
@@ -5321,7 +6417,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               style={{ width: '100%' }}
                               styles={{
                                 input: {
-                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  backgroundColor: '#060b12',
                                   color: 'white',
                                   borderColor: 'rgba(74, 144, 226, 0.3)',
                                   paddingRight: '46px',
@@ -5385,7 +6481,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             clearable
                             maxDropdownHeight={300}
                             styles={{
-                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                              dropdown: { backgroundColor: '#101a26' },
+                              option: { color: '#dbeafe' },
                             }}
                           />
                         </Stack>,
@@ -5417,7 +6515,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             onChange={(e) => update({ cardText: e.target.value })}
                             className="text-white"
                             styles={{
-                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                             }}
                           />
                         </Stack>,
@@ -5448,7 +6546,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               style={{ width: '100%' }}
                               styles={{
                                 input: {
-                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  backgroundColor: '#060b12',
                                   color: 'white',
                                   borderColor: 'rgba(74, 144, 226, 0.3)',
                                   paddingRight: '46px',
@@ -5500,7 +6598,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               style={{ width: '100%' }}
                               styles={{
                                 input: {
-                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  backgroundColor: '#060b12',
                                   color: 'white',
                                   borderColor: 'rgba(74, 144, 226, 0.3)',
                                   paddingRight: '46px',
@@ -5559,9 +6657,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             clearable
                             searchable
                             styles={{
-                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                              dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                              option: { color: 'white' }
+                              input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                              dropdown: { backgroundColor: '#101a26' },
+                              option: { color: '#dbeafe' }
                             }}
                           />
                         </Stack>,
@@ -5600,7 +6698,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               ]}
                               style={{ flex: '0 0 80px' }}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
                             <div style={{ position: 'relative', flex: 1 }}>
@@ -5616,7 +6714,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 style={{ width: '100%' }}
                                 styles={{
                                   input: {
-                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    backgroundColor: '#060b12',
                                     color: 'white',
                                     borderColor: 'rgba(74, 144, 226, 0.3)',
                                     paddingRight: '46px',
@@ -5693,7 +6791,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               ]}
                               style={{ flex: '0 0 60px', minWidth: '60px' }}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
                               }}
                             />
                             <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
@@ -5705,7 +6803,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 style={{ width: '100%' }}
                                 styles={{
                                   input: {
-                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    backgroundColor: '#060b12',
                                     color: 'white',
                                     borderColor: 'rgba(74, 144, 226, 0.3)',
                                     fontSize: '14px',
@@ -5790,9 +6888,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               disabled={allCreatureTypes.length === 0}
                               style={{ flex: 1 }}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                                dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                                option: { color: 'white' }
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                                dropdown: { backgroundColor: '#101a26' },
+                                option: { color: '#dbeafe' }
                               }}
                             />
                             <Select
@@ -5811,9 +6909,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               aria-label="Operator"
                               w={90}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                                dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                                option: { color: 'white' },
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                                dropdown: { backgroundColor: '#101a26' },
+                                option: { color: '#dbeafe' },
                               }}
                             />
                             <div style={{ position: 'relative', flex: '0 0 120px' }}>
@@ -5830,7 +6928,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 style={{ width: '100%' }}
                                 styles={{
                                   input: {
-                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    backgroundColor: '#060b12',
                                     color: 'white',
                                     borderColor: 'rgba(74, 144, 226, 0.3)',
                                     paddingRight: '46px',
@@ -5907,7 +7005,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               ]}
                               style={{ flex: '0 0 80px' }}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
                             <div style={{ position: 'relative', flex: 1 }}>
@@ -5923,7 +7021,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 style={{ width: '100%' }}
                                 styles={{
                                   input: {
-                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    backgroundColor: '#060b12',
                                     color: 'white',
                                     borderColor: 'rgba(74, 144, 226, 0.3)',
                                     paddingRight: '46px',
@@ -6000,7 +7098,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               ]}
                               style={{ flex: '0 0 60px', minWidth: '60px' }}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)', fontSize: '14px', padding: '0 8px' }
                               }}
                             />
                             <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
@@ -6012,7 +7110,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 style={{ width: '100%' }}
                                 styles={{
                                   input: {
-                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    backgroundColor: '#060b12',
                                     color: 'white',
                                     borderColor: 'rgba(74, 144, 226, 0.3)',
                                     fontSize: '14px',
@@ -6095,9 +7193,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               disabled={allSpellTypes.length === 0}
                               style={{ flex: 1 }}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                                dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                                option: { color: 'white' }
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                                dropdown: { backgroundColor: '#101a26' },
+                                option: { color: '#dbeafe' }
                               }}
                             />
                             <div style={{ position: 'relative', flex: '0 0 120px' }}>
@@ -6114,7 +7212,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 disabled={!currentType}
                                 styles={{
                                   input: {
-                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    backgroundColor: '#060b12',
                                     color: 'white',
                                     borderColor: 'rgba(74, 144, 226, 0.3)',
                                     paddingRight: '46px',
@@ -6205,7 +7303,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               style={{ width: '100%' }}
                               styles={{
                                 input: {
-                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  backgroundColor: '#060b12',
                                   color: 'white',
                                   borderColor: 'rgba(74, 144, 226, 0.3)',
                                   paddingRight: '46px',
@@ -6263,7 +7361,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               style={{ width: '100%' }}
                               styles={{
                                 input: {
-                                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                  backgroundColor: '#060b12',
                                   color: 'white',
                                   borderColor: 'rgba(74, 144, 226, 0.3)',
                                   paddingRight: '46px',
@@ -6335,9 +7433,9 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             clearable
                             searchable
                             styles={{
-                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
-                              dropdown: { backgroundColor: 'rgba(30, 41, 59, 0.95)' },
-                              option: { color: 'white' }
+                              input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' },
+                              dropdown: { backgroundColor: '#101a26' },
+                              option: { color: '#dbeafe' }
                             }}
                             disabled={allCardSetNos.length === 0}
                           />
@@ -6377,7 +7475,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               ]}
                               style={{ flex: '0 0 80px' }}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
                             <div style={{ position: 'relative', flex: 1 }}>
@@ -6391,7 +7489,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 style={{ width: '100%' }}
                                 styles={{
                                   input: {
-                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    backgroundColor: '#060b12',
                                     color: 'white',
                                     borderColor: 'rgba(74, 144, 226, 0.3)',
                                     paddingRight: '46px',
@@ -6468,7 +7566,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               ]}
                               style={{ flex: '0 0 80px' }}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
                             <div style={{ position: 'relative', flex: 1 }}>
@@ -6486,7 +7584,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 style={{ width: '100%' }}
                                 styles={{
                                   input: {
-                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    backgroundColor: '#060b12',
                                     color: 'white',
                                     borderColor: 'rgba(74, 144, 226, 0.3)',
                                     paddingRight: '46px',
@@ -6581,7 +7679,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               clearable
                               style={{ flex: 1 }}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
                             <Select
@@ -6595,7 +7693,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                               style={{ flex: '0 0 80px' }}
                               disabled={!currentType}
                               styles={{
-                                input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                               }}
                             />
                             <div style={{ position: 'relative', flex: '0 0 120px' }}>
@@ -6612,7 +7710,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 disabled={!currentType}
                                 styles={{
                                   input: {
-                                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                    backgroundColor: '#060b12',
                                     color: 'white',
                                     borderColor: 'rgba(74, 144, 226, 0.3)',
                                     paddingRight: '46px',
@@ -6694,7 +7792,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 clearable
                                 style={{ flex: 1 }}
                                 styles={{
-                                  input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                  input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                                 }}
                               />
                               <Select
@@ -6708,7 +7806,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                 style={{ flex: '0 0 80px' }}
                                 disabled={!currentWord}
                                 styles={{
-                                  input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                                  input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                                 }}
                               />
                               <div style={{ position: 'relative', flex: '0 0 120px' }}>
@@ -6725,7 +7823,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                                   disabled={!currentWord}
                                   styles={{
                                     input: {
-                                      backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                      backgroundColor: '#060b12',
                                       color: 'white',
                                       borderColor: 'rgba(74, 144, 226, 0.3)',
                                       paddingRight: '46px',
@@ -6785,7 +7883,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             onChange={(value) => update({ sortBy: value || 'date-desc' })}
                             data={SORT_OPTIONS}
                             styles={{
-                              input: { backgroundColor: 'rgba(30, 41, 59, 0.8)', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
+                              input: { backgroundColor: '#060b12', color: 'white', borderColor: 'rgba(74, 144, 226, 0.3)' }
                             }}
                           />,
                           { header }
@@ -6813,13 +7911,19 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                             fullWidth
                             styles={{
                               root: {
-                                backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                                backgroundColor: '#060b12',
                               },
                               label: {
-                                color: 'white',
+                                color: '#dbeafe',
+                                '&[data-active]': {
+                                  color: '#f5f3ff',
+                                  backgroundColor: 'rgba(147, 51, 234, 0.48)',
+                                  boxShadow: 'inset 0 0 0 1px rgba(147, 51, 234, 0.72)',
+                                },
                               },
                               indicator: {
-                                backgroundColor: 'rgba(74, 144, 226, 0.8)',
+                                backgroundColor: 'rgba(147, 51, 234, 0.48)',
+                                border: '1px solid rgba(147, 51, 234, 0.72)',
                               },
                             }}
                           />
@@ -6830,7 +7934,11 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                       return null
                   }
                 })}
-              </Grid>
+                    </Grid>
+                  </Paper>
+                </Collapse>
+              </Stack>
+              )}
             </Stack>
           </Paper>
           </Collapse>
