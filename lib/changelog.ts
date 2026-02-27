@@ -10,6 +10,17 @@ export const CHANGELOG_LAST_VIEWED_UTC_KEY = 'sff:changelog:last-viewed-utc'
 
 export const CHANGELOG_HISTORY: ChangelogEntry[] = [
   {
+    version: '0.0.2e',
+    date: '2026-02-27',
+    added: [],
+    changed: [
+      'Deck Status filters are clearer now: you can use All, Permanent, Expiring, Dissipating, and Expired.',
+      'You can now sort decks by expire date in both directions: soonest first or latest first.',
+      'When less than 24 hours remain, expire labels now show a live-style time format (for example, hours and minutes left) instead of a date.',
+    ],
+    fixed: [],
+  },
+  {
     version: '0.0.2d',
     date: '2026-02-24',
     added: [
