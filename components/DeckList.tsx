@@ -2731,6 +2731,15 @@ const buildSearchParamsFromState = (
   return params
 }
 
+const normalizeQueryString = (query: string | URLSearchParams): string => {
+  const normalized =
+    typeof query === 'string'
+      ? new URLSearchParams(query)
+      : new URLSearchParams(query.toString())
+  normalized.sort()
+  return normalized.toString()
+}
+
 type ViewMode = 'decks' | 'fused'
 
 export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedCardNames, precomputedDeckNames, precomputedForgebornNames, deckTagsMap = {}, deckCreatureTypesMap = {}, deckCreatureTypeOverrides = {} }: DeckListProps) {
@@ -2758,6 +2767,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const lastSyncedQueryRef = useRef<string>('')
   const isHydratedRef = useRef(false)
   const isViewModeHydratedRef = useRef(false)
+  const hydrationReadyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Debounced filters for text inputs (0.5 second delay)
   // Use Mantine's useDebouncedValue with trailing: true (default behavior)
@@ -2799,8 +2809,20 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     setActiveFilterBlocks(parsed.activeFilterBlocks)
     setCardSetInstances(parsed.cardSetInstances)
     setInstanceFilters(parsed.instanceFilters)
-    lastSyncedQueryRef.current = paramsString
-    isHydratedRef.current = true
+    lastSyncedQueryRef.current = normalizeQueryString(paramsString)
+    if (hydrationReadyTimeoutRef.current) {
+      clearTimeout(hydrationReadyTimeoutRef.current)
+    }
+    hydrationReadyTimeoutRef.current = setTimeout(() => {
+      isHydratedRef.current = true
+      hydrationReadyTimeoutRef.current = null
+    }, 0)
+    return () => {
+      if (hydrationReadyTimeoutRef.current) {
+        clearTimeout(hydrationReadyTimeoutRef.current)
+        hydrationReadyTimeoutRef.current = null
+      }
+    }
   }, [searchParamsString])
 
   useEffect(() => {
@@ -2838,8 +2860,16 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       params.delete('isFused')
     }
     const nextString = params.toString()
-    if (nextString === lastSyncedQueryRef.current) return
-    lastSyncedQueryRef.current = nextString
+    const normalizedNext = normalizeQueryString(nextString)
+    const normalizedCurrent =
+      typeof window !== 'undefined'
+        ? normalizeQueryString(window.location.search.slice(1))
+        : normalizeQueryString(searchParamsString)
+    if (normalizedNext === normalizedCurrent || normalizedNext === lastSyncedQueryRef.current) {
+      lastSyncedQueryRef.current = normalizedCurrent
+      return
+    }
+    lastSyncedQueryRef.current = normalizedNext
     router.replace(`?${nextString}`, { scroll: false })
   }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, router, searchParamsString, viewMode])
   

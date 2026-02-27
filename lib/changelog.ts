@@ -10,6 +10,16 @@ export const CHANGELOG_LAST_VIEWED_UTC_KEY = 'sff:changelog:last-viewed-utc'
 
 export const CHANGELOG_HISTORY: ChangelogEntry[] = [
   {
+    version: '0.0.2f',
+    date: '2026-02-27',
+    added: [],
+    changed: [],
+    fixed: [
+      'Changing URL filters (including Dissipating) no longer restarts deck loading in a loop.',
+      'Deck filters now stay local to already loaded results, and reloading is triggered only when you press Load Decks (or open a new player link).',
+    ],
+  },
+  {
     version: '0.0.2e',
     date: '2026-02-27',
     added: [],
