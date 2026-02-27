@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 27437f2
+  Request: Open the page filtered by `expiryFilter=dissipating` and fix the issue where deck cards do not show `x hours y mins` badges for short remaining lifetime.
+  Date: 2026-02-27
 - Commit: 38c2808
   Request: Update Deck Status to `All`, `Permanent` (renamed from `Active`), `Expiring`, `Dissipating` (decks with expire date less than 3 days), and `Expired`; add 2 new sorts by expire date; and show `x hours y mins` instead of a date like `13 Mar 2026` when a deck has less than 24 hours left.
   Date: 2026-02-27
