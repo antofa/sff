@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 3716cc4
+  Request: Fix the infinite reload loop for `?username=fong&expiryFilter=dissipating`; keep deck filtering client-side and reload decks only on `Load Decks` (or force refresh/new player link).
+  Date: 2026-02-27
 - Commit: e37fd38
   Request: Refactor the user changelog implementation in the header (separate data, state, and rendering) without changing behavior.
   Date: 2026-02-27
