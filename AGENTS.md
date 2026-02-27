@@ -47,3 +47,9 @@ Required when enabling auth or database features:
 - Use App Router conventions; server actions and API routes live under `app/`.
 - When updating API behavior, check `lib/api.ts` and `app/api/*` for consistency.
 - Keep styles consistent with Tailwind + Mantine usage in existing components.
+
+## Changelog merge rule
+- Update `CHANGELOG.md` and `lib/changelog.ts` only in `dev` before merging to `live`.
+- `CHANGELOG.md` is the source of truth; the latest release entry must be summarized in plain user-friendly English in `lib/changelog.ts`.
+- Do not create changelog-only commits in `live` after `dev` -> `live` merge (unless the user explicitly asks for an emergency hotfix).
+- Trigger phrase for this task: `sync lib/changelog.ts from CHANGELOG.md` (short form: `up changelog from CHANGELOG.md`).
