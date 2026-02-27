@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 0b61688
+  Request: поищи как считается deck status Expiring? [DeckList.tsx](components/DeckList.tsx) Expiring должен включать все деки у которых есть дата истечения А Dissipating это подмножество Expiring, у которых дата истечения менее 3х суток
+  Date: 2026-02-27
 - Commit: 3716cc4
   Request: Fix the infinite reload loop for `?username=fong&expiryFilter=dissipating`; keep deck filtering client-side and reload decks only on `Load Decks` (or force refresh/new player link).
   Date: 2026-02-27
