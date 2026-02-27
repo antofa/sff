@@ -274,6 +274,31 @@ function getExpiryTimestamp(deck: Deck): number | null {
   return Number.isNaN(ts) ? null : ts
 }
 
+const DISSIPATING_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
+const SHORT_LIFETIME_WINDOW_MS = 24 * 60 * 60 * 1000
+
+function getExpiryCategory(expiryTs: number | null, now: number): 'permanent' | 'expiring' | 'dissipating' | 'expired' {
+  if (expiryTs === null) return 'permanent'
+  if (expiryTs < now) return 'expired'
+  if (expiryTs - now < DISSIPATING_WINDOW_MS) return 'dissipating'
+  return 'expiring'
+}
+
+function formatExpiryLabel(ts: number, now: number): string {
+  const timeLeft = ts - now
+  if (timeLeft > 0 && timeLeft < SHORT_LIFETIME_WINDOW_MS) {
+    const hours = Math.floor(timeLeft / (60 * 60 * 1000))
+    const mins = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000))
+    return `${pluralize(hours, 'hour')} ${pluralize(mins, 'min')}`
+  }
+
+  return new Date(ts).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
 // Helper to determine border colors based on expiry status
 function getBorderColors(deck: Deck, now: number) {
   let borderColor = 'rgba(74, 144, 226, 0.6)'
@@ -923,11 +948,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
                       }
                 }
               >
-                {new Date(expiryTs).toLocaleDateString('en-GB', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
+                {formatExpiryLabel(expiryTs, renderNow)}
               </Badge>
             )}
           </Group>
@@ -1613,11 +1634,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
       if (!dateStr) return { label: null, expired: false, expiring: false }
       const ts = Date.parse(dateStr)
       if (!Number.isFinite(ts)) return { label: null, expired: false, expiring: false }
-      const label = new Date(ts).toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
+      const label = formatExpiryLabel(ts, renderNow)
       return { label, expired: ts < renderNow, expiring: ts >= renderNow }
     }
     if (isFusedDeck) {
@@ -1630,7 +1647,9 @@ const FusedDeckCard = memo(function FusedDeckCard({
     }
     const ts = getExpiryTimestamp(deck)
     if (ts === null) return { expireLabel: null, isExpired: false, isExpiring: false }
-    const { label, expired, expiring } = computeFlags(new Date(ts).toISOString())
+    const label = formatExpiryLabel(ts, renderNow)
+    const expired = ts < renderNow
+    const expiring = ts >= renderNow
     return { expireLabel: label, isExpired: expired, isExpiring: expiring }
   }, [deck, allDecks, renderNow, fusedExpiryResolver, isFusedDeck])
 
@@ -1983,7 +2002,7 @@ interface FilterState {
   rarityWordOperator: '>=' | '<=' | '='
   rarityWordCount: number | null
   rarityWordMode: 'include' | 'exclude'
-  expiryFilter: 'all' | 'active' | 'expiring' | 'expired'
+  expiryFilter: 'all' | 'permanent' | 'expiring' | 'dissipating' | 'expired'
   sortBy: string
   deckNameMode: 'include' | 'exclude'
   creaturesOperator: '>=' | '<=' | '='
@@ -2043,7 +2062,7 @@ const createDefaultFilters = (): FilterState => ({
   rarityWordOperator: '>=',
   rarityWordCount: null,
   rarityWordMode: 'include',
-  expiryFilter: 'active', // Default: show active decks (no dates + expiring)
+  expiryFilter: 'permanent', // Default: show permanent decks (no expiry date)
   sortBy: 'date-desc', // Default: newest first
   deckNameMode: 'include',
   creaturesOperator: '>=',
@@ -2164,6 +2183,8 @@ const FILTER_BLOCK_OPTIONS: { value: FilterBlockKey; label: string }[] = [
 const SORT_OPTIONS = [
   { value: 'date-desc', label: 'Date (Newest first)' },
   { value: 'date-asc', label: 'Date (Oldest first)' },
+  { value: 'expire-asc', label: 'Expire date (Soonest first)' },
+  { value: 'expire-desc', label: 'Expire date (Latest first)' },
   { value: 'name-asc', label: 'Name (A-Z)' },
   { value: 'name-desc', label: 'Name (Z-A)' },
   { value: 'score-desc', label: 'Score (Highest first)' },
@@ -2467,7 +2488,11 @@ const parseFiltersFromSearch = (
   next.cardSetNo = getArray('cardSetNo')
   next.cardSetNoMode = (params.get('cardSetNoMode') as FilterState['cardSetNoMode']) || 'include'
   next.sortBy = (params.get('sortBy') as string) || 'date-desc'
-  next.expiryFilter = ((params.get('expiryFilter') as FilterState['expiryFilter']) || 'active')
+  const expiryFilterParam = params.get('expiryFilter') as FilterState['expiryFilter'] | 'active' | null
+  next.expiryFilter =
+    expiryFilterParam === 'active'
+      ? 'permanent'
+      : (expiryFilterParam || 'permanent')
 
   // Numeric/operator pairs
   const creaturesValue = getNumber('creaturesValue')
@@ -3364,6 +3389,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const getFusedDeckExpiryStatus = useCallback((fusedDeck: Deck, allDecks: Deck[]): {
     isExpired: boolean
     isExpiring: boolean
+    isDissipating: boolean
+    category: 'permanent' | 'expiring' | 'dissipating' | 'expired'
     expireDate: string | null
     minExpiredDate: string | null
     minExpiringDate: string | null
@@ -3406,10 +3433,26 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     const minExpiringDate = expiringDates.length > 0 
       ? expiringDates.reduce((min, date) => (new Date(date).getTime() < new Date(min).getTime() ? date : min))
       : null
+    const minExpiringTs = minExpiringDate ? new Date(minExpiringDate).getTime() : null
+    const isDissipating =
+      !isExpired &&
+      minExpiringTs !== null &&
+      Number.isFinite(minExpiringTs) &&
+      getExpiryCategory(minExpiringTs, currentTimeUTC) === 'dissipating'
+    const category: 'permanent' | 'expiring' | 'dissipating' | 'expired' =
+      isExpired
+        ? 'expired'
+        : minExpiringTs === null
+          ? 'permanent'
+          : isDissipating
+            ? 'dissipating'
+            : 'expiring'
     
     return {
       isExpired,
       isExpiring,
+      isDissipating,
+      category,
       expireDate: minExpiredDate || minExpiringDate,
       minExpiredDate,
       minExpiringDate,
@@ -3418,33 +3461,29 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   
   // Regular decks are "half decks" (Decks), and we have separate fusedDecks from API
   // No need to split by card count - use the decks as-is for "Decks" section
-  // Filter out expired/expiring temporary decks based on expiryFilter
+  // Filter decks based on selected expiryFilter
   // Logic:
-  // - 'all': show all decks (including expired and expiring)
-  // - 'active': show decks without dates + expiring decks (default)
-  // - 'expiring': show only expiring decks (with future expiry date)
+  // - 'all': show all decks
+  // - 'permanent': no expire date
+  // - 'expiring': expiry date in 3+ days
+  // - 'dissipating': expiry date in less than 3 days
   // - 'expired': show only expired decks
   const halfDecks = useMemo(() => {
     const now = Date.now()
     return decks.filter(deck => {
       const expiry = getExpiryTimestamp(deck)
-      if (expiry === null) {
-        // No expiry info: treat as active unless explicitly filtering only expired/expiring
-        if (debouncedFilters.expiryFilter === 'expired') return false
-        if (debouncedFilters.expiryFilter === 'expiring') return false
-        return true
-      }
-      const isExpired = expiry < now
-      const isExpiring = expiry >= now
+      const category = getExpiryCategory(expiry, now)
       switch (debouncedFilters.expiryFilter) {
         case 'all':
           return true
-        case 'active':
-          return isExpiring
+        case 'permanent':
+          return category === 'permanent'
         case 'expiring':
-          return isExpiring
+          return category === 'expiring'
+        case 'dissipating':
+          return category === 'dissipating'
         case 'expired':
-          return isExpired
+          return category === 'expired'
         default:
           return true
       }
@@ -3459,15 +3498,14 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       switch (debouncedFilters.expiryFilter) {
         case 'all':
           return true // Show all fused decks
-        case 'active':
-          // Show fused decks that are not expired (either no expiry or expiring)
-          return !expiryStatus.isExpired
+        case 'permanent':
+          return expiryStatus.category === 'permanent'
         case 'expiring':
-          // Show only expiring fused decks
-          return expiryStatus.isExpiring
+          return expiryStatus.category === 'expiring'
+        case 'dissipating':
+          return expiryStatus.category === 'dissipating'
         case 'expired':
-          // Show only expired fused decks
-          return expiryStatus.isExpired
+          return expiryStatus.category === 'expired'
         default:
           return true
       }
@@ -3483,23 +3521,19 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     if (viewMode === 'decks') {
       regularDecksCount = decks.filter(deck => {
         const expiry = getExpiryTimestamp(deck)
-        if (expiry === null) {
-          if (debouncedFilters.expiryFilter === 'expired') return false
-          if (debouncedFilters.expiryFilter === 'expiring') return false
-          return true
-        }
-        const isExpired = expiry < currentTimeUTC
-        const isExpiring = expiry >= currentTimeUTC
+        const category = getExpiryCategory(expiry, currentTimeUTC)
         
         switch (debouncedFilters.expiryFilter) {
           case 'all':
             return true
-          case 'active':
-            return isExpiring
+          case 'permanent':
+            return category === 'permanent'
           case 'expiring':
-            return isExpiring
+            return category === 'expiring'
+          case 'dissipating':
+            return category === 'dissipating'
           case 'expired':
-            return isExpired
+            return category === 'expired'
           default:
           return true
         }
@@ -3515,12 +3549,14 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
         switch (debouncedFilters.expiryFilter) {
           case 'all':
             return true
-          case 'active':
-            return !expiryStatus.isExpired
+          case 'permanent':
+            return expiryStatus.category === 'permanent'
           case 'expiring':
-            return expiryStatus.isExpiring
+            return expiryStatus.category === 'expiring'
+          case 'dissipating':
+            return expiryStatus.category === 'dissipating'
           case 'expired':
-            return expiryStatus.isExpired
+            return expiryStatus.category === 'expired'
           default:
             return true
         }
@@ -4630,6 +4666,16 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   // Helper function to sort decks
   const sortDecks = useCallback((deckArray: Deck[]): Deck[] => {
     const sorted = [...deckArray]
+    const getSortExpiry = (deck: Deck) => {
+      if (isFusedDeckLike(deck)) {
+        const status = getFusedDeckExpiryStatus(deck, decks)
+        const date = status.minExpiredDate || status.minExpiringDate
+        if (!date) return null
+        const ts = new Date(date).getTime()
+        return Number.isFinite(ts) ? ts : null
+      }
+      return getExpiryTimestamp(deck)
+    }
     
     switch (sortByValue) {
       case 'date-desc': // Newest first
@@ -4645,6 +4691,22 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
           const dateA = (a as any).updatedAt ? new Date((a as any).updatedAt).getTime() : (a.created ? new Date(a.created).getTime() : 0)
           const dateB = (b as any).updatedAt ? new Date((b as any).updatedAt).getTime() : (b.created ? new Date(b.created).getTime() : 0)
           return dateA - dateB // Ascending (oldest first)
+        })
+      case 'expire-asc': // Soonest expiry first
+        return sorted.sort((a, b) => {
+          const expiryA = getSortExpiry(a)
+          const expiryB = getSortExpiry(b)
+          const sortA = expiryA === null ? Number.POSITIVE_INFINITY : expiryA
+          const sortB = expiryB === null ? Number.POSITIVE_INFINITY : expiryB
+          return sortA - sortB
+        })
+      case 'expire-desc': // Latest expiry first
+        return sorted.sort((a, b) => {
+          const expiryA = getSortExpiry(a)
+          const expiryB = getSortExpiry(b)
+          const sortA = expiryA === null ? Number.NEGATIVE_INFINITY : expiryA
+          const sortB = expiryB === null ? Number.NEGATIVE_INFINITY : expiryB
+          return sortB - sortA
         })
       case 'name-asc': // A-Z
         return sorted.sort((a, b) => {
@@ -4685,7 +4747,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       default:
         return sorted
     }
-  }, [sortByValue])
+  }, [sortByValue, decks, getFusedDeckExpiryStatus])
   
   // Filter half decks based on filter criteria
   const filteredHalfDecks = useMemo(() => {
@@ -4993,13 +5055,14 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                   <SegmentedControl
                     value={filters.expiryFilter}
                     onChange={(value) => {
-                      const expiryValue = value as 'all' | 'active' | 'expiring' | 'expired'
+                      const expiryValue = value as 'all' | 'permanent' | 'expiring' | 'dissipating' | 'expired'
                       setFilters({ ...filters, expiryFilter: expiryValue })
                     }}
                     data={[
                       { label: 'All', value: 'all' },
-                      { label: 'Active', value: 'active' },
+                      { label: 'Permanent', value: 'permanent' },
                       { label: 'Expiring', value: 'expiring' },
+                      { label: 'Dissipating', value: 'dissipating' },
                       { label: 'Expired', value: 'expired' },
                     ]}
                     styles={{
@@ -6801,13 +6864,14 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                           <SegmentedControl
                             value={filters.expiryFilter}
                             onChange={(value) => {
-                              const expiryValue = value as 'all' | 'active' | 'expiring' | 'expired'
+                              const expiryValue = value as 'all' | 'permanent' | 'expiring' | 'dissipating' | 'expired'
                               setFilters({ ...filters, expiryFilter: expiryValue })
                             }}
                             data={[
                               { label: 'All', value: 'all' },
-                              { label: 'Active', value: 'active' },
+                              { label: 'Permanent', value: 'permanent' },
                               { label: 'Expiring', value: 'expiring' },
+                              { label: 'Dissipating', value: 'dissipating' },
                               { label: 'Expired', value: 'expired' },
                             ]}
                             fullWidth
