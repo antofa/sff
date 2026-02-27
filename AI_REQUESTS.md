@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 38c2808
+  Request: Измени Decks Status: All Active -> Permanent Expiring Dissipating - деки с expire date меньше 3 суток Expired; добавь 2 новые сортировки по expire date; у дек, у которых время жизни меньше суток, выводи x hours y mins вместо даты 13 Mar 2026.
+  Date: 2026-02-27
 - Commit: e35aa49
   Request: Make the changelog indicator look cleaner: remove the white outline and the New text below, and use a compact blue numeric badge like a shopping cart counter.
   Date: 2026-02-24
