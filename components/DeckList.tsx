@@ -284,6 +284,26 @@ function getExpiryCategory(expiryTs: number | null, now: number): 'permanent' | 
   return 'expiring'
 }
 
+function matchesExpiryFilter(
+  category: 'permanent' | 'expiring' | 'dissipating' | 'expired',
+  filter: 'all' | 'permanent' | 'expiring' | 'dissipating' | 'expired'
+): boolean {
+  switch (filter) {
+    case 'all':
+      return true
+    case 'permanent':
+      return category === 'permanent'
+    case 'expiring':
+      return category === 'expiring' || category === 'dissipating'
+    case 'dissipating':
+      return category === 'dissipating'
+    case 'expired':
+      return category === 'expired'
+    default:
+      return true
+  }
+}
+
 function formatExpiryLabel(ts: number, now: number): string {
   const timeLeft = ts - now
   if (timeLeft > 0 && timeLeft < SHORT_LIFETIME_WINDOW_MS) {
@@ -3495,7 +3515,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   // Logic:
   // - 'all': show all decks
   // - 'permanent': no expire date
-  // - 'expiring': expiry date in 3+ days
+  // - 'expiring': any deck with expiry date (includes dissipating subset)
   // - 'dissipating': expiry date in less than 3 days
   // - 'expired': show only expired decks
   const halfDecks = useMemo(() => {
@@ -3503,20 +3523,7 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     return decks.filter(deck => {
       const expiry = getExpiryTimestamp(deck)
       const category = getExpiryCategory(expiry, now)
-      switch (debouncedFilters.expiryFilter) {
-        case 'all':
-          return true
-        case 'permanent':
-          return category === 'permanent'
-        case 'expiring':
-          return category === 'expiring'
-        case 'dissipating':
-          return category === 'dissipating'
-        case 'expired':
-          return category === 'expired'
-        default:
-          return true
-      }
+      return matchesExpiryFilter(category, debouncedFilters.expiryFilter)
     })
   }, [decks, debouncedFilters.expiryFilter])
   
@@ -3524,21 +3531,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const filteredFusedDecksByExpiry = useMemo(() => {
     return fusedDecks.filter(fusedDeck => {
       const expiryStatus = getFusedDeckExpiryStatus(fusedDeck, decks)
-      
-      switch (debouncedFilters.expiryFilter) {
-        case 'all':
-          return true // Show all fused decks
-        case 'permanent':
-          return expiryStatus.category === 'permanent'
-        case 'expiring':
-          return expiryStatus.category === 'expiring'
-        case 'dissipating':
-          return expiryStatus.category === 'dissipating'
-        case 'expired':
-          return expiryStatus.category === 'expired'
-        default:
-          return true
-      }
+
+      return matchesExpiryFilter(expiryStatus.category, debouncedFilters.expiryFilter)
     })
   }, [fusedDecks, decks, debouncedFilters.expiryFilter, getFusedDeckExpiryStatus])
   
@@ -3552,21 +3546,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       regularDecksCount = decks.filter(deck => {
         const expiry = getExpiryTimestamp(deck)
         const category = getExpiryCategory(expiry, currentTimeUTC)
-        
-        switch (debouncedFilters.expiryFilter) {
-          case 'all':
-            return true
-          case 'permanent':
-            return category === 'permanent'
-          case 'expiring':
-            return category === 'expiring'
-          case 'dissipating':
-            return category === 'dissipating'
-          case 'expired':
-            return category === 'expired'
-          default:
-          return true
-        }
+
+        return matchesExpiryFilter(category, debouncedFilters.expiryFilter)
       }).length
     }
     
@@ -3575,21 +3556,8 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
     if (viewMode === 'fused') {
       fusedDecksCount = fusedDecks.filter(fusedDeck => {
         const expiryStatus = getFusedDeckExpiryStatus(fusedDeck, decks)
-        
-        switch (debouncedFilters.expiryFilter) {
-          case 'all':
-            return true
-          case 'permanent':
-            return expiryStatus.category === 'permanent'
-          case 'expiring':
-            return expiryStatus.category === 'expiring'
-          case 'dissipating':
-            return expiryStatus.category === 'dissipating'
-          case 'expired':
-            return expiryStatus.category === 'expired'
-          default:
-            return true
-        }
+
+        return matchesExpiryFilter(expiryStatus.category, debouncedFilters.expiryFilter)
       }).length
     }
     

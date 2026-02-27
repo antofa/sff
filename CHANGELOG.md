@@ -7,6 +7,7 @@ Dates use UTC and roll over at 00:00 UTC.
 
 ### Fixed
 - (2026-02-27 UTC) Fixed repeated deck reload loops when opening player links with filter query params (for example, `expiryFilter=dissipating`): changing filters now keeps deck data client-side and does not trigger another player fetch unless `Load Decks` is pressed (or a new username link is opened).
+- (2026-02-27 UTC) Fixed Deck Status filtering so `Expiring` now includes all decks with an expiry date, while `Dissipating` remains a subset for decks that expire in less than 3 days.
 
 ## [0.0.2e] - 2026-02-27
 

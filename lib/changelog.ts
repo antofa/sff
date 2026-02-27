@@ -17,6 +17,7 @@ export const CHANGELOG_HISTORY: ChangelogEntry[] = [
     fixed: [
       'Changing URL filters (including Dissipating) no longer restarts deck loading in a loop.',
       'Deck filters now stay local to already loaded results, and reloading is triggered only when you press Load Decks (or open a new player link).',
+      'Deck Status filtering now treats Dissipating as part of Expiring, so Expiring includes all decks that have an expiry date.',
     ],
   },
   {
