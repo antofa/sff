@@ -91,6 +91,12 @@ export default function Home() {
     return `${seconds}s`
   }, [])
 
+  const normalizeSearchParams = useCallback((params: URLSearchParams) => {
+    const normalized = new URLSearchParams(params.toString())
+    normalized.sort()
+    return normalized.toString()
+  }, [])
+
   const stackGap = progressVisible ? 'lg' : 'xl'
 
   const totalSteps = progress.totalSteps || progress.steps.length || 1
@@ -268,9 +274,12 @@ export default function Home() {
       url.searchParams.delete('forceRefresh')
     }
     const nextUrl = url.pathname + url.search
-    const currentUrl = window.location.pathname + window.location.search
+    const currentPath = window.location.pathname
+    const currentParams = new URLSearchParams(window.location.search)
+    const queryChanged =
+      normalizeSearchParams(url.searchParams) !== normalizeSearchParams(currentParams)
     // Use router.replace so Next.js searchParams stay in sync
-    if (nextUrl !== currentUrl) {
+    if (url.pathname !== currentPath || queryChanged) {
       router.replace(nextUrl)
     }
 
@@ -320,7 +329,7 @@ export default function Home() {
         color: 'red',
       })
     }
-  }, [playerName, forceRefresh, formatDuration, fetchDecks, router])
+  }, [playerName, forceRefresh, formatDuration, fetchDecks, normalizeSearchParams, router])
 
   useEffect(() => {
     const hideNotification = () => {
@@ -406,10 +415,11 @@ export default function Home() {
 
     const normalizedTrimmed = trimmed.toLowerCase()
     const normalizedCurrent = currentPlayer?.trim().toLowerCase() || null
-    const hasCachedResults = decks.length > 0 || fusedDecks.length > 0
-    const isReady = ['done', 'cached'].includes(progress.status)
+    const hasExistingSearchForPlayer =
+      normalizedCurrent === normalizedTrimmed &&
+      (loading || progress.status !== 'idle')
 
-    if (normalizedCurrent === normalizedTrimmed && (loading || (hasCachedResults && isReady))) {
+    if (hasExistingSearchForPlayer) {
       startTransition(() => {
         autoSearchTriggeredRef.current = true
         searchedNameRef.current = trimmed
@@ -426,7 +436,7 @@ export default function Home() {
     // Auto-run search from URL params; this effect intentionally triggers state updates.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void handleSearch(trimmed, forceValue)
-  }, [handleSearch, searchParams, currentPlayer, decks.length, fusedDecks.length, progress.status, loading, isTyping, playerName])
+  }, [handleSearch, searchParams, currentPlayer, progress.status, loading, isTyping, playerName])
 
   return (
     <main className="min-h-screen relative overflow-hidden">

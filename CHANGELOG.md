@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.2f] - 2026-02-27
+
+### Fixed
+- (2026-02-27 UTC) Fixed repeated deck reload loops when opening player links with filter query params (for example, `expiryFilter=dissipating`): changing filters now keeps deck data client-side and does not trigger another player fetch unless `Load Decks` is pressed (or a new username link is opened).
+
 ## [0.0.2e] - 2026-02-27
 
 ### Changed
