@@ -9,6 +9,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - (2026-02-27 UTC) Updated Deck Status filtering options to `All`, `Permanent`, `Expiring`, `Dissipating`, and `Expired`, with `Dissipating` now showing decks that expire in less than 3 days and backward-compatible URL handling for old `active` filter links.
 - (2026-02-27 UTC) Added two new deck sorting options by expire date (`soonest first` and `latest first`) for both regular and fused deck views.
 - (2026-02-27 UTC) Updated expire-date labels in deck cards to show remaining time as `X hours Y mins` when less than 24 hours remain, instead of a calendar date.
+- (2026-02-27 UTC) Fixed regular deck list cards to use the same under-24-hours expire label formatting (`X hours Y mins`) as other deck card paths.
 
 ## [0.0.2d] - 2026-02-24
 

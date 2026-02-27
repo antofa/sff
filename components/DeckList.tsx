@@ -948,11 +948,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
                       }
                 }
               >
-                {new Date(expiryTs).toLocaleDateString('en-GB', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
+                {formatExpiryLabel(expiryTs, renderNow)}
               </Badge>
             )}
           </Group>
