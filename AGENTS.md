@@ -48,15 +48,8 @@ Required when enabling auth or database features:
 - When updating API behavior, check `lib/api.ts` and `app/api/*` for consistency.
 - Keep styles consistent with Tailwind + Mantine usage in existing components.
 
-## Release sync rule (`dev` -> `live`)
-- The merge itself can be manual. After a manual `dev` -> `live` merge, if the user says it is done (for example: "merged dev to live"), always sync the in-app changelog data in `lib/changelog.ts` from the latest release entry in `CHANGELOG.md`.
-- The same sync rule also applies when the user asks to prepare or execute a `dev` -> `live` merge.
-- Source of truth is `CHANGELOG.md`. Read the newest version section (`## [x.y.z] - YYYY-MM-DD`) and use its `Added`, `Changed`, and `Fixed` bullets.
-- Convert technical bullets from `CHANGELOG.md` into short, plain, user-facing English for `lib/changelog.ts` (focus on user impact and readability).
-- Update `CHANGELOG_HISTORY` by inserting or updating the newest entry at index `0`:
-  - `version`: latest version from `CHANGELOG.md`
-  - `date`: latest UTC date from `CHANGELOG.md` in `YYYY-MM-DD`
-  - `added` / `changed` / `fixed`: simplified bullet arrays derived from the latest release section
-- Keep previous entries in `CHANGELOG_HISTORY` unchanged unless the user explicitly asks to rewrite history.
-- Ensure `CHANGELOG_SUMMARY` continues to reflect `CHANGELOG_HISTORY[0]`.
-- If the newest `CHANGELOG.md` section has no bullets for a category, use an empty array for that category in `lib/changelog.ts`.
+## Changelog merge rule
+- Update `CHANGELOG.md` and `lib/changelog.ts` only in `dev` before merging to `live`.
+- `CHANGELOG.md` is the source of truth; the latest release entry must be summarized in plain user-friendly English in `lib/changelog.ts`.
+- Do not create changelog-only commits in `live` after `dev` -> `live` merge (unless the user explicitly asks for an emergency hotfix).
+- Trigger phrase for this task: `sync lib/changelog.ts from CHANGELOG.md` (short form: `up changelog from CHANGELOG.md`).
