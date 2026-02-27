@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: e37fd38
+  Request: Refactor the user changelog implementation in the header (separate data, state, and rendering) without changing behavior.
+  Date: 2026-02-27
 - Commit: 27437f2
   Request: Open the page filtered by `expiryFilter=dissipating` and fix the issue where deck cards do not show `x hours y mins` badges for short remaining lifetime.
   Date: 2026-02-27
