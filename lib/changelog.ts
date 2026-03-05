@@ -10,6 +10,16 @@ export const CHANGELOG_LAST_VIEWED_UTC_KEY = 'sff:changelog:last-viewed-utc'
 
 export const CHANGELOG_HISTORY: ChangelogEntry[] = [
   {
+    version: '0.0.2h',
+    date: '2026-03-05',
+    added: [],
+    changed: [
+      'Card Set filters now show full set names, so it is easier to pick the exact set you want.',
+      'Deck set badges now use the new short set codes across deck cards, deck details, and shared deck preview metadata.',
+    ],
+    fixed: [],
+  },
+  {
     version: '0.0.2g',
     date: '2026-03-05',
     added: [],

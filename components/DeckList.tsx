@@ -11,6 +11,7 @@ import { useDeckStore } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
+import { getSetFullLabel, getSetShortLabel, normalizeSetCode } from '@/lib/sets'
 
 type CreatureTypeMap = Record<string, number>
 
@@ -186,36 +187,9 @@ const MODE_OPTIONS = [
   { label: 'Exclude', value: 'exclude' },
 ]
 
-// Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", "B2" -> "B2", "B3" -> "B3", etc.
+// Display short set code in deck preview/details badges.
 function formatSetName(setNo: string | number | null | undefined): string | null {
-  if (!setNo) return null
-
-  const setStr = String(setNo).trim()
-  
-  // If it's already B1/B2/B3, return uppercase
-  if (setStr.toUpperCase() === 'B1' || setStr.toLowerCase() === 'b1') {
-    return 'B1'
-  }
-  if (setStr.toUpperCase() === 'B2' || setStr.toLowerCase() === 'b2') {
-    return 'B2'
-  }
-  if (setStr.toUpperCase() === 'B3' || setStr.toLowerCase() === 'b3') {
-    return 'B3'
-  }
-  
-  // For numeric sets, format as S1, S2, S3, etc.
-  const numericMatch = setStr.match(/^(\d+)$/)
-  if (numericMatch) {
-    return `S${numericMatch[1]}`
-  }
-  
-  // If it already starts with S, return as is (but uppercase S)
-  if (/^s\d+/i.test(setStr)) {
-    return setStr.toUpperCase()
-  }
-  
-  // Otherwise return as is
-  return setStr
+  return getSetShortLabel(setNo)
 }
 
 // Helper function to detect B-set cards (B1/B2/B3)
@@ -338,17 +312,7 @@ function getBorderColors(deck: Deck, now: number) {
 
 // Helper function to determine deck set: if any card is from B1/B2/B3, return that set, otherwise use deck.cardSetNo
 const normalizeSetLabel = (value?: string | number | null): string | null => {
-  if (value === undefined || value === null) return null
-  const text = String(value).trim()
-  if (!text) return null
-  const lower = text.toLowerCase()
-  if (lower === 'b3') return 'B3'
-  if (lower === 'b2') return 'B2'
-  if (lower === 'b1') return 'B1'
-  if (lower === 'd0') return 'S99'
-  const sMatch = lower.match(/^s?(\d+)$/)
-  if (sMatch) return `S${sMatch[1]}`
-  return text
+  return normalizeSetCode(value)
 }
 
 const normalizeRarityLabel = (rarity: string): string => {
@@ -6387,7 +6351,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         <Stack gap={6}>
                           <MultiSelect
                             placeholder="Select sets..."
-                            data={allCardSetNos.map(setNo => ({ value: setNo, label: formatSetName(setNo) || `Set ${setNo}` }))}
+                            data={allCardSetNos.map((setNo) => ({
+                              value: setNo,
+                              label: getSetFullLabel(setNo) || formatSetName(setNo) || `Set ${setNo}`,
+                            }))}
                             value={cardSetState.cardSetNo}
                             onChange={(value) =>
                               updateCardSetState({

@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.2h] - 2026-03-05
+
+### Changed
+- (2026-03-05 UTC) Updated Card Set filter labels to show full set names (for example, `Set 3 - The Last Winter` and `LD - Axes and Allies`) so set selection is clearer.
+- (2026-03-05 UTC) Updated deck set badges in deck previews, deck details, and deck share preview metadata to use the new short set codes (`S0`, `A`, `BfWP`, `TLW`, `SoS`, `TnC`, `AnA`, `BnB`).
+
 ## [0.0.2g] - 2026-03-05
 
 ### Fixed

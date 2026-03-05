@@ -15,6 +15,7 @@ import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 import { fetchCreatureTypesForDeckId } from '@/lib/creatureTypeOverrides'
 import { tryFetchDeckFromApiCached } from '@/lib/clientDeckApi'
 import { useDeckStore } from '@/store/deckStore'
+import { getSetShortLabel } from '@/lib/sets'
 
 type CreatureTypeMap = Record<string, number>
 
@@ -3917,36 +3918,8 @@ const originalCardMeta = useMemo(() => {
     return getDeckSet(deckToCheck, normalizedForSet)
   }, [getDeckSet])
   
-  // Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", "B2" -> "B2", "B3" -> "B3", etc.
   const formatSetName = useCallback((setNo: string | number | null | undefined): string | null => {
-    if (!setNo) return null
-    
-    const setStr = String(setNo).trim()
-    
-    // If it's already B1/B2/B3, return uppercase
-    if (setStr.toUpperCase() === 'B1' || setStr.toLowerCase() === 'b1') {
-      return 'B1'
-    }
-    if (setStr.toUpperCase() === 'B2' || setStr.toLowerCase() === 'b2') {
-      return 'B2'
-    }
-    if (setStr.toUpperCase() === 'B3' || setStr.toLowerCase() === 'b3') {
-      return 'B3'
-    }
-    
-    // For numeric sets, format as S1, S2, S3, etc.
-    const numericMatch = setStr.match(/^(\d+)$/)
-    if (numericMatch) {
-      return `S${numericMatch[1]}`
-    }
-    
-    // If it already starts with S, return as is (but uppercase S)
-    if (/^s\d+/i.test(setStr)) {
-      return setStr.toUpperCase()
-    }
-    
-    // Otherwise return as is
-    return setStr
+    return getSetShortLabel(setNo)
   }, [])
 
   const getRarityIconPath = useCallback((cardSetNo?: string | number, rarity?: string, cardId?: string, cardData?: any): string | null => {
