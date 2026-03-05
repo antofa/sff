@@ -13,38 +13,14 @@ export const CHANGELOG_HISTORY: ChangelogEntry[] = [
     version: '0.0.2j',
     date: '2026-03-05',
     added: [],
-    changed: [],
-    fixed: [
-      'Set-code badges now keep mixed-case short labels (for example BfWP, SoS, and AnA) instead of showing all-uppercase text.',
-    ],
-  },
-  {
-    version: '0.0.2i',
-    date: '2026-03-05',
-    added: [],
-    changed: [],
-    fixed: [
-      'Short set labels now keep their original letter casing instead of being forced to uppercase.',
-    ],
-  },
-  {
-    version: '0.0.2h',
-    date: '2026-03-05',
-    added: [],
     changed: [
       'Card Set filters now show full set names, so it is easier to pick the exact set you want.',
       'Deck set badges now use the new short set codes across deck cards, deck details, and shared deck preview metadata.',
     ],
-    fixed: [],
-  },
-  {
-    version: '0.0.2g',
-    date: '2026-03-05',
-    added: [],
-    changed: [],
     fixed: [
       'Changing deck filters now updates the URL without triggering a page navigation.',
       'Your loaded deck results now stay on screen while filters apply locally on the client.',
+      'Short set labels and set-code badges now keep their original mixed casing instead of being forced to uppercase.',
     ],
   },
   {
