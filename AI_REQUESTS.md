@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 5de3745
+  Request: что-то не то со страницей со список дек, когда я выбираю любые фильтры, происходит заново загрузка дек. Я предлагаю: колоды пользователя грузятся один раз, потом при выборе фильтров URL просто меняется без навигации и без повторной загрузки, а фильтрация идет на клиенте.
+  Date: 2026-03-05
 - Commit: 0b61688
   Request: Check how Deck Status `Expiring` is calculated in [DeckList.tsx](components/DeckList.tsx). `Expiring` should include all decks that have an expiry date, and `Dissipating` should be a subset of `Expiring` where the expiry date is less than 3 days away.
   Date: 2026-02-27
