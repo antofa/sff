@@ -1016,3 +1016,6 @@ This file tracks requests made to the coding agent and the commit that resulted 
 - Commit: b14e0da
   Request: Merge everything from dev into master.
   Date: 2026-02-09
+- Commit: 2e93068
+  Request: Simplify the AGENTS.md changelog merge rules, require explicit user request before updating lib/changelog.ts, and define trigger format `up changelog [version1] - [version2]`.
+  Date: 2026-03-05
