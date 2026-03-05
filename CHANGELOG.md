@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.2j] - 2026-03-05
+
+### Changed
+- (2026-03-05 UTC) Updated Card Set filter labels to show full set names (for example, `Set 3 - The Last Winter` and `LD - Axes and Allies`) so set selection is clearer.
+- (2026-03-05 UTC) Updated deck set badges in deck previews, deck details, and deck share preview metadata to use the new short set codes (`S0`, `A`, `BfWP`, `TLW`, `SoS`, `TnC`, `AnA`, `BnB`).
+
+### Fixed
+- (2026-03-05 UTC) Fixed deck-list filter URL syncing to update the browser URL without triggering Next.js route navigation, so changing filters no longer restarts player deck loading.
+- (2026-03-05 UTC) Kept deck filtering fully client-side after the first load: filter changes now keep the current deck results and filter panel state instead of resetting the page.
+- (2026-03-05 UTC) Stopped forcing uppercase on short set codes and set-code badges, so mixed-case labels (like `BfWP`, `SoS`, and `AnA`) display correctly.
+
 ## [0.0.2f] - 2026-02-27
 
 ### Fixed

@@ -10,6 +10,7 @@ import {
   putDeckPreviewToUpstashCache,
 } from '@/lib/deckPreviewUpstashCache'
 import { OG_IMAGE_VERSION } from '@/lib/ogVersion'
+import { getSetShortLabel, normalizeSetCode } from '@/lib/sets'
 
 export const dynamic = 'force-dynamic'
 
@@ -174,14 +175,7 @@ const isFusedDeckLike = (deck: any) => {
 }
 
 const normalizeSetLabel = (value: unknown): string | null => {
-  if (!hasValue(value)) return null
-  const normalized = String(value).trim().toUpperCase()
-  if (!normalized) return null
-  if (normalized === 'B1' || normalized === 'B2' || normalized === 'B3') return normalized
-  if (/^\d+$/.test(normalized)) return `S${normalized}`
-  if (/^S\d+$/.test(normalized)) return normalized
-  if (/^B\d+$/.test(normalized)) return normalized
-  return null
+  return normalizeSetCode(value)
 }
 
 const inferSetFromCardId = (cardId: string): string | null => {
@@ -198,7 +192,7 @@ const getSetLabel = (deckLike: any): string | null => {
   const fromDeck =
     normalizeSetLabel(deckLike?.cardSetNo ?? deckLike?.card_set_no) ||
     normalizeSetLabel(deckLike?.cardSetId ?? deckLike?.card_set_id)
-  if (fromDeck) return fromDeck
+  if (fromDeck) return getSetShortLabel(fromDeck) || fromDeck
 
   const cards =
     (Array.isArray(deckLike?.cards) && deckLike.cards) ||
@@ -208,11 +202,11 @@ const getSetLabel = (deckLike: any): string | null => {
     const fromCard =
       normalizeSetLabel(card?.cardSetNo ?? card?.card_set_no) ||
       normalizeSetLabel(card?.cardSetId ?? card?.card_set_id ?? card?.SK ?? card?.sk)
-    if (fromCard) return fromCard
+    if (fromCard) return getSetShortLabel(fromCard) || fromCard
     const cardId = card?.id || card?.cardId || card?.card_id
     if (typeof cardId === 'string') {
       const fromCardId = inferSetFromCardId(cardId)
-      if (fromCardId) return fromCardId
+      if (fromCardId) return getSetShortLabel(fromCardId) || fromCardId
     }
   }
   return null

@@ -5,6 +5,7 @@ import type { NextRequest } from 'next/server'
 import type { ReactNode } from 'react'
 import { getOgImageFromUpstashCache, isOgUpstashCacheConfigured, putOgImageToUpstashCache } from '@/lib/ogUpstashCache'
 import { OG_IMAGE_VERSION } from '@/lib/ogVersion'
+import { getSetShortLabel, normalizeSetCode } from '@/lib/sets'
 
 export const runtime = 'nodejs'
 
@@ -568,20 +569,11 @@ const isFusedDeck = (deck: any) => {
 }
 
 const getSetLabel = (deckLike: any): string | null => {
-  const setName = deckLike?.cardSetName
-  if (typeof setName === 'string' && setName.trim()) return setName.trim()
   const rawSetNo = deckLike?.cardSetNo
-  const normalize = (value: unknown): string | null => {
-    if (value === null || value === undefined) return null
-    const normalized = String(value).trim().toUpperCase()
-    if (!normalized) return null
-    if (/^[SB]\d+/.test(normalized)) return normalized
-    if (/^\d+$/.test(normalized)) return `S${normalized}`
-    return normalized
-  }
+  const normalize = (value: unknown): string | null => normalizeSetCode(value)
 
   const normalizedFromDeck = normalize(rawSetNo)
-  if (normalizedFromDeck) return normalizedFromDeck
+  if (normalizedFromDeck) return getSetShortLabel(normalizedFromDeck) || normalizedFromDeck
 
   const cards =
     (Array.isArray(deckLike?.cards) && deckLike.cards) ||
@@ -589,7 +581,7 @@ const getSetLabel = (deckLike: any): string | null => {
     []
   const cardWithSet = cards.find((card: any) => card?.cardSetNo || card?.cardSetId || card?.SK || card?.sk)
   const normalizedFromCards = normalize(cardWithSet?.cardSetNo || cardWithSet?.cardSetId || cardWithSet?.SK || cardWithSet?.sk)
-  if (normalizedFromCards) return normalizedFromCards
+  if (normalizedFromCards) return getSetShortLabel(normalizedFromCards) || normalizedFromCards
 
   return null
 }
