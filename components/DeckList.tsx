@@ -960,7 +960,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
                 const deckSet = getDeckSet(deck)
                 const formattedSet = formatSetName(deckSet)
                 return formattedSet ? (
-                  <Badge color="indigo" variant="light" size="sm">
+                  <Badge color="indigo" variant="light" size="sm" className="normal-case" style={{ textTransform: 'none' }}>
                     {formattedSet}
                   </Badge>
                 ) : null
@@ -1743,7 +1743,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
                     style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
                   />
                   {setLabel && (
-                    <Badge color="indigo" variant="light" size="sm">
+                    <Badge color="indigo" variant="light" size="sm" className="normal-case" style={{ textTransform: 'none' }}>
                       {setLabel}
                     </Badge>
                   )}
@@ -1752,7 +1752,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
             })}
             {!hasFactionSetBadges &&
               fusedSetLabels.map(label => (
-                <Badge key={`${deck.id}-set-fallback-${label}`} color="indigo" variant="light" size="sm">
+                <Badge key={`${deck.id}-set-fallback-${label}`} color="indigo" variant="light" size="sm" className="normal-case" style={{ textTransform: 'none' }}>
                   {label}
                 </Badge>
               ))}

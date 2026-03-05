@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.2j] - 2026-03-05
+
+### Fixed
+- (2026-03-05 UTC) Disabled automatic uppercase styling on set-code badges so mixed-case short codes (like `BfWP`, `SoS`, and `AnA`) display correctly.
+
 ## [0.0.2i] - 2026-03-05
 
 ### Fixed

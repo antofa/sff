@@ -4335,6 +4335,8 @@ const originalCardMeta = useMemo(() => {
                     color="indigo"
                     variant="light"
                     size="sm"
+                    className="normal-case"
+                    style={{ textTransform: 'none' }}
                   >
                     {formattedDeckSet}
                   </Badge>
@@ -4553,6 +4555,8 @@ const originalCardMeta = useMemo(() => {
                                         color="indigo"
                                         variant="light"
                                         size="xs"
+                                        className="normal-case"
+                                        style={{ textTransform: 'none' }}
                                       >
                                         {sourceDeck1Set}
                                       </Badge>
@@ -4610,6 +4614,8 @@ const originalCardMeta = useMemo(() => {
                                         color="indigo"
                                         variant="light"
                                         size="xs"
+                                        className="normal-case"
+                                        style={{ textTransform: 'none' }}
                                       >
                                         {sourceDeck2Set}
                                       </Badge>

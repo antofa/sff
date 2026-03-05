@@ -10,6 +10,15 @@ export const CHANGELOG_LAST_VIEWED_UTC_KEY = 'sff:changelog:last-viewed-utc'
 
 export const CHANGELOG_HISTORY: ChangelogEntry[] = [
   {
+    version: '0.0.2j',
+    date: '2026-03-05',
+    added: [],
+    changed: [],
+    fixed: [
+      'Set-code badges now keep mixed-case short labels (for example BfWP, SoS, and AnA) instead of showing all-uppercase text.',
+    ],
+  },
+  {
     version: '0.0.2i',
     date: '2026-03-05',
     added: [],
