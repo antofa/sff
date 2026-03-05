@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 2770924
+  Request: Set codes are still shown in uppercase; add Tailwind style text-transform none.
+  Date: 2026-03-05
 - Commit: bfc012e
   Request: When showing a short set code, do not force it to uppercase.
   Date: 2026-03-05
