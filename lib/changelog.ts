@@ -10,6 +10,15 @@ export const CHANGELOG_LAST_VIEWED_UTC_KEY = 'sff:changelog:last-viewed-utc'
 
 export const CHANGELOG_HISTORY: ChangelogEntry[] = [
   {
+    version: '0.0.2i',
+    date: '2026-03-05',
+    added: [],
+    changed: [],
+    fixed: [
+      'Short set labels now keep their original letter casing instead of being forced to uppercase.',
+    ],
+  },
+  {
     version: '0.0.2h',
     date: '2026-03-05',
     added: [],

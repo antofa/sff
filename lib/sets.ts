@@ -91,7 +91,7 @@ export const normalizeSetCode = (value: unknown): string | null => {
     return `B${Number(bMatch[1])}`
   }
 
-  return upper
+  return raw
 }
 
 export const getSetShortLabel = (value: unknown): string | null => {

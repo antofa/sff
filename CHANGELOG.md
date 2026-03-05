@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.2i] - 2026-03-05
+
+### Fixed
+- (2026-03-05 UTC) Stopped forcing uppercase when showing short set codes, so set labels now keep the intended letter casing.
+
 ## [0.0.2h] - 2026-03-05
 
 ### Changed
