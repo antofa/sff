@@ -38,14 +38,14 @@ const SET_DEFINITIONS: Record<KnownLegacySetCode, SetDefinition> = {
     aliases: ['B1', 'TNC', 'LD - TOOTH AND CLAWS', 'TOOTH AND CLAWS'],
   },
   B2: {
-    shortCode: 'AnA',
-    fullName: 'LD - Axes and Allies',
-    aliases: ['B2', 'ANA', 'LD - AXES AND ALLIES', 'AXES AND ALLIES'],
-  },
-  B3: {
     shortCode: 'BnB',
     fullName: 'LD - Beakers & Bones',
     aliases: ['B3', 'BNB', 'LD - BEAKERS & BONES', 'BEAKERS & BONES'],
+  },
+  B3: {
+    shortCode: 'AnA',
+    fullName: 'LD - Axes and Allies',
+    aliases: ['B2', 'ANA', 'LD - AXES AND ALLIES', 'AXES AND ALLIES'],
   },
 }
 
