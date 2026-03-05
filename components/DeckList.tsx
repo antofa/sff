@@ -4,13 +4,14 @@ import { useState, useMemo, useEffect, useRef, useLayoutEffect, useTransition, u
 import { pluralize } from '@/lib/pluralize'
 import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image, ActionIcon } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks'
 import type { Deck } from '@/store/deckStore'
 import { useDeckStore } from '@/store/deckStore'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
+import { getSetFullLabel, getSetShortLabel, normalizeSetCode } from '@/lib/sets'
 
 type CreatureTypeMap = Record<string, number>
 
@@ -186,36 +187,9 @@ const MODE_OPTIONS = [
   { label: 'Exclude', value: 'exclude' },
 ]
 
-// Helper function to format set name: "1" -> "S1", "2" -> "S2", "B1" -> "B1", "B2" -> "B2", "B3" -> "B3", etc.
+// Display short set code in deck preview/details badges.
 function formatSetName(setNo: string | number | null | undefined): string | null {
-  if (!setNo) return null
-
-  const setStr = String(setNo).trim()
-  
-  // If it's already B1/B2/B3, return uppercase
-  if (setStr.toUpperCase() === 'B1' || setStr.toLowerCase() === 'b1') {
-    return 'B1'
-  }
-  if (setStr.toUpperCase() === 'B2' || setStr.toLowerCase() === 'b2') {
-    return 'B2'
-  }
-  if (setStr.toUpperCase() === 'B3' || setStr.toLowerCase() === 'b3') {
-    return 'B3'
-  }
-  
-  // For numeric sets, format as S1, S2, S3, etc.
-  const numericMatch = setStr.match(/^(\d+)$/)
-  if (numericMatch) {
-    return `S${numericMatch[1]}`
-  }
-  
-  // If it already starts with S, return as is (but uppercase S)
-  if (/^s\d+/i.test(setStr)) {
-    return setStr.toUpperCase()
-  }
-  
-  // Otherwise return as is
-  return setStr
+  return getSetShortLabel(setNo)
 }
 
 // Helper function to detect B-set cards (B1/B2/B3)
@@ -338,17 +312,7 @@ function getBorderColors(deck: Deck, now: number) {
 
 // Helper function to determine deck set: if any card is from B1/B2/B3, return that set, otherwise use deck.cardSetNo
 const normalizeSetLabel = (value?: string | number | null): string | null => {
-  if (value === undefined || value === null) return null
-  const text = String(value).trim()
-  if (!text) return null
-  const lower = text.toLowerCase()
-  if (lower === 'b3') return 'B3'
-  if (lower === 'b2') return 'B2'
-  if (lower === 'b1') return 'B1'
-  if (lower === 'd0') return 'S99'
-  const sMatch = lower.match(/^s?(\d+)$/)
-  if (sMatch) return `S${sMatch[1]}`
-  return text
+  return normalizeSetCode(value)
 }
 
 const normalizeRarityLabel = (rarity: string): string => {
@@ -996,7 +960,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
                 const deckSet = getDeckSet(deck)
                 const formattedSet = formatSetName(deckSet)
                 return formattedSet ? (
-                  <Badge color="indigo" variant="light" size="sm">
+                  <Badge color="indigo" variant="light" size="sm" className="normal-case" style={{ textTransform: 'none' }}>
                     {formattedSet}
                   </Badge>
                 ) : null
@@ -1779,7 +1743,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
                     style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
                   />
                   {setLabel && (
-                    <Badge color="indigo" variant="light" size="sm">
+                    <Badge color="indigo" variant="light" size="sm" className="normal-case" style={{ textTransform: 'none' }}>
                       {setLabel}
                     </Badge>
                   )}
@@ -1788,7 +1752,7 @@ const FusedDeckCard = memo(function FusedDeckCard({
             })}
             {!hasFactionSetBadges &&
               fusedSetLabels.map(label => (
-                <Badge key={`${deck.id}-set-fallback-${label}`} color="indigo" variant="light" size="sm">
+                <Badge key={`${deck.id}-set-fallback-${label}`} color="indigo" variant="light" size="sm" className="normal-case" style={{ textTransform: 'none' }}>
                   {label}
                 </Badge>
               ))}
@@ -2778,7 +2742,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const [cardSetInstances, setCardSetInstances] = useState<Record<string, CardSetInstanceState>>({})
   const [instanceFilters, setInstanceFilters] = useState<Record<string, FilterInstanceState>>({})
   const [filters, setFilters] = useState<FilterState>(() => createDefaultFilters())
-  const router = useRouter()
   const searchParams = useSearchParams()
   const searchParamsString = useMemo(
     () => (typeof window !== 'undefined' ? window.location.search.slice(1) : searchParams.toString()),
@@ -2890,8 +2853,11 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       return
     }
     lastSyncedQueryRef.current = normalizedNext
-    router.replace(`?${nextString}`, { scroll: false })
-  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, router, searchParamsString, viewMode])
+    if (typeof window !== 'undefined') {
+      const nextPath = `${window.location.pathname}${nextString ? `?${nextString}` : ''}${window.location.hash || ''}`
+      window.history.replaceState(window.history.state, '', nextPath)
+    }
+  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, searchParamsString, viewMode])
   
   // Ref to store scroll position and first visible deck ID
   const scrollPositionRef = useRef<number>(0)
@@ -6385,7 +6351,10 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
                         <Stack gap={6}>
                           <MultiSelect
                             placeholder="Select sets..."
-                            data={allCardSetNos.map(setNo => ({ value: setNo, label: formatSetName(setNo) || `Set ${setNo}` }))}
+                            data={allCardSetNos.map((setNo) => ({
+                              value: setNo,
+                              label: getSetFullLabel(setNo) || formatSetName(setNo) || `Set ${setNo}`,
+                            }))}
                             value={cardSetState.cardSetNo}
                             onChange={(value) =>
                               updateCardSetState({

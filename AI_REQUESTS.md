@@ -8,6 +8,18 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 2770924
+  Request: Set codes are still shown in uppercase; add Tailwind style text-transform none.
+  Date: 2026-03-05
+- Commit: bfc012e
+  Request: When showing a short set code, do not force it to uppercase.
+  Date: 2026-03-05
+- Commit: 79df19e
+  Request: In the Card Set filter, show full set names; in other places (deck previews and deck details), show short set names, using this mapping: S99->S0->Starter, S1->A->Set 1 - Alpha, S2->BfWP->Set 2 - Battle for Whitefang Pass, S3->TLW->Set 3 - The Last Winter, S4->SoS->Set 4 - Shadows over Solis, B1->TnC->LD - Tooth and Claws, B2->AnA->LD - Axes and Allies, B3->BnB->LD - Beakers & Bones.
+  Date: 2026-03-05
+- Commit: 5de3745
+  Request: Something is wrong on the deck list page: when I select any filters, decks reload again. Proposed behavior: load player decks once, then when filters change, update only the URL (no navigation, no deck reload) and apply filtering client-side.
+  Date: 2026-03-05
 - Commit: 0b61688
   Request: Check how Deck Status `Expiring` is calculated in [DeckList.tsx](components/DeckList.tsx). `Expiring` should include all decks that have an expiry date, and `Dissipating` should be a subset of `Expiring` where the expiry date is less than 3 days away.
   Date: 2026-02-27
