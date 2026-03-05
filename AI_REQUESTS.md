@@ -9,7 +9,7 @@ This file tracks requests made to the coding agent and the commit that resulted 
 
 ## Entries
 - Commit: 5de3745
-  Request: что-то не то со страницей со список дек, когда я выбираю любые фильтры, происходит заново загрузка дек. Я предлагаю: колоды пользователя грузятся один раз, потом при выборе фильтров URL просто меняется без навигации и без повторной загрузки, а фильтрация идет на клиенте.
+  Request: Something is wrong on the deck list page: when I select any filters, decks reload again. Proposed behavior: load player decks once, then when filters change, update only the URL (no navigation, no deck reload) and apply filtering client-side.
   Date: 2026-03-05
 - Commit: 0b61688
   Request: Check how Deck Status `Expiring` is calculated in [DeckList.tsx](components/DeckList.tsx). `Expiring` should include all decks that have an expiry date, and `Dissipating` should be a subset of `Expiring` where the expiry date is less than 3 days away.
