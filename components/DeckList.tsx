@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef, useLayoutEffect, useTransition, u
 import { pluralize } from '@/lib/pluralize'
 import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, Select, MultiSelect, Collapse, Button, SegmentedControl, Image, ActionIcon } from '@mantine/core'
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks'
 import type { Deck } from '@/store/deckStore'
 import { useDeckStore } from '@/store/deckStore'
@@ -2778,7 +2778,6 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
   const [cardSetInstances, setCardSetInstances] = useState<Record<string, CardSetInstanceState>>({})
   const [instanceFilters, setInstanceFilters] = useState<Record<string, FilterInstanceState>>({})
   const [filters, setFilters] = useState<FilterState>(() => createDefaultFilters())
-  const router = useRouter()
   const searchParams = useSearchParams()
   const searchParamsString = useMemo(
     () => (typeof window !== 'undefined' ? window.location.search.slice(1) : searchParams.toString()),
@@ -2890,8 +2889,11 @@ export function DeckList({ decks, fusedDecks = [], precomputedTags, precomputedC
       return
     }
     lastSyncedQueryRef.current = normalizedNext
-    router.replace(`?${nextString}`, { scroll: false })
-  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, router, searchParamsString, viewMode])
+    if (typeof window !== 'undefined') {
+      const nextPath = `${window.location.pathname}${nextString ? `?${nextString}` : ''}${window.location.hash || ''}`
+      window.history.replaceState(window.history.state, '', nextPath)
+    }
+  }, [debouncedFilters, activeFilterBlocks, cardSetInstances, debouncedInstanceFilters, searchParamsString, viewMode])
   
   // Ref to store scroll position and first visible deck ID
   const scrollPositionRef = useRef<number>(0)

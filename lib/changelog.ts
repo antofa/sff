@@ -10,6 +10,16 @@ export const CHANGELOG_LAST_VIEWED_UTC_KEY = 'sff:changelog:last-viewed-utc'
 
 export const CHANGELOG_HISTORY: ChangelogEntry[] = [
   {
+    version: '0.0.2g',
+    date: '2026-03-05',
+    added: [],
+    changed: [],
+    fixed: [
+      'Changing deck filters now updates the URL without triggering a page navigation.',
+      'Your loaded deck results now stay on screen while filters apply locally on the client.',
+    ],
+  },
+  {
     version: '0.0.2f',
     date: '2026-02-27',
     added: [],

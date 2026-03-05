@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Dates use UTC and roll over at 00:00 UTC.
 
+## [0.0.2g] - 2026-03-05
+
+### Fixed
+- (2026-03-05 UTC) Fixed deck-list filter URL syncing to update the browser URL without triggering Next.js route navigation, so changing filters no longer restarts player deck loading.
+- (2026-03-05 UTC) Kept deck filtering fully client-side after the first load: filter changes now keep the current deck results and filter panel state instead of resetting the page.
+
 ## [0.0.2f] - 2026-02-27
 
 ### Fixed
