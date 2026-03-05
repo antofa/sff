@@ -49,8 +49,7 @@ Required when enabling auth or database features:
 - Keep styles consistent with Tailwind + Mantine usage in existing components.
 
 ## Changelog merge rule
-- Update `CHANGELOG.md` and `lib/changelog.ts` only in `dev` before merging to `live`.
-- `CHANGELOG.md` is the source of truth; the latest release entry must be summarized in plain user-friendly English in `lib/changelog.ts`.
-- In `lib/changelog.ts`, keep release notes focused on user-visible outcomes. Skip low-level implementation details, internal refactors, and technical maintenance unless they directly affect the user experience.
-- Do not create changelog-only commits in `live` after `dev` -> `live` merge (unless the user explicitly asks for an emergency hotfix).
-- Trigger phrase for this task: `sync lib/changelog.ts from CHANGELOG.md` (short form: `up changelog from CHANGELOG.md`).
+- Edit `CHANGELOG.md` and `lib/changelog.ts` only in `dev` before `dev` -> `live`; do not create changelog-only commits in `live` unless the user explicitly asks for an emergency hotfix.
+- `CHANGELOG.md` is the source of truth; for the same UTC date, append updates to the existing release entry instead of creating additional version entries.
+- Update `lib/changelog.ts` only on explicit user request; keep notes focused on user-visible outcomes.
+- Trigger format for this task: `up changelog [version1] - [version2]` (example: `up changelog 0.0.2i - 0.0.2j`).
