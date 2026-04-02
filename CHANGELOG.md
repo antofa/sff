@@ -11,6 +11,7 @@ Dates use UTC and roll over at 00:00 UTC.
 - (2026-04-02 UTC) Added shared deck entity types in `types/entities.ts`: `DeckRaw` (external API payload) and `Deck` (normalized app-wide model), and switched app components to use the shared `Deck` type.
 - (2026-04-02 UTC) Updated `parseDeck` to accept `DeckRaw` and return `Deck`, and moved reusable deck set-resolution helpers into `utils/deck.ts` so parser modules keep only parsing logic.
 - (2026-04-02 UTC) Added `types/index.ts` barrel exports and switched project type imports to `@/types` for consistent, shorter import paths.
+- (2026-04-02 UTC) Moved the header crypto price feed from the internal `/api/prices` route to direct browser requests with a shared 5-minute client cache, reducing repeated server-side price polling.
 
 ### Fixed
 - (2026-04-02 UTC) Removed duplicated deck-set parsing logic from `DeckList`, `DeckDetails`, and `/api/decks/stream`, reducing inconsistent set resolution between list cards, deck details, and streamed tag payloads.
