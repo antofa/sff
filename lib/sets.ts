@@ -1,4 +1,4 @@
-type KnownLegacySetCode = 'S99' | 'S1' | 'S2' | 'S3' | 'S4' | 'B1' | 'B2' | 'B3'
+type KnownLegacySetCode = 'S99' | 'S1' | 'S2' | 'S3' | 'S4' | 'B1' | 'B2' | 'B3' | 'B4'
 
 type SetDefinition = {
   shortCode: string
@@ -40,12 +40,17 @@ const SET_DEFINITIONS: Record<KnownLegacySetCode, SetDefinition> = {
   B2: {
     shortCode: 'BnB',
     fullName: 'LD - Beakers & Bones',
-    aliases: ['B3', 'BNB', 'LD - BEAKERS & BONES', 'BEAKERS & BONES'],
+    aliases: ['B2', 'BNB', 'LD - BEAKERS & BONES', 'BEAKERS & BONES'],
   },
   B3: {
     shortCode: 'AnA',
     fullName: 'LD - Axes and Allies',
-    aliases: ['B2', 'ANA', 'LD - AXES AND ALLIES', 'AXES AND ALLIES'],
+    aliases: ['B3', 'ANA', 'LD - AXES AND ALLIES', 'AXES AND ALLIES'],
+  },
+  B4: {
+    shortCode: 'WnW',
+    fullName: 'LD - Wizards & Warlocks',
+    aliases: ['B4', 'WNW', 'LD - WIZARDS AND WARLOCKS', 'WIZARDS AND WARLOCKS'],
   },
 }
 
