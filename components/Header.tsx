@@ -23,8 +23,30 @@ type TokenPrice = {
   change1y: number | null
 }
 
+type PriceCacheEntry = {
+  prices: Record<string, TokenPrice>
+  updatedAt: number
+}
+
+type PriceFetchLock = {
+  startedAt: number
+}
+
+type CoinGeckoMarketEntry = {
+  id?: string
+  current_price?: number | null
+  price_change_percentage_1h_in_currency?: number | null
+  price_change_percentage_24h_in_currency?: number | null
+  price_change_percentage_7d_in_currency?: number | null
+  price_change_percentage_30d_in_currency?: number | null
+  price_change_percentage_1y_in_currency?: number | null
+}
+
+const COINGECKO_MARKETS_URL = 'https://api.coingecko.com/api/v3/coins/markets'
 const PRICE_CACHE_KEY = 'sff:token-prices:v1'
-const PRICE_CACHE_TTL_MS = 60 * 1000
+const PRICE_FETCH_LOCK_KEY = 'sff:token-prices:fetching:v1'
+const PRICE_CACHE_TTL_MS = 5 * 60 * 1000
+const PRICE_FETCH_LOCK_TTL_MS = 15 * 1000
 const PRICE_HEADER_CELLS = ['', '1H', '1D', '1W', '1M', '1Y']
 const TOKENS: TokenInfo[] = [
   { id: 'bitcoin', symbol: 'BTC', label: 'BTC' },
@@ -61,6 +83,107 @@ const renderChange = (value?: number | null) => {
       {Math.abs(value).toFixed(2)}%
     </Text>
   )
+}
+
+const readPriceCache = (): PriceCacheEntry | null => {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = window.localStorage.getItem(PRICE_CACHE_KEY)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw)
+    const updatedAt = Number(parsed?.updatedAt)
+    if (!Number.isFinite(updatedAt)) return null
+    if (!parsed?.prices || typeof parsed.prices !== 'object') return null
+
+    return {
+      prices: parsed.prices as Record<string, TokenPrice>,
+      updatedAt,
+    }
+  } catch {
+    return null
+  }
+}
+
+const writePriceCache = (prices: Record<string, TokenPrice>, updatedAt: number) => {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify({ prices, updatedAt }))
+  } catch {
+    // ignore localStorage failures
+  }
+}
+
+const readPriceFetchLock = (): PriceFetchLock | null => {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = window.localStorage.getItem(PRICE_FETCH_LOCK_KEY)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw)
+    const startedAt = Number(parsed?.startedAt)
+    if (!Number.isFinite(startedAt)) return null
+
+    return { startedAt }
+  } catch {
+    return null
+  }
+}
+
+const writePriceFetchLock = (startedAt: number) => {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(PRICE_FETCH_LOCK_KEY, JSON.stringify({ startedAt }))
+  } catch {
+    // ignore localStorage failures
+  }
+}
+
+const clearPriceFetchLock = () => {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.removeItem(PRICE_FETCH_LOCK_KEY)
+  } catch {
+    // ignore localStorage failures
+  }
+}
+
+const buildCoinGeckoMarketsUrl = () => {
+  const params = new URLSearchParams({
+    vs_currency: 'usd',
+    ids: TOKENS.map((token) => token.id).join(','),
+    price_change_percentage: '1h,24h,7d,30d,1y',
+  })
+
+  return `${COINGECKO_MARKETS_URL}?${params.toString()}`
+}
+
+const parseTokenPrices = (payload: unknown) => {
+  const next: Record<string, TokenPrice> = {}
+
+  if (!Array.isArray(payload)) return next
+
+  payload.forEach((entry) => {
+    const marketEntry = entry as CoinGeckoMarketEntry
+    const id = marketEntry.id
+    if (!id) return
+
+    next[id] = {
+      price: marketEntry.current_price ?? null,
+      change1h: marketEntry.price_change_percentage_1h_in_currency ?? null,
+      change24h: marketEntry.price_change_percentage_24h_in_currency ?? null,
+      change7d: marketEntry.price_change_percentage_7d_in_currency ?? null,
+      change30d: marketEntry.price_change_percentage_30d_in_currency ?? null,
+      change1y: marketEntry.price_change_percentage_1y_in_currency ?? null,
+    }
+  })
+
+  return next
 }
 
 const PriceHeader = memo(function PriceHeader({ gridTemplate }: { gridTemplate: string }) {
@@ -134,7 +257,6 @@ const PriceRow = memo(function PriceRow({ token, quote, gridTemplate }: PriceRow
 
 export function Header() {
   const [logoError, setLogoError] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   const [prices, setPrices] = useState<Record<string, TokenPrice>>({})
   const [loadingPrices, setLoadingPrices] = useState(false)
   const [errorPrices, setErrorPrices] = useState<string | null>(null)
@@ -143,77 +265,71 @@ export function Header() {
   const logoSrc = '/images/logo/too-many-decks-logo.png'
 
   useEffect(() => {
-    const readPriceCache = () => {
-      if (typeof window === 'undefined') return null
-      try {
-        const raw = window.localStorage.getItem(PRICE_CACHE_KEY)
-        if (!raw) return null
-        const parsed = JSON.parse(raw)
-        const updatedAt = Number(parsed?.updatedAt)
-        if (!Number.isFinite(updatedAt)) return null
-        if (!parsed?.prices || typeof parsed.prices !== 'object') return null
-        return { prices: parsed.prices as Record<string, TokenPrice>, updatedAt }
-      } catch {
-        return null
-      }
-    }
-
-    const writePriceCache = (nextPrices: Record<string, TokenPrice>, updatedAt: number) => {
-      if (typeof window === 'undefined') return
-      try {
-        window.localStorage.setItem(
-          PRICE_CACHE_KEY,
-          JSON.stringify({ prices: nextPrices, updatedAt })
-        )
-      } catch {
-        // ignore localStorage failures
-      }
-    }
+    let cancelled = false
 
     const fetchPrices = async () => {
       const cached = readPriceCache()
       const now = Date.now()
-      if (cached && now - cached.updatedAt < PRICE_CACHE_TTL_MS) {
+
+      if (cached) {
         setPrices(cached.prices)
-        setLastUpdated(cached.updatedAt)
+      }
+
+      if (cached && now - cached.updatedAt < PRICE_CACHE_TTL_MS) {
         setErrorPrices(null)
         return
       }
 
+      const fetchLock = readPriceFetchLock()
+      if (fetchLock && now - fetchLock.startedAt < PRICE_FETCH_LOCK_TTL_MS) {
+        return
+      }
+
       try {
-        setLoadingPrices(true)
+        if (!cancelled) {
+          setLoadingPrices(true)
+        }
         setErrorPrices(null)
-        const ids = TOKENS.map((t) => t.id).join(',')
-        const url = `/api/prices?ids=${encodeURIComponent(ids)}`
-        const res = await fetch(url, { cache: 'no-store' })
+        writePriceFetchLock(now)
+        const res = await fetch(buildCoinGeckoMarketsUrl(), {
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+        })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
-        const next: Record<string, TokenPrice> = data?.prices ?? {}
-        const updatedAt = Number(data?.updatedAt) || Date.now()
-        setPrices(next)
-        setLastUpdated(updatedAt)
+        const next = parseTokenPrices(data)
+        const updatedAt = Date.now()
+        if (!cancelled) {
+          setPrices(next)
+        }
         writePriceCache(next, updatedAt)
       } catch (err) {
         console.error('[Header] Failed to load token prices', err)
-        setErrorPrices('Price feed unavailable')
+        if (!cancelled) {
+          setErrorPrices('Price feed unavailable')
+        }
       } finally {
-        setLoadingPrices(false)
+        clearPriceFetchLock()
+        if (!cancelled) {
+          setLoadingPrices(false)
+        }
       }
     }
 
     fetchPrices()
-    const interval = setInterval(fetchPrices, 60 * 1000) // refresh every minute
+    const interval = window.setInterval(fetchPrices, PRICE_CACHE_TTL_MS)
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== PRICE_CACHE_KEY) return
       const cached = readPriceCache()
       if (cached) {
         setPrices(cached.prices)
-        setLastUpdated(cached.updatedAt)
+        setErrorPrices(null)
       }
     }
     window.addEventListener('storage', handleStorage)
 
     return () => {
+      cancelled = true
       clearInterval(interval)
       window.removeEventListener('storage', handleStorage)
     }

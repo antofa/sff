@@ -8,6 +8,13 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 821cc78
+  Request: Move Bitcoin and other cryptocurrency price loading to the client, remove the server-side `/api/prices` logic completely, and ensure the browser sends price requests no more than once every 5 minutes.
+
+  [2026-04-02T01:13:41.621Z] GET /api/prices?ids=bitcoin%2Cethereum%2Csolforge-fusion 200 in 281ms (compile: 1632µs, render: 279ms)
+  [2026-04-02T01:15:41.607Z] GET /api/prices?ids=bitcoin%2Cethereum%2Csolforge-fusion 200 in 261ms (compile: 1663µs, render: 259ms)
+  [2026-04-02T01:17:41.648Z] GET /api/prices?ids=bitcoin%2Cethereum%2Csolforge-fusion 200 in 315ms (compile: 1833µs, render: 313ms)
+  Date: 2026-04-02
 - Commit: 75c0166
   Request: можешь сделать чтобы импорты типов были так `import ... from '@/types'` ?
   Date: 2026-04-02
