@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { z } from 'zod'
 import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
-import { parseDeck, resolveDeckSetCode } from '@/store/parsers/deck'
+import { parseDeck, parseDecks, resolveDeckSetCode } from '@/store/parsers/deck'
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day client-side cache
 
@@ -493,8 +493,19 @@ const buildDisplayTags = (deck: Deck): string[] => {
 }
 
 export const addComputedFields = (deck: Deck, options?: { allDecks?: Deck[] }): Deck => {
-  const parsedDeck = parseDeck(deck as Record<string, any>, { allDecks: options?.allDecks as Record<string, any>[] | undefined }) as Deck
-  const resolvedDeckSet = parsedDeck.setCode ?? resolveDeckSetCode(parsedDeck as Record<string, any>, { allDecks: options?.allDecks as Record<string, any>[] | undefined })
+  const alreadyParsed =
+    Object.prototype.hasOwnProperty.call(deck, 'setCode') &&
+    Object.prototype.hasOwnProperty.call(deck, 'setShortCode')
+  const parsedDeck = (
+    alreadyParsed
+      ? deck
+      : parseDeck(deck as Record<string, any>, { allDecks: options?.allDecks as Record<string, any>[] | undefined })
+  ) as Deck
+  const resolvedDeckSet =
+    parsedDeck.setCode ??
+    resolveDeckSetCode(parsedDeck as Record<string, any>, {
+      allDecks: options?.allDecks as Record<string, any>[] | undefined,
+    })
   const creatureType = computeCreatureTypes(parsedDeck)
   const computed: DeckComputed = {
     expiryTs: getExpiryTimestamp(parsedDeck),
@@ -514,9 +525,15 @@ const attachComputed = (decks: Deck[], options?: { allDecks?: Deck[] }): Deck[] 
 
 const attachComputedByGroup = (regularDecks: Deck[], fusedDecks: Deck[]) => {
   const allDecks = [...regularDecks, ...fusedDecks]
+  const parsedRegular = parseDecks(regularDecks as Record<string, any>[], {
+    allDecks: allDecks as Record<string, any>[],
+  }) as Deck[]
+  const parsedFused = parseDecks(fusedDecks as Record<string, any>[], {
+    allDecks: allDecks as Record<string, any>[],
+  }) as Deck[]
   return {
-    regular: attachComputed(regularDecks, { allDecks }),
-    fused: attachComputed(fusedDecks, { allDecks }),
+    regular: attachComputed(parsedRegular),
+    fused: attachComputed(parsedFused),
   }
 }
 

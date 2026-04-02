@@ -10,6 +10,7 @@ export type ParsedDeckSetFields = {
 export type ResolveDeckSetOptions = {
   allDecks?: DeckLike[]
   fallbackCards?: any[]
+  allDecksById?: Map<string, DeckLike>
 }
 
 type ResolveDeckSetInternalOptions = ResolveDeckSetOptions & {
@@ -237,13 +238,16 @@ export const parseDeck = <T extends DeckLike>(deck: T, options?: ResolveDeckSetO
 
 export const parseDecks = <T extends DeckLike>(
   decks: T[],
-  options?: Omit<ResolveDeckSetOptions, 'allDecks'>
+  options?: ResolveDeckSetOptions
 ): Array<T & ParsedDeckSetFields> => {
   if (!Array.isArray(decks)) return []
+  const allDecks = options?.allDecks ?? decks
+  const allDecksById = options?.allDecksById ?? buildDeckLookup(allDecks)
   return decks.map((deck) =>
     parseDeck(deck, {
       ...options,
-      allDecks: decks,
+      allDecks,
+      allDecksById,
     })
   )
 }
