@@ -16,16 +16,16 @@ This file tracks requests made to the coding agent and the commit that resulted 
   [2026-04-02T01:17:41.648Z] GET /api/prices?ids=bitcoin%2Cethereum%2Csolforge-fusion 200 in 315ms (compile: 1833µs, render: 313ms)
   Date: 2026-04-02
 - Commit: 75c0166
-  Request: можешь сделать чтобы импорты типов были так `import ... from '@/types'` ?
+  Request: Can you change the type imports so they look like `import ... from '@/types'`?
   Date: 2026-04-02
 - Commit: 914d748
-  Request: Используемые сущности в проекте должны иметь типы в /types; добавить `DeckRaw` и `Deck`, сделать `parseDeck(DeckRaw) => Deck`, не использовать `DeckLike`, оставить в парсере только парсинг и вынести общие функции работы с декой в `/utils/deck.ts`.
+  Request: Project entities should have their types in `/types`; add `DeckRaw` and `Deck`, make `parseDeck(DeckRaw) => Deck`, stop using `DeckLike`, keep only parsing logic in the parser, and move shared deck helper functions to `/utils/deck.ts`.
   Date: 2026-04-02
 - Commit: e1448a8
-  Request: Предлагаю создать папку store/parsers, добавить parsers/deck.ts, прогонять каждую деку через парсер при сохранении в стор и сразу сохранять setShortCode, чтобы убрать дублирующие функции манипуляции сетами.
+  Request: Create a `store/parsers` folder, add `parsers/deck.ts`, run each deck through the parser before saving it to the store, and persist `setShortCode` immediately so duplicated set-manipulation functions can be removed.
   Date: 2026-04-02
 - Commit: 811db99
-  Request: Предлагаю создать папку store/parsers, добавить parsers/deck.ts, прогонять каждую деку через парсер при сохранении в стор и сразу сохранять setShortCode, чтобы убрать дублирующие функции манипуляции сетами.
+  Request: Create a `store/parsers` folder, add `parsers/deck.ts`, run each deck through the parser before saving it to the store, and persist `setShortCode` immediately so duplicated set-manipulation functions can be removed.
   Date: 2026-04-02
 - Commit: 2770924
   Request: Set codes are still shown in uppercase; add Tailwind style text-transform none.
