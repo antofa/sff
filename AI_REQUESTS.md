@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 811db99
+  Request: Предлагаю создать папку store/parsers, добавить parsers/deck.ts, прогонять каждую деку через парсер при сохранении в стор и сразу сохранять setShortCode, чтобы убрать дублирующие функции манипуляции сетами.
+  Date: 2026-04-02
 - Commit: 2770924
   Request: Set codes are still shown in uppercase; add Tailwind style text-transform none.
   Date: 2026-03-05
