@@ -6,7 +6,7 @@ import { notifications } from '@mantine/notifications'
 import { useMediaQuery } from '@mantine/hooks'
 import { IconCalendar, IconCopy, IconExternalLink, IconWorld } from '@tabler/icons-react'
 import NextImage from 'next/image'
-import type { Deck } from '@/store/deckStore'
+import type { Deck, DeckRaw } from '@/types/entities'
 import { addComputedFields } from '@/store/deckStore'
 import { formatCardName, getCardImageUrl, getCardImageUrls, getCardInfo, getForgebornAlternativeUrl, type CardInfo } from '@/lib/api'
 import { logWithTimestamp } from '@/lib/logger'
@@ -16,7 +16,7 @@ import { fetchCreatureTypesForDeckId } from '@/lib/creatureTypeOverrides'
 import { tryFetchDeckFromApiCached } from '@/lib/clientDeckApi'
 import { useDeckStore } from '@/store/deckStore'
 import { getSetShortLabel } from '@/lib/sets'
-import { getDeckSetShortCode, resolveDeckSetCode } from '@/store/parsers/deck'
+import { getDeckSetShortCode, resolveDeckSetCode } from '@/utils/deck'
 
 type CreatureTypeMap = Record<string, number>
 
@@ -2883,14 +2883,20 @@ const originalCardMeta = useMemo(() => {
         addForgebornIfNotExists(forgeborn, deckForUse.forgebornId)
       } else if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.id) {
         // If forgeborn not found in normalizedCards, try to get it from deckForUse.forgeborn object
-        const forgebornId = deckForUse.forgeborn.id || deckForUse.forgebornId
-        const forgebornFromObject = getCardInfo(forgebornId, deckForUse.forgeborn)
-        addForgebornIfNotExists(forgebornFromObject, forgebornId)
+        const forgebornIdRaw = (deckForUse.forgeborn as any).id || deckForUse.forgebornId
+        const forgebornId = typeof forgebornIdRaw === 'string' ? forgebornIdRaw : String(forgebornIdRaw || '')
+        if (forgebornId) {
+          const forgebornFromObject = getCardInfo(forgebornId, deckForUse.forgeborn)
+          addForgebornIfNotExists(forgebornFromObject, forgebornId)
+        }
       }
     } else if (deckForUse.forgeborn && typeof deckForUse.forgeborn === 'object' && deckForUse.forgeborn.id) {
       // If no forgebornId but we have forgeborn object, use it
-      const forgebornFromObject = getCardInfo(deckForUse.forgeborn.id, deckForUse.forgeborn)
-      addForgebornIfNotExists(forgebornFromObject, deckForUse.forgeborn.id)
+      const forgebornId = String((deckForUse.forgeborn as any).id || '')
+      if (forgebornId) {
+        const forgebornFromObject = getCardInfo(forgebornId, deckForUse.forgeborn)
+        addForgebornIfNotExists(forgebornFromObject, forgebornId)
+      }
     }
     
     // For fused decks, ensure first forgeborn is found from first source deck
@@ -2989,8 +2995,11 @@ const originalCardMeta = useMemo(() => {
           })
           
           if (deck1Card) {
-            const cardId = typeof deck1Card === 'string' ? deck1Card : (deck1Card.id || deck1Card.cardId || deck1Card.name)
-            firstForgeborn = getCardInfo(cardId, typeof deck1Card === 'object' ? deck1Card : undefined)
+            const cardIdRaw = typeof deck1Card === 'string' ? deck1Card : (deck1Card.id || deck1Card.cardId || deck1Card.name)
+            const cardId = typeof cardIdRaw === 'string' ? cardIdRaw : String(cardIdRaw || '')
+            if (cardId) {
+              firstForgeborn = getCardInfo(cardId, typeof deck1Card === 'object' ? deck1Card : undefined)
+            }
           }
         }
         
@@ -3005,8 +3014,11 @@ const originalCardMeta = useMemo(() => {
           })
           
           if (forgebornByTypeCard && typeof forgebornByTypeCard === 'object') {
-            const cardId = forgebornByTypeCard.id || forgebornByTypeCard.cardId || forgebornByTypeCard.name
-            firstForgeborn = getCardInfo(cardId, forgebornByTypeCard)
+            const cardIdRaw = forgebornByTypeCard.id || forgebornByTypeCard.cardId || forgebornByTypeCard.name
+            const cardId = typeof cardIdRaw === 'string' ? cardIdRaw : String(cardIdRaw || '')
+            if (cardId) {
+              firstForgeborn = getCardInfo(cardId, forgebornByTypeCard)
+            }
           }
         }
         
@@ -3090,8 +3102,11 @@ const originalCardMeta = useMemo(() => {
           })
           
           if (deck2Card) {
-            const cardId = typeof deck2Card === 'string' ? deck2Card : (deck2Card.id || deck2Card.cardId || deck2Card.name)
-            secondForgeborn = getCardInfo(cardId, typeof deck2Card === 'object' ? deck2Card : undefined)
+            const cardIdRaw = typeof deck2Card === 'string' ? deck2Card : (deck2Card.id || deck2Card.cardId || deck2Card.name)
+            const cardId = typeof cardIdRaw === 'string' ? cardIdRaw : String(cardIdRaw || '')
+            if (cardId) {
+              secondForgeborn = getCardInfo(cardId, typeof deck2Card === 'object' ? deck2Card : undefined)
+            }
           }
         }
         
@@ -3106,8 +3121,11 @@ const originalCardMeta = useMemo(() => {
           })
           
           if (forgebornByTypeCard && typeof forgebornByTypeCard === 'object') {
-            const cardId = forgebornByTypeCard.id || forgebornByTypeCard.cardId || forgebornByTypeCard.name
-            secondForgeborn = getCardInfo(cardId, forgebornByTypeCard)
+            const cardIdRaw = forgebornByTypeCard.id || forgebornByTypeCard.cardId || forgebornByTypeCard.name
+            const cardId = typeof cardIdRaw === 'string' ? cardIdRaw : String(cardIdRaw || '')
+            if (cardId) {
+              secondForgeborn = getCardInfo(cardId, forgebornByTypeCard)
+            }
           }
         }
         
@@ -3836,7 +3854,7 @@ const originalCardMeta = useMemo(() => {
   // Get rarity icon path based on card set and rarity
   const getDeckSet = useCallback((deck: Deck | null, normalizedCards: CardInfo[]): string | null => {
     if (!deck) return null
-    return resolveDeckSetCode(deck as Record<string, any>, {
+    return resolveDeckSetCode(deck as DeckRaw, {
       fallbackCards: normalizedCards as Record<string, any>[],
     })
   }, [])
@@ -4001,7 +4019,7 @@ const originalCardMeta = useMemo(() => {
     if (!deckForDisplay) return formatSetName(deckSet)
     const directShortCode = (deckForDisplay as any).setShortCode
     if (typeof directShortCode === 'string' && directShortCode.trim()) return directShortCode
-    const resolved = getDeckSetShortCode(deckForDisplay as Record<string, any>, {
+    const resolved = getDeckSetShortCode(deckForDisplay as DeckRaw, {
       fallbackCards: normalizedCards as Record<string, any>[],
     })
     return resolved || formatSetName(deckSet)

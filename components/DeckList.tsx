@@ -6,9 +6,9 @@ import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, 
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
 import { useSearchParams } from 'next/navigation'
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks'
-import type { Deck } from '@/store/deckStore'
+import type { Deck, DeckRaw } from '@/types/entities'
 import { useDeckStore } from '@/store/deckStore'
-import { getDeckSetShortCode, resolveDeckSetCode } from '@/store/parsers/deck'
+import { getDeckSetShortCode, resolveDeckSetCode } from '@/utils/deck'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
@@ -314,7 +314,7 @@ function getDeckSet(deck: Deck, options?: { allDecks?: Deck[]; fallbackCards?: a
     return deckAny.computed.deckSet
   }
   return resolveDeckSetCode(deckAny, {
-    allDecks: options?.allDecks as Record<string, any>[] | undefined,
+    allDecks: options?.allDecks as DeckRaw[] | undefined,
     fallbackCards: options?.fallbackCards,
   })
 }
@@ -327,7 +327,7 @@ const getDeckSetBadge = (deck: Deck, options?: { allDecks?: Deck[]; fallbackCard
     return deckAny.setShortCode
   }
   return getDeckSetShortCode(deckAny, {
-    allDecks: options?.allDecks as Record<string, any>[] | undefined,
+    allDecks: options?.allDecks as DeckRaw[] | undefined,
     fallbackCards: options?.fallbackCards,
   })
 }
@@ -615,8 +615,9 @@ function getForgebornNameFromDeck(deck: Deck): string | null {
   if (deck.forgeborn) {
     // getCardInfo will handle title vs name preference for Forgeborn
     if (typeof deck.forgeborn === 'object' && deck.forgeborn.id) {
-      const forgebornInfo = getCardInfo(deck.forgeborn.id, deck.forgeborn)
-      if (forgebornInfo.name) {
+      const forgebornId = String((deck.forgeborn as any).id || '')
+      const forgebornInfo = forgebornId ? getCardInfo(forgebornId, deck.forgeborn) : null
+      if (forgebornInfo?.name) {
         return forgebornInfo.name
       }
     }
@@ -1004,7 +1005,8 @@ const RegularDeckCard = memo(function RegularDeckCard({
               deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags) && Object.keys(deck.tags).length > 0
             let tagsToDisplay: string[] = []
             if (hasTags) {
-              tagsToDisplay = Object.entries(deck.tags)
+              const tagsObject = deck.tags as Record<string, unknown>
+              tagsToDisplay = Object.entries(tagsObject)
                 .map(([key, value]) => {
                   if (value === null || value === undefined || value === '') return null
                   if (key === 'none' && (!value || value === '')) return null

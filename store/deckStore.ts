@@ -2,19 +2,10 @@ import { create } from 'zustand'
 import { z } from 'zod'
 import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
-import { parseDeck, parseDecks, resolveDeckSetCode } from '@/store/parsers/deck'
+import { parseDeck, parseDecks } from '@/store/parsers/deck'
+import type { Deck, DeckComputed, DeckRaw } from '@/types/entities'
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day client-side cache
-
-export type DeckComputed = {
-  expiryTs: number | null
-  deckSet?: string | null
-  setShortCode?: string | null
-  counts?: { total: number; creatures: number; spells: number; solbind: number }
-  rarityCounts?: Record<string, number>
-  creatureType?: Record<string, number>
-  displayTags?: string[]
-}
 
 // Cache card info to avoid expensive recomputation on every render
 const cardInfoCache = new Map<string, CardInfo>()
@@ -499,17 +490,13 @@ export const addComputedFields = (deck: Deck, options?: { allDecks?: Deck[] }): 
   const parsedDeck = (
     alreadyParsed
       ? deck
-      : parseDeck(deck as Record<string, any>, { allDecks: options?.allDecks as Record<string, any>[] | undefined })
+      : parseDeck(deck as DeckRaw, { allDecks: options?.allDecks as DeckRaw[] | undefined })
   ) as Deck
-  const resolvedDeckSet =
-    parsedDeck.setCode ??
-    resolveDeckSetCode(parsedDeck as Record<string, any>, {
-      allDecks: options?.allDecks as Record<string, any>[] | undefined,
-    })
+  const resolvedDeckSet = parsedDeck.setCode || null
   const creatureType = computeCreatureTypes(parsedDeck)
   const computed: DeckComputed = {
     expiryTs: getExpiryTimestamp(parsedDeck),
-    deckSet: resolvedDeckSet || null,
+    deckSet: resolvedDeckSet,
     setShortCode: parsedDeck.setShortCode || null,
     counts: countPlayableCards(parsedDeck),
     rarityCounts: computeRarityCounts(parsedDeck),
@@ -523,13 +510,13 @@ const attachComputed = (decks: Deck[], options?: { allDecks?: Deck[] }): Deck[] 
   return decks.map((deck) => addComputedFields(deck, options))
 }
 
-const attachComputedByGroup = (regularDecks: Deck[], fusedDecks: Deck[]) => {
+const attachComputedByGroup = (regularDecks: DeckRaw[], fusedDecks: DeckRaw[]) => {
   const allDecks = [...regularDecks, ...fusedDecks]
-  const parsedRegular = parseDecks(regularDecks as Record<string, any>[], {
-    allDecks: allDecks as Record<string, any>[],
+  const parsedRegular = parseDecks(regularDecks as DeckRaw[], {
+    allDecks: allDecks as DeckRaw[],
   }) as Deck[]
-  const parsedFused = parseDecks(fusedDecks as Record<string, any>[], {
-    allDecks: allDecks as Record<string, any>[],
+  const parsedFused = parseDecks(fusedDecks as DeckRaw[], {
+    allDecks: allDecks as DeckRaw[],
   }) as Deck[]
   return {
     regular: attachComputed(parsedRegular),
@@ -630,7 +617,7 @@ const preprocessCardSetNo = (val: unknown): string | undefined => {
   return undefined
 }
 
-const DeckSchema = z.preprocess(
+const DeckSchema: z.ZodType<DeckRaw> = z.preprocess(
   (data) => {
     if (typeof data === 'object' && data !== null) {
       const processed = { ...data }
@@ -662,16 +649,9 @@ const DeckSchema = z.preprocess(
     myDecks: z.array(z.any()).optional(),
     fusedDeckIds: z.array(z.string()).optional(),
   }).passthrough() // Allow additional fields that are not in the schema
-)
+) as z.ZodType<DeckRaw>
 
-const DecksResponseSchema = z.array(DeckSchema)
-
-export type Deck = z.infer<typeof DeckSchema> & {
-  computed?: DeckComputed
-  creatureType?: Record<string, number>
-  setCode?: string | null
-  setShortCode?: string | null
-}
+const DecksResponseSchema: z.ZodType<DeckRaw[]> = z.array(DeckSchema)
 
 type ProgressStepKey = 'prepare' | 'fetchRegular' | 'fetchFused' | 'tags' | 'finalize'
 type ProgressStepStatus = 'pending' | 'active' | 'done' | 'error'

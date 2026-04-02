@@ -7,7 +7,7 @@ import { runDeckPersistenceJob } from '@/lib/deckPersistence'
 import { logWithTimestamp } from '@/lib/logger'
 import { getLogDirs, shouldFallbackToTmp } from '@/lib/logPaths'
 import { pruneOldLogs } from '@/lib/logRotation'
-import { resolveDeckSetCode } from '@/store/parsers/deck'
+import { resolveDeckSetCode } from '@/utils/deck'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300

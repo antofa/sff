@@ -8,6 +8,8 @@ Dates use UTC and roll over at 00:00 UTC.
 ### Changed
 - (2026-04-02 UTC) Added a centralized deck parser at `store/parsers/deck.ts` that resolves deck set data once and stores `setCode` / `setShortCode` on each deck object.
 - (2026-04-02 UTC) Updated deck ingestion in Zustand (`store/deckStore.ts`) to parse decks before caching/rendering, so set badges and set filtering reuse the precomputed set fields.
+- (2026-04-02 UTC) Added shared deck entity types in `types/entities.ts`: `DeckRaw` (external API payload) and `Deck` (normalized app-wide model), and switched app components to use the shared `Deck` type.
+- (2026-04-02 UTC) Updated `parseDeck` to accept `DeckRaw` and return `Deck`, and moved reusable deck set-resolution helpers into `utils/deck.ts` so parser modules keep only parsing logic.
 
 ### Fixed
 - (2026-04-02 UTC) Removed duplicated deck-set parsing logic from `DeckList`, `DeckDetails`, and `/api/decks/stream`, reducing inconsistent set resolution between list cards, deck details, and streamed tag payloads.
