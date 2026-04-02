@@ -8,6 +8,18 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 821cc78
+  Request: У меня в коде получается курс биткоина и других криптовалют.
+
+  [2026-04-02T01:13:41.621Z] GET /api/prices?ids=bitcoin%2Cethereum%2Csolforge-fusion 200 in 281ms (compile: 1632µs, render: 279ms)
+  [2026-04-02T01:15:41.607Z] GET /api/prices?ids=bitcoin%2Cethereum%2Csolforge-fusion 200 in 261ms (compile: 1663µs, render: 259ms)
+  [2026-04-02T01:17:41.648Z] GET /api/prices?ids=bitcoin%2Cethereum%2Csolforge-fusion 200 in 315ms (compile: 1833µs, render: 313ms)
+
+  Найди места в коде и сделай следующее:
+  - перенеси логику на клиент, чтобы с браузера пользователя отправлялся запрос на курсу
+  - убери серверную логику с получением курсов полностью
+  - на клиенте запрос на курсы должен быть не чаще 1 раза в 5 минут
+  Date: 2026-04-02
 - Commit: 75c0166
   Request: можешь сделать чтобы импорты типов были так `import ... from '@/types'` ?
   Date: 2026-04-02
