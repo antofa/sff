@@ -1,4 +1,4 @@
-import type { Deck, DeckRaw } from '@/types/entities'
+import type { Deck, DeckRaw } from '@/types'
 import { buildDeckLookup, getDeckSetShortCode, resolveDeckSetCode, type ResolveDeckSetOptions } from '@/utils/deck'
 
 export type ParseDeckOptions = ResolveDeckSetOptions

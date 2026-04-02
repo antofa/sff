@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
 import { parseDeck, parseDecks } from '@/store/parsers/deck'
-import type { Deck, DeckComputed, DeckRaw } from '@/types/entities'
+import type { Deck, DeckComputed, DeckRaw } from '@/types'
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day client-side cache
 

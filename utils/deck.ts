@@ -1,5 +1,5 @@
 import { getSetShortLabel, normalizeSetCode } from '@/lib/sets'
-import type { DeckRaw } from '@/types/entities'
+import type { DeckRaw } from '@/types'
 
 export type ResolveDeckSetOptions = {
   allDecks?: DeckRaw[]

@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/types/database'
+import type { Database } from '@/types'
 import { logWithTimestamp } from '@/lib/logger'
 
 type SyncSummary = {

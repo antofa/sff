@@ -18,7 +18,7 @@ import { notifications } from '@mantine/notifications'
 import { BackgroundElements } from '@/components/BackgroundElements'
 import { DeckDetails } from '@/components/DeckDetails'
 import { Header } from '@/components/Header'
-import type { Deck } from '@/types/entities'
+import type { Deck } from '@/types'
 
 type PlayerSummary = {
   player_name: string

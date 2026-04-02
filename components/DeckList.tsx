@@ -6,7 +6,7 @@ import { Stack, Paper, Title, Text, Group, Badge, Grid, TextInput, NumberInput, 
 import { IconCards, IconCalendar, IconFilter, IconX } from '@tabler/icons-react'
 import { useSearchParams } from 'next/navigation'
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks'
-import type { Deck, DeckRaw } from '@/types/entities'
+import type { Deck, DeckRaw } from '@/types'
 import { useDeckStore } from '@/store/deckStore'
 import { getDeckSetShortCode, resolveDeckSetCode } from '@/utils/deck'
 import { DeckDetails } from './DeckDetails'
