@@ -7,7 +7,7 @@ import { IconArrowLeft, IconHash } from '@tabler/icons-react'
 import { BackgroundElements } from '@/components/BackgroundElements'
 import { Header } from '@/components/Header'
 import { DeckDetails } from '@/components/DeckDetails'
-import type { Deck } from '@/store/deckStore'
+import type { Deck } from '@/types'
 import { addComputedFields } from '@/store/deckStore'
 import { fetchDeckFromApiCached } from '@/lib/clientDeckApi'
 

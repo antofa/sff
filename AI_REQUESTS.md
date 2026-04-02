@@ -8,6 +8,18 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 75c0166
+  Request: можешь сделать чтобы импорты типов были так `import ... from '@/types'` ?
+  Date: 2026-04-02
+- Commit: 914d748
+  Request: Используемые сущности в проекте должны иметь типы в /types; добавить `DeckRaw` и `Deck`, сделать `parseDeck(DeckRaw) => Deck`, не использовать `DeckLike`, оставить в парсере только парсинг и вынести общие функции работы с декой в `/utils/deck.ts`.
+  Date: 2026-04-02
+- Commit: e1448a8
+  Request: Предлагаю создать папку store/parsers, добавить parsers/deck.ts, прогонять каждую деку через парсер при сохранении в стор и сразу сохранять setShortCode, чтобы убрать дублирующие функции манипуляции сетами.
+  Date: 2026-04-02
+- Commit: 811db99
+  Request: Предлагаю создать папку store/parsers, добавить parsers/deck.ts, прогонять каждую деку через парсер при сохранении в стор и сразу сохранять setShortCode, чтобы убрать дублирующие функции манипуляции сетами.
+  Date: 2026-04-02
 - Commit: 2770924
   Request: Set codes are still shown in uppercase; add Tailwind style text-transform none.
   Date: 2026-03-05

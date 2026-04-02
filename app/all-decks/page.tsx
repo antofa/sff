@@ -19,7 +19,7 @@ import { useSearchParams } from 'next/navigation'
 import { BackgroundElements } from '@/components/BackgroundElements'
 import { Header } from '@/components/Header'
 import { DeckList } from '@/components/DeckList'
-import type { Deck } from '@/store/deckStore'
+import type { Deck } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
