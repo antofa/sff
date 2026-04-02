@@ -7,6 +7,7 @@ import { runDeckPersistenceJob } from '@/lib/deckPersistence'
 import { logWithTimestamp } from '@/lib/logger'
 import { getLogDirs, shouldFallbackToTmp } from '@/lib/logPaths'
 import { pruneOldLogs } from '@/lib/logRotation'
+import { resolveDeckSetCode } from '@/store/parsers/deck'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -79,100 +80,10 @@ const fallbackCardNameFromId = (id: string): string => {
   return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1)
 }
 
-const formatSetLabel = (value?: string | number | null): string | null => {
-  if (value === undefined || value === null) return null
-  const text = String(value).trim()
-  if (!text) return null
-  const lower = text.toLowerCase()
-  if (lower === 'b1') return 'B1'
-  if (lower === 'b2') return 'B2'
-  if (lower === 'b3') return 'B3'
-  if (lower === 'd0') return 'S99'
-  if (/^s\d+/.test(lower)) return lower.toUpperCase()
-  if (/^\d+$/.test(lower)) return `S${lower}`
-  return text.toUpperCase()
-}
-
-const getBSetFromCard = (card: any): 'B1' | 'B2' | 'B3' | null => {
-  if (!card) return null
-  if (typeof card === 'string') {
-    if (/^b3_/i.test(card)) return 'B3'
-    if (/^b2_/i.test(card)) return 'B2'
-    if (/^b1_/i.test(card)) return 'B1'
-    return null
-  }
-  const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
-  const cardId = card.id || card.cardId || card.name
-  const setLower = cardSetId ? String(cardSetId).toLowerCase() : ''
-  if (setLower === 'b3') return 'B3'
-  if (setLower === 'b2') return 'B2'
-  if (setLower === 'b1') return 'B1'
-  if (cardId && /^b3_/i.test(cardId)) return 'B3'
-  if (cardId && /^b2_/i.test(cardId)) return 'B2'
-  if (cardId && /^b1_/i.test(cardId)) return 'B1'
-  return null
-}
-
-const getBSetFromCards = (cards: any[]): 'B1' | 'B2' | 'B3' | null => {
-  let found: 'B1' | 'B2' | 'B3' | null = null
-  for (const card of cards) {
-    const bSet = getBSetFromCard(card)
-    if (bSet === 'B3') return 'B3'
-    if (bSet === 'B2') {
-      found = 'B2'
-      continue
-    }
-    if (bSet === 'B1' && found !== 'B2') found = 'B1'
-  }
-  return found
-}
-
-const deriveSetFromId = (id?: string | null): string | null => {
-  if (!id || typeof id !== 'string') return null
-  const lower = id.toLowerCase()
-  if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
-  if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
-  if (lower.startsWith('b3-') || lower.startsWith('b3_')) return 'B3'
-  if (lower.startsWith('s1-')) return 'S1'
-  if (lower.startsWith('s2-')) return 'S2'
-  if (lower.startsWith('s3-')) return 'S3'
-  if (lower.startsWith('s4-')) return 'S4'
-  return null
-}
-
-const getDeckSetTag = (deck: any): string | null => {
-  if (!deck) return null
-  const explicit = formatSetLabel(deck.cardSetNo ?? deck.cardSetId ?? null)
-  if (explicit) return explicit
-
-  if (Array.isArray(deck.cards)) {
-    const bSet = getBSetFromCards(deck.cards)
-    if (bSet) return bSet
-  }
-
-  if (Array.isArray(deck.myDecks)) {
-    let fallback: string | null = null
-    for (const src of deck.myDecks) {
-      if (!src) continue
-      const srcExplicit = formatSetLabel(src.cardSetNo ?? src.cardSetId ?? null)
-      if (srcExplicit) return srcExplicit
-      if (Array.isArray(src.cards)) {
-        const bSet = getBSetFromCards(src.cards)
-        if (bSet === 'B3') return 'B3'
-        if (bSet === 'B2') return 'B2'
-        if (bSet === 'B1') fallback = 'B1'
-      }
-    }
-    if (fallback) return fallback
-  }
-
-  return formatSetLabel(deriveSetFromId(deck.id))
-}
-
 const collectTags = (deck: any): string[] => {
   const tagsSet = new Set<string>()
 
-  const setTag = getDeckSetTag(deck)
+  const setTag = resolveDeckSetCode(deck)
   if (setTag) tagsSet.add(setTag)
 
   if (deck.tags && typeof deck.tags === 'object' && !Array.isArray(deck.tags)) {

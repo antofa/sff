@@ -2,12 +2,14 @@ import { create } from 'zustand'
 import { z } from 'zod'
 import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
+import { parseDeck, resolveDeckSetCode } from '@/store/parsers/deck'
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day client-side cache
 
 export type DeckComputed = {
   expiryTs: number | null
   deckSet?: string | null
+  setShortCode?: string | null
   counts?: { total: number; creatures: number; spells: number; solbind: number }
   rarityCounts?: Record<string, number>
   creatureType?: Record<string, number>
@@ -27,42 +29,6 @@ const getCardInfoCached = (cardId: string, cardData?: any): CardInfo => {
   return info
 }
 
-const getBSetFromCard = (card: any): 'B1' | 'B2' | 'B3' | null => {
-  if (!card) return null
-  if (typeof card === 'string') {
-    if (/^b3_/i.test(card)) return 'B3'
-    if (/^b2_/i.test(card)) return 'B2'
-    if (/^b1_/i.test(card)) return 'B1'
-    return null
-  }
-  if (typeof card === 'object') {
-    const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
-    const cardId = card.id || card.cardId || card.name
-    const setLower = cardSetId ? String(cardSetId).toLowerCase() : ''
-    if (setLower === 'b3') return 'B3'
-    if (setLower === 'b2') return 'B2'
-    if (setLower === 'b1') return 'B1'
-    if (cardId && /^b3_/i.test(cardId)) return 'B3'
-    if (cardId && /^b2_/i.test(cardId)) return 'B2'
-    if (cardId && /^b1_/i.test(cardId)) return 'B1'
-  }
-  return null
-}
-
-const getBSetFromCards = (cards: any[]): 'B1' | 'B2' | 'B3' | null => {
-  let found: 'B1' | 'B2' | 'B3' | null = null
-  for (const card of cards) {
-    const bSet = getBSetFromCard(card)
-    if (bSet === 'B3') return 'B3'
-    if (bSet === 'B2') {
-      found = 'B2'
-      continue
-    }
-    if (bSet === 'B1' && found !== 'B2') found = 'B1'
-  }
-  return found
-}
-
 // Resolve expiry timestamp (ms) for a deck
 const getExpiryTimestamp = (deck: Deck): number | null => {
   const deckAny = deck as any
@@ -77,50 +43,6 @@ const getExpiryTimestamp = (deck: Deck): number | null => {
   if (!expireRaw) return null
   const ts = new Date(expireRaw).getTime()
   return Number.isNaN(ts) ? null : ts
-}
-
-const deriveSetFromId = (id?: string | null): string | null => {
-  if (!id || typeof id !== 'string') return null
-  const lower = id.toLowerCase()
-  if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
-  if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
-  if (lower.startsWith('b3-') || lower.startsWith('b3_')) return 'B3'
-  if (lower.startsWith('s1-')) return 'S1'
-  if (lower.startsWith('s2-')) return 'S2'
-  if (lower.startsWith('s3-')) return 'S3'
-  if (lower.startsWith('s4-')) return 'S4'
-  return null
-}
-
-// Determine deck set: if any card is from B1/B2, return that set, otherwise use deck.cardSetNo
-const getDeckSetComputed = (deck: Deck): string | null => {
-  if (!deck) return null
-  const deckAny = deck as any
-
-  if (deckAny.format === 'Fused' && (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0)) {
-    if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
-      for (const sourceDeck of deckAny.myDecks) {
-        if (!sourceDeck) continue
-        const explicitSet = sourceDeck.cardSetNo || sourceDeck.cardSetId || deriveSetFromId(sourceDeck.id)
-        if (explicitSet) return explicitSet
-        if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
-          const bSet = getBSetFromCards(sourceDeck.cards)
-          if (bSet) return bSet
-        }
-      }
-    }
-    const derivedParentSet = deckAny.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id)
-    if (derivedParentSet) return derivedParentSet
-    return null
-  }
-
-  if (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0) {
-    return deck.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id) || null
-  }
-
-  const bSet = getBSetFromCards(deck.cards)
-  if (bSet) return bSet
-  return deck.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id) || null
 }
 
 // Count cards as sum of creatures + spells + solbind (excluding Forgeborn)
@@ -570,21 +492,32 @@ const buildDisplayTags = (deck: Deck): string[] => {
   return Array.from(tagsSet)
 }
 
-export const addComputedFields = (deck: Deck): Deck => {
-  const creatureType = computeCreatureTypes(deck)
+export const addComputedFields = (deck: Deck, options?: { allDecks?: Deck[] }): Deck => {
+  const parsedDeck = parseDeck(deck as Record<string, any>, { allDecks: options?.allDecks as Record<string, any>[] | undefined }) as Deck
+  const resolvedDeckSet = parsedDeck.setCode ?? resolveDeckSetCode(parsedDeck as Record<string, any>, { allDecks: options?.allDecks as Record<string, any>[] | undefined })
+  const creatureType = computeCreatureTypes(parsedDeck)
   const computed: DeckComputed = {
-    expiryTs: getExpiryTimestamp(deck),
-    deckSet: getDeckSetComputed(deck),
-    counts: countPlayableCards(deck),
-    rarityCounts: computeRarityCounts(deck),
+    expiryTs: getExpiryTimestamp(parsedDeck),
+    deckSet: resolvedDeckSet || null,
+    setShortCode: parsedDeck.setShortCode || null,
+    counts: countPlayableCards(parsedDeck),
+    rarityCounts: computeRarityCounts(parsedDeck),
     creatureType,
-    displayTags: buildDisplayTags(deck),
+    displayTags: buildDisplayTags(parsedDeck),
   }
-  return { ...deck, creatureType, computed }
+  return { ...parsedDeck, creatureType, computed }
 }
 
-const attachComputed = (decks: Deck[]): Deck[] => {
-  return decks.map((deck) => addComputedFields(deck))
+const attachComputed = (decks: Deck[], options?: { allDecks?: Deck[] }): Deck[] => {
+  return decks.map((deck) => addComputedFields(deck, options))
+}
+
+const attachComputedByGroup = (regularDecks: Deck[], fusedDecks: Deck[]) => {
+  const allDecks = [...regularDecks, ...fusedDecks]
+  return {
+    regular: attachComputed(regularDecks, { allDecks }),
+    fused: attachComputed(fusedDecks, { allDecks }),
+  }
 }
 
 const getForgebornNameFromDeck = (deck: Deck): string | null => {
@@ -716,7 +649,12 @@ const DeckSchema = z.preprocess(
 
 const DecksResponseSchema = z.array(DeckSchema)
 
-export type Deck = z.infer<typeof DeckSchema> & { computed?: DeckComputed; creatureType?: Record<string, number> }
+export type Deck = z.infer<typeof DeckSchema> & {
+  computed?: DeckComputed
+  creatureType?: Record<string, number>
+  setCode?: string | null
+  setShortCode?: string | null
+}
 
 type ProgressStepKey = 'prepare' | 'fetchRegular' | 'fetchFused' | 'tags' | 'finalize'
 type ProgressStepStatus = 'pending' | 'active' | 'done' | 'error'
@@ -979,8 +917,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     const cached = forceRefresh ? undefined : get().playerCache[normalizedPlayer]
     const now = Date.now()
     if (cached && cached.expiresAt > now) {
-          const cachedRegular = attachComputed(cached.decks)
-          const cachedFused = attachComputed(cached.fusedDecks)
+          const { regular: cachedRegular, fused: cachedFused } = attachComputedByGroup(cached.decks, cached.fusedDecks)
           const names = buildNameIndexes(cachedRegular, cachedFused)
           set({
             decks: cachedRegular,
@@ -1105,8 +1042,10 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
 
         const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
         const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
-        const enhancedRegular = attachComputed(validatedRegularDecks)
-        const enhancedFused = attachComputed(validatedFusedDecks)
+        const { regular: enhancedRegular, fused: enhancedFused } = attachComputedByGroup(
+          validatedRegularDecks,
+          validatedFusedDecks
+        )
         const names = buildNameIndexes(enhancedRegular, enhancedFused)
         preparedDecks = {
           regular: enhancedRegular,
@@ -1453,16 +1392,20 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           try {
             const validatedRegularDecks = DecksResponseSchema.parse(taggedRegular)
             const validatedFusedDecks = DecksResponseSchema.parse(taggedFused)
-            const enhancedRegular = attachComputed(validatedRegularDecks)
-            const enhancedFused = attachComputed(validatedFusedDecks)
+            const { regular: enhancedRegular, fused: enhancedFused } = attachComputedByGroup(
+              validatedRegularDecks,
+              validatedFusedDecks
+            )
             const names = buildNameIndexes(enhancedRegular, enhancedFused)
             cacheDecks(enhancedRegular, enhancedFused, names)
           } catch (validationError) {
             console.error('[Store] Data validation error:', validationError)
             if ((Array.isArray(regularDecks) && regularDecks.length > 0) || (Array.isArray(fusedDecks) && fusedDecks.length > 0)) {
               console.warn('[Store] Using unvalidated data')
-              const fallbackRegular = attachComputed(Array.isArray(regularDecks) ? regularDecks : [])
-              const fallbackFused = attachComputed(Array.isArray(fusedDecks) ? fusedDecks : [])
+              const { regular: fallbackRegular, fused: fallbackFused } = attachComputedByGroup(
+                Array.isArray(regularDecks) ? regularDecks : [],
+                Array.isArray(fusedDecks) ? fusedDecks : []
+              )
               const names = buildNameIndexes(fallbackRegular, fallbackFused)
               cacheDecks(fallbackRegular, fallbackFused, names)
             } else {
@@ -1581,15 +1524,19 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
             let enhancedRegular: Deck[] = []
             let enhancedFused: Deck[] = []
             try {
-              enhancedRegular = attachComputed(DecksResponseSchema.parse(taggedRegular))
-              enhancedFused = attachComputed(DecksResponseSchema.parse(taggedFused))
+              const parsedRegular = DecksResponseSchema.parse(taggedRegular)
+              const parsedFused = DecksResponseSchema.parse(taggedFused)
+              const grouped = attachComputedByGroup(parsedRegular, parsedFused)
+              enhancedRegular = grouped.regular
+              enhancedFused = grouped.fused
             } catch (validationError) {
               if ((taggedRegular.length + taggedFused.length) === 0) {
                 throw validationError
               }
               console.warn('[Store] HTTP fallback validation warning; using unvalidated data')
-              enhancedRegular = attachComputed(taggedRegular)
-              enhancedFused = attachComputed(taggedFused)
+              const grouped = attachComputedByGroup(taggedRegular, taggedFused)
+              enhancedRegular = grouped.regular
+              enhancedFused = grouped.fused
             }
 
             const names = buildNameIndexes(enhancedRegular, enhancedFused)

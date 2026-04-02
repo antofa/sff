@@ -8,6 +8,7 @@ import { useSearchParams } from 'next/navigation'
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks'
 import type { Deck } from '@/store/deckStore'
 import { useDeckStore } from '@/store/deckStore'
+import { getDeckSetShortCode, resolveDeckSetCode } from '@/store/parsers/deck'
 import { DeckDetails } from './DeckDetails'
 import { getCardInfo, type CardInfo } from '@/lib/api'
 import { computeCreatureTypesForDeck } from '@/lib/creatureTypes'
@@ -192,43 +193,6 @@ function formatSetName(setNo: string | number | null | undefined): string | null
   return getSetShortLabel(setNo)
 }
 
-// Helper function to detect B-set cards (B1/B2/B3)
-function getBSetFromCard(card: any): 'B1' | 'B2' | 'B3' | null {
-  if (!card) return null
-  if (typeof card === 'string') {
-    if (/^b3_/i.test(card)) return 'B3'
-    if (/^b2_/i.test(card)) return 'B2'
-    if (/^b1_/i.test(card)) return 'B1'
-    return null
-  }
-  if (typeof card === 'object' && card !== null) {
-    const cardSetId = card.cardSetId || card.CardSetId || card.SK || card.sk
-    const cardId = card.id || card.cardId || card.name
-    const setLower = cardSetId ? String(cardSetId).toLowerCase() : ''
-    if (setLower === 'b3') return 'B3'
-    if (setLower === 'b2') return 'B2'
-    if (setLower === 'b1') return 'B1'
-    if (cardId && /^b3_/i.test(cardId)) return 'B3'
-    if (cardId && /^b2_/i.test(cardId)) return 'B2'
-    if (cardId && /^b1_/i.test(cardId)) return 'B1'
-  }
-  return null
-}
-
-function getBSetFromCards(cards: any[]): 'B1' | 'B2' | 'B3' | null {
-  let found: 'B1' | 'B2' | 'B3' | null = null
-  for (const card of cards) {
-    const bSet = getBSetFromCard(card)
-    if (bSet === 'B3') return 'B3'
-    if (bSet === 'B2') {
-      found = 'B2'
-      continue
-    }
-    if (bSet === 'B1' && found !== 'B2') found = 'B1'
-  }
-  return found
-}
-
 // Helper to resolve expiry timestamp (ms) for a deck: expireAt/expire_date/created fallback
 function getExpiryTimestamp(deck: Deck): number | null {
   if ((deck as any)?.computed && (deck as any).computed.expiryTs !== undefined) {
@@ -310,11 +274,6 @@ function getBorderColors(deck: Deck, now: number) {
   return { borderColor, hoverBorderColor }
 }
 
-// Helper function to determine deck set: if any card is from B1/B2/B3, return that set, otherwise use deck.cardSetNo
-const normalizeSetLabel = (value?: string | number | null): string | null => {
-  return normalizeSetCode(value)
-}
-
 const normalizeRarityLabel = (rarity: string): string => {
   const normalized = rarity.trim()
   const lower = normalized.toLowerCase()
@@ -345,98 +304,32 @@ const normalizeRarityCounts = (counts: Record<string, unknown> | null | undefine
   return normalized
 }
 
-function getDeckSet(deck: Deck, options?: { allDecks?: Deck[] }): string | null {
+function getDeckSet(deck: Deck, options?: { allDecks?: Deck[]; fallbackCards?: any[] }): string | null {
   if (!deck) return null
-  const allDecks = options?.allDecks || []
   const deckAny = deck as any
-  const isFused =
-    String(deckAny?.format || '').toLowerCase().includes('fused') ||
-    Boolean(deckAny?.is_fused) ||
-    String(deckAny?.id || '').toLowerCase().startsWith('fused_') ||
-    String(deckAny?.id || '').toLowerCase().startsWith('deck_fused_')
-
-  const explicitSet = normalizeSetLabel(deckAny.cardSetId ?? deckAny.card_set_id ?? deckAny.cardSetNo ?? deckAny.card_set_no)
-  if (explicitSet) return explicitSet
-  if (deckAny?.computed && deckAny.computed.deckSet !== undefined) {
-    return normalizeSetLabel(deckAny.computed.deckSet as string | null)
+  if (typeof deckAny.setCode === 'string' && deckAny.setCode.trim()) {
+    return deckAny.setCode
   }
-
-  const deriveSetFromId = (id?: string | null): string | null => {
-    if (!id || typeof id !== 'string') return null
-    const lower = id.toLowerCase()
-    if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
-    if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
-    if (lower.startsWith('b3-') || lower.startsWith('b3_')) return 'B3'
-    if (lower.startsWith('s1-')) return 'S1'
-    if (lower.startsWith('s2-')) return 'S2'
-    if (lower.startsWith('s3-')) return 'S3'
-    if (lower.startsWith('s4-')) return 'S4'
-    return null
+  if (typeof deckAny?.computed?.deckSet === 'string' && deckAny.computed.deckSet.trim()) {
+    return deckAny.computed.deckSet
   }
-  const resolveSetFromSource = (sourceDeck?: Deck | null): string | null => {
-    if (!sourceDeck) return null
-    const sourceAny = sourceDeck as any
-    const explicitSet = normalizeSetLabel(
-      sourceAny.cardSetNo ?? sourceAny.cardSetId ?? sourceAny.card_set_id ?? sourceAny.card_set_no
-    )
-    if (explicitSet) return explicitSet
-    const derived = deriveSetFromId(sourceAny.id)
-    if (derived) return normalizeSetLabel(derived)
-    if (sourceDeck.cards && Array.isArray(sourceDeck.cards)) {
-      const bSet = getBSetFromCards(sourceDeck.cards)
-      if (bSet) return bSet
-    }
-    return null
-  }
-  
-  // For fused decks, always prefer source halves (myDecks/fusedDeckIds) for set resolution
-  if (isFused) {
-    // Check source decks (myDecks) for explicit set first, then B1/B2 cards
-    if (deckAny.myDecks && Array.isArray(deckAny.myDecks)) {
-      for (const sourceDeck of deckAny.myDecks) {
-        if (!sourceDeck) continue
-        const resolved = resolveSetFromSource(sourceDeck)
-        if (resolved) return resolved
-      }
-    }
+  return resolveDeckSetCode(deckAny, {
+    allDecks: options?.allDecks as Record<string, any>[] | undefined,
+    fallbackCards: options?.fallbackCards,
+  })
+}
 
-    if (deckAny.fusedDeckIds && Array.isArray(deckAny.fusedDeckIds) && allDecks.length > 0) {
-      for (const id of deckAny.fusedDeckIds) {
-        if (!id) continue
-        const match = allDecks.find((d) => d?.id === id)
-        const resolved = resolveSetFromSource(match)
-        if (resolved) return resolved
-      }
-    }
+const normalizeSetLabel = (value?: string | number | null): string | null => normalizeSetCode(value)
 
-    // If halves don't resolve, try fused deck cards
-    if (deck.cards && Array.isArray(deck.cards) && deck.cards.length > 0) {
-      const bSet = getBSetFromCards(deck.cards)
-      if (bSet) return bSet
-    }
-
-    // Fallback: check fused deck itself for set
-    const derivedParentSet = deckAny.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id)
-    if (derivedParentSet) {
-      return derivedParentSet
-    }
-
-    return null
+const getDeckSetBadge = (deck: Deck, options?: { allDecks?: Deck[]; fallbackCards?: any[] }): string | null => {
+  const deckAny = deck as any
+  if (typeof deckAny.setShortCode === 'string' && deckAny.setShortCode.trim()) {
+    return deckAny.setShortCode
   }
-  
-  // For regular decks or fused decks with cards
-  if (!deck.cards || !Array.isArray(deck.cards) || deck.cards.length === 0) {
-    return deck.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id) || null
-  }
-  
-  // Check if any card is from B1/B2/B3 set
-  const bSet = getBSetFromCards(deck.cards)
-  if (bSet) {
-    return bSet
-  }
-  
-  // Otherwise use deck.cardSetNo
-  return deck.cardSetNo || deckAny.cardSetId || deriveSetFromId(deckAny.id) || null
+  return getDeckSetShortCode(deckAny, {
+    allDecks: options?.allDecks as Record<string, any>[] | undefined,
+    fallbackCards: options?.fallbackCards,
+  })
 }
 
 // Helper function to count cards as sum of creatures + spells + solbind (excluding Forgeborn)
@@ -957,8 +850,7 @@ const RegularDeckCard = memo(function RegularDeckCard({
                 />
               )}
               {(() => {
-                const deckSet = getDeckSet(deck)
-                const formattedSet = formatSetName(deckSet)
+                const formattedSet = getDeckSetBadge(deck)
                 return formattedSet ? (
                   <Badge color="indigo" variant="light" size="sm" className="normal-case" style={{ textTransform: 'none' }}>
                     {formattedSet}
@@ -1265,35 +1157,22 @@ const FusedDeckCard = memo(function FusedDeckCard({
   }
   const pickedSources = sourceCandidates.slice(0, 2)
 
-  const deriveSetFromId = useCallback((id?: string | null): string | null => {
-    if (!id || typeof id !== 'string') return null
-    const lower = id.toLowerCase()
-    if (lower.startsWith('b1-') || lower.startsWith('b1_')) return 'B1'
-    if (lower.startsWith('b2-') || lower.startsWith('b2_')) return 'B2'
-    if (lower.startsWith('b3-') || lower.startsWith('b3_')) return 'B3'
-    if (lower.startsWith('s1-')) return 'S1'
-    if (lower.startsWith('s2-')) return 'S2'
-    if (lower.startsWith('s3-')) return 'S3'
-    if (lower.startsWith('s4-')) return 'S4'
-    return null
-  }, [])
-
   const factionSets: Array<{ faction: string; setNo: string | number | null }> = (() => {
     const list: Array<{ faction: string; setNo: string | number | null }> = []
     pickedSources.forEach((src) => {
       if (src?.faction) {
-        let setNo = getDeckSet(src, { allDecks }) || deriveSetFromId((src as any).id)
+        let setNo = getDeckSet(src, { allDecks })
         if (!setNo && src.id && allDecksMap.has(src.id)) {
           const mapped = allDecksMap.get(src.id)
           if (mapped) {
-            setNo = getDeckSet(mapped, { allDecks }) || deriveSetFromId((mapped as any)?.id)
+            setNo = getDeckSet(mapped, { allDecks })
           }
         }
         list.push({ faction: src.faction, setNo: setNo || null })
       }
     })
     if (list.length === 0 && deck.faction) {
-      const deckSet = getDeckSet(deck, { allDecks }) || deriveSetFromId(deck.id)
+      const deckSet = getDeckSet(deck, { allDecks })
       list.push({ faction: deck.faction, setNo: deckSet || null })
     }
     return list
@@ -1410,13 +1289,8 @@ const FusedDeckCard = memo(function FusedDeckCard({
     })
 
     if (setLabels.size === 0) {
-      const bSet = getBSetFromCards(aggregatedCards as any[])
-      if (bSet) setLabels.add(formatSetName(bSet) || bSet)
-      const parentSet = getDeckSet(deck, { allDecks })
-      if (parentSet) {
-        const label = formatSetName(parentSet)
-        if (label) setLabels.add(label)
-      }
+      const resolvedBadge = getDeckSetBadge(deck, { allDecks, fallbackCards: aggregatedCards as any[] })
+      if (resolvedBadge) setLabels.add(resolvedBadge)
     }
 
     return Array.from(setLabels)
