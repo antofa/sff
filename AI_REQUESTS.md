@@ -8,6 +8,9 @@ This file tracks requests made to the coding agent and the commit that resulted 
   Date: YYYY-MM-DD
 
 ## Entries
+- Commit: 75c0166
+  Request: можешь сделать чтобы импорты типов были так `import ... from '@/types'` ?
+  Date: 2026-04-02
 - Commit: 914d748
   Request: Используемые сущности в проекте должны иметь типы в /types; добавить `DeckRaw` и `Deck`, сделать `parseDeck(DeckRaw) => Deck`, не использовать `DeckLike`, оставить в парсере только парсинг и вынести общие функции работы с декой в `/utils/deck.ts`.
   Date: 2026-04-02
